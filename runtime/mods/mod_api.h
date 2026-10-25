@@ -10,10 +10,10 @@
 //
 //   #include "mods/mod_api.h"
 //   static void minhaVersao(hh::Sh4Context* c) {
-//       hh::mods::call_original(0x8C194580, c);   // comportamento original
+//       hh::mods::call_original(0x8C0A2388, c);   // comportamento original
 //       c->r[0] = 1;                               // e depois muda o retorno
 //   }
-//   HH_MOD(exemplo) { hh::mods::replace(0x8C194580, minhaVersao); }
+//   HH_MOD(exemplo) { hh::mods::replace(0x8C0A2388, minhaVersao); }
 //
 // Uma funcao SH-4 recompilada recebe o contexto (registradores r0-r15, FPU, memoria em
 // c->ram) e segue a convencao do jogo (argumentos em r4-r7, retorno em r0). O mapa
@@ -51,10 +51,10 @@ bool    has_slot(uint32_t addr);
 Sh4Func original(uint32_t addr);
 void    call_original(uint32_t addr, Sh4Context* c);  // fatal se nao existe
 // Esperas (N2b, criterio B10). Um mod que reescreve um laco de espera do jogo (por exemplo a
-// espera do VBlank em 8C064A20) chama wait() em cada volta e wait_end() na saida, como o codigo
+// pausa de N quadros em 8C08ED16) chama wait() em cada volta e wait_end() na saida, como o codigo
 // gerado faz com HH_WAIT/HH_WAIT_END nos pontos declarados em [native] esperas:
-//   while (hh::sh4_read16(c, bandeira) == 0) hh::mods::wait(c, 0x8C064A2C, 0x8C064A26, 6);
-//   hh::mods::wait_end(c, 0x8C064A2C);
+//   while (hh::sh4_read16(c, bandeira) == 0) hh::mods::wait(c, 0x8C08ED26, 0x8C08ED20, 6);
+//   hh::mods::wait_end(c, 0x8C08ED26);
 // `pc` identifica a espera (o back-edge do original), `resume` e onde o original retomaria (vira
 // SPC se uma interrupcao for entregue) e `cycles` o custo estimado de uma volta (enquanto o tempo
 // andar por ciclos, sem ele o laco nao deixa o tempo andar). Um laco de espera sem wait() e

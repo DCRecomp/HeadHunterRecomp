@@ -46,8 +46,8 @@
 "gerado.hh_call" = 22690
 "gerado.hh_call_reentrant" = 14
 "gerado.hh_fn_enter" = 4699
-"gerado.hh_poll" = 2578
-"gerado.linhas" = 1098898
+"gerado.hh_poll" = 2571
+"gerado.linhas" = 1098905
 "gerado.ops_fpu" = 50580
 "gerado.sh4_dispatch" = 1107
 "hw.constantes_excluidas_config" = 4
@@ -92,6 +92,7 @@
 "sq.literal.funcoes.sdk" = 6
 "tempo.ciclos.diagnostico" = 12
 "tempo.ciclos.entrada_compat" = 1
-"tempo.ciclos.funcionais" = 2
-"tempo.ciclos.progresso" = 2
-"tempo.consumidores.ciclos" = 2
+"tempo.ciclos.funcionais" = 0
+"tempo.ciclos.progresso" = 8
+"tempo.ciclos.teste" = 1
+"tempo.consumidores.ciclos" = 0

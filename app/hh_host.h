@@ -23,6 +23,10 @@ struct HostFrame {
 // HH08: provedor dos arquivos do jogo. Legado: gdFs recompilado sobre o GD-ROM HLE (setores de
 // disc_meta). Nativo: adaptador gdFs sobre os arquivos de data\disc (sem setores).
 enum class FileProvider { Legacy, Native };
+// HH09: provedor de tempo e eventos. Legado: o contador de ciclos decide (runtime/cpu/time_legacy).
+// Nativo: relogio logico e filas de eventos (transitional/time_adapter), entrega nos mesmos pontos.
+// Experimental: o tempo so anda nas esperas declaradas ([native] esperas).
+enum class TimeProvider { Legacy, Native, Experimental };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -31,6 +35,7 @@ struct HostOptions {
     bool                  realtime    = false;  // segura o jogo em 59,94 VBlanks por segundo
     std::vector<uint32_t> watch;          // diagnostico: entradas nessas funcoes
     FileProvider          files = FileProvider::Native;  // --arquivos legado|nativo (nativo: HH08, P1/P2)
+    TimeProvider          time  = TimeProvider::Native;  // --tempo legado|nativo|experimental (HH09: nativo estavel padrao, A1-A8)
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;

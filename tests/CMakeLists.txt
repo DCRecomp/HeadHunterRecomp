@@ -197,3 +197,17 @@ if(TARGET hh-builder)
     COMMAND ${CMAKE_COMMAND} -DBUILDER=$<TARGET_FILE:hh-builder> -DWORK=${CMAKE_CURRENT_BINARY_DIR}/hh08_builder_sem_marcador
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh08/check_builder_unmarked.cmake)
 endif()
+
+# HH09: tempo e eventos nativos (relogio, filas, provedor nativo x legado, monitor de progresso).
+add_executable(hh09_tempo_tests unit/main.cpp unit/test_hh09_tempo.cpp)
+target_include_directories(hh09_tempo_tests PRIVATE unit)
+target_link_libraries(hh09_tempo_tests PRIVATE hh_transitional hh_translator)
+add_test(NAME hh09_tempo_tests COMMAND hh09_tempo_tests)
+
+# HH09: portoes do tempo nativo (A1/A3/A5 estavel x legado, negativo de mutacao, B7/B8 experimental).
+if(HH_GENERATED_DIR)
+  add_test(NAME hh09_tempo
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh09_tempo.py
+            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh09_tempo PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 2400)
+endif()

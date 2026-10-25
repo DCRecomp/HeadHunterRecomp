@@ -15,8 +15,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH06 | CONCLUIDA | `docs/relatorios/HH06-RELATORIO.md` (roteiro até a 1ª área controlável em janela e headless; Builder do CDI ao Preview) |
 | HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH14; catraca; native/legacy/transitional; produto sem CDI) |
 | HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; os dois discos numa instalação só, sem troca; falhas seguras) |
-| HH09 | PLANEJADA | plano `docs/planos/HH09-PLANO.md`; execução aguarda aprovação do mantenedor (2026-10-25) |
-| HH10 | PENDENTE | — |
+| HH09 | CONCLUIDA | `docs/relatorios/HH09-RELATORIO.md` (tempo nativo estável padrão: ordem, quadros e relógios idênticos ao legado; 7 esperas declaradas; experimental opcional) |
+| HH10 | EM_ANDAMENTO | — |
 | HH11 | PENDENTE | — |
 | HH12 | PENDENTE | — |
 | HH13 | PENDENTE | — |
@@ -243,6 +243,18 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Revisões Codex: 8 achados na primeira entrega (5 aceitos, 3 em parte) e 4 no retrabalho
   (aceitos); relatório, seção 9.
 
+### HH09 (2026-10-25)
+
+- Portados do N2a/N2b do BS: `native/platform/{time.h,clock,event_queue,progress}` e
+  `transitional/time_adapter` (sem o CRI). `--tempo legado|nativo|experimental`; nativo estável
+  padrão (A1/A2/A3/A5 iguais ao legado).
+- Esperas (HH_WW_VOLTAS + modo sombra): 0x8C08ED26 (pausa de N quadros, VBlank) e 0x8C16B7CE (fim
+  do render, Kamui); boot: 0x8C16A5E4/608 e 0x8C169704/728 (SPG), 0x8C11FC3A (filme 4X).
+- Experimental: o roteiro chega à primeira área, determinístico e 20% mais rápido; a
+  equivalência formal (B1–B6, B11) e o prazo do TMU nas esperas de SPG ficam para o HH15.
+- Catraca `tempo.consumidores.ciclos` 2 → 0 (artefato do classificador), varrendo também
+  `transitional/`.
+
 ### Formatos dos discos (investigação 2026-10-24)
 
 Relatório e scripts em `analysis/formatos/` (privado). Verificado em todos
@@ -276,9 +288,8 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-**HH09 aguarda aprovação do mantenedor** (instrução de 2026-10-25: "Não faça o HH09 sem minha
-aprovação, mas deixe ele planejado"). O plano está em `docs/planos/HH09-PLANO.md`. Até a
-aprovação, só manutenção do HH08 e revisão do plano. Commits por etapa autorizados pelo mantenedor
+Prosseguir pelo **HH10** (controles nativos) e as etapas seguintes. O teste da passagem real do
+disco 1 para o 2 fica para depois (HH11/HH16). Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando
 o mantenedor enviar `PAUSAR`.

@@ -16,6 +16,8 @@
 #include "hwscan/sdkid.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <initializer_list>
 #include <stdexcept>
 
@@ -492,4 +494,50 @@ HH_TEST(hh07_declared_hw_dependency_toml) {
     HH_CHECK(throws("[[dependencia_hw]]\nfuncao = 1\nsubsistema = \"render\"\ndono = \"HH14\"\n"));    // sem evidencia
     HH_CHECK(throws("[[dependencia_hw]]\nfuncao = 1\nsubsistema = \"render\"\ndono = \"depois\"\nevidencia = \"e\"\n"));
     HH_CHECK(throws("[[dependencia_hw]]\n" + ok + "[[dependencia_hw]]\n" + ok));  // repetida
+}
+
+// HH09.0: a catraca tempo.consumidores.ciclos conta so consumo funcional. O poll central do HH
+// (cpu/sh4_service.cpp) e o stub de testes do HH04 (cpu/sh4_hw_m3.cpp) reprogramam o quantum:
+// progresso e teste. Uma leitura nova de ->cycles num modulo volta a contar (caso negativo).
+HH_TEST(hh09_cycle_ratchet_classifier) {
+    namespace fs  = std::filesystem;
+    const fs::path top  = fs::temp_directory_path() / "hh_hh09_ciclos";
+    const fs::path root = top / "runtime";  // transitional/ fica ao lado (varrido tambem)
+    std::error_code ec;
+    fs::remove_all(top, ec);
+    auto put = [&](const char* rel, const std::string& text) {
+        fs::create_directories((root / rel).parent_path());
+        std::ofstream(root / rel, std::ios::binary) << text;
+    };
+    const std::string poll = "void sh4_service(Sh4Context* c) {\n    c->next_event = c->cycles + kServiceQuantum;\n}\n";
+    put("cpu/sh4_service.cpp", poll);
+    put("cpu/sh4_hw_m3.cpp", poll);
+    put("aica/aica.cpp", "// le c->cycles so em comentario\nint f() { return 0; }\n");
+    Metrics m = runtime_cycle_metrics(root);
+    HH_CHECK(m.at("tempo.consumidores.ciclos") == 0 && m.at("tempo.ciclos.funcionais") == 0);
+    HH_CHECK(m.at("tempo.ciclos.progresso") == 1 && m.at("tempo.ciclos.teste") == 1);
+    put("aica/aica.cpp", "uint64_t agora(Sh4Context* c) { return c->cycles; }\n");
+    m = runtime_cycle_metrics(root);
+    HH_CHECK(m.at("tempo.consumidores.ciclos") == 1 && m.at("tempo.ciclos.funcionais") == 1);
+    // a mesma expressao fora do poll central nao e progresso
+    put("aica/aica.cpp", poll);
+    m = runtime_cycle_metrics(root);
+    HH_CHECK(m.at("tempo.consumidores.ciclos") == 1);
+    put("aica/aica.cpp", "int f() { return 0; }\n");
+    // transitional/ (revisao Codex HH09): o hardware_wait do adaptador e progresso (lista fechada);
+    // outra leitura no adaptador e funcional
+    fs::create_directories(top / "transitional");
+    const std::string hw = "bool hardware_wait(Sh4Context* c, uint64_t ticks) {\n"
+                           "    const uint64_t end = c->cycles + ticks;\n"
+                           "    while (c->cycles < end && !c->redirect) {\n"
+                           "        c->cycles = std::min(end, std::max(c->cycles, c->next_event));\n"
+                           "        if (c->cycles >= c->next_event) sh4_service(c);\n    }\n    return true;\n}\n";
+    std::ofstream(top / "transitional" / "time_adapter.cpp", std::ios::binary) << hw;
+    m = runtime_cycle_metrics(root);
+    HH_CHECK(m.at("tempo.consumidores.ciclos") == 0 && m.at("tempo.ciclos.progresso") == 6);
+    std::ofstream(top / "transitional" / "time_adapter.cpp", std::ios::binary)
+        << hw << "uint64_t agora(Sh4Context* c) { return c->cycles; }\n";
+    m = runtime_cycle_metrics(root);
+    HH_CHECK(m.at("tempo.consumidores.ciclos") == 1);
+    fs::remove_all(top, ec);
 }

@@ -42,7 +42,7 @@ void writePpm(const fs::path& p, const std::vector<uint32_t>& argb, uint32_t w, 
 
 int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
-                         " [--watch <endereco>]... [--arquivos legado|nativo] [--mods <pasta>]\n");
+                         " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--mods <pasta>]\n");
     return 2;
 }
 
@@ -65,6 +65,11 @@ int main(int argc, char** argv) {
         else if (a == "--watch" && (v = next())) opt.watch.push_back(uint32_t(std::strtoul(v, nullptr, 16)));
         else if (a == "--arquivos" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
             opt.files = std::string(v) == "nativo" ? hh::FileProvider::Native : hh::FileProvider::Legacy;
+        else if (a == "--tempo" && (v = next()) &&
+                 (std::string(v) == "legado" || std::string(v) == "nativo" || std::string(v) == "experimental"))
+            opt.time = std::string(v) == "nativo"         ? hh::TimeProvider::Native
+                       : std::string(v) == "experimental" ? hh::TimeProvider::Experimental
+                                                          : hh::TimeProvider::Legacy;
         else if (a == "--mods" && (v = next())) opt.modsDir = v;
         else return usage();
     }

@@ -12,6 +12,8 @@ set(forbidden
   "Sh4Context" "sh4_" "cpu/" "runtime/" "dc_regions" "dcmap" "Region::" "generated/"
   # alvos do lado Dreamcast: uma ligacao no CMake tambem e dependencia (revisao Codex HH07)
   "hh_runtime" "hh_legacy" "hh_transitional" "hh_dcmap" "hh_generated" "hh_translator"
+  # HH09.8: o tempo nativo nao conhece o contador de ciclos nem o provedor do runtime
+  "time_now" "kCompatTicks" "->cycles"
   "0x8C0" "0x8C1" "0xA05F" "0x005F" "0xA070" "0x0070" "0xA080" "0xA400" "0xA500" "0xFFD8" "0xFFA0")
 set(bad "")
 foreach(f ${files})

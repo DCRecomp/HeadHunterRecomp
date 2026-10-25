@@ -11,8 +11,7 @@ quando o tempo anda. A simulação de registradores do runtime híbrido só enco
 
 Pré-requisito: HH08 `CONCLUIDA` (2026-10-25).
 
-**Estado: PLANEJADA.** Por instrução do mantenedor (2026-10-25), a execução só começa com a
-aprovação dele.
+**Estado: EM_ANDAMENTO.** Aprovado pelo mantenedor em 2026-10-25 ("Continua").
 
 ## Fatos de entrada (preparação, 2026-10-25)
 

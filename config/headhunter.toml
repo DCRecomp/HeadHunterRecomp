@@ -151,3 +151,18 @@ slots = [
   0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): drive sempre pronto (sem troca de disco)
   0x8C15D042,  # gdFsLoadDir (stub, tabela[32]): diretorio dos dirrec pelo provedor nativo
 ]
+# HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
+# HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.
+esperas = [
+  0x8C08ED26,  # pausa de N quadros: espera o contador 0x8C14DAE4 chegar a 0 (f_8C08ED16);
+               # o callback de VBlank 0x8C0CDD74 o decrementa (1 chamada por VBlank, HH_CALL_TRACE)
+  0x8C16B7CE,  # Kamui (f_8C16B6FE, chamada por 0x8C159FC0): espera bits de 0x8C31FA04 apagarem;
+               # cada volta chama o despachante 0x8C169260(7)
+  # tempo experimental (o estavel ignora): esperas temporais do boot
+  0x8C16A5E4,  # Kamui (f_8C16A5A0 <- 0x8C16A640 <- 0x8C159ACE): linha do SPG_STATUS (0x10C, mascara 0x3FF)
+  0x8C16A608,  # idem, segunda espera (linha 0); timeout pelo TMU (TCNT0, 0x3D09)
+  0x8C169704,  # Kamui (f_8C1696C0 <- 0x8C159C20): vsync do SPG_STATUS (0x10C, bit 0x2000) apagar
+  0x8C169728,  # idem, vsync acender; timeout pelo TMU (TCNT0, 0x3D09)
+  0x8C11FC3A,  # filme 4X (f_8C11ECA4, "\MOVIES"): espera o objeto do filme dizer que o proximo quadro
+               # venceu (metodo virtual; o tempo vem do TMU por callback, f_8C12788E)
+]

@@ -12,7 +12,9 @@
 #include "closure.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <map>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -34,6 +36,12 @@ struct RatchetFailure {
 std::vector<RatchetFailure> ratchet(const Metrics& base, const Metrics& now);
 
 // Formato: TOML plano, uma chave entre aspas por linha ("hw.refs.total" = 625).
+// Leituras de `->cycles`/`.cycles` nos fontes do runtime (`dir`), por categoria: progresso (o
+// poll central e o HH_CYCLES do gerado), entrada de compatibilidade, diagnostico, teste (stub do
+// HH04, fora do produto) e funcional. tempo.consumidores.ciclos = arquivos com leitura funcional
+// (catraca). `tsv`: arquivo/linha/categoria de cada leitura.
+Metrics runtime_cycle_metrics(const std::filesystem::path& dir, std::ostream* tsv = nullptr);
+
 std::string metrics_toml(const Metrics& m);
 Metrics     parse_metrics(const std::string& text);
 

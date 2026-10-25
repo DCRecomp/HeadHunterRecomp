@@ -86,6 +86,13 @@ int main(int argc, char** argv) {
         else if (a == "--arquivos" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
             opt.files = std::string(argv[++i]) == "nativo" ? hh::FileProvider::Native : hh::FileProvider::Legacy;
+        else if (a == "--tempo" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo" ||
+                  std::string(argv[i + 1]) == "experimental")) {
+            const std::string t = argv[++i];
+            opt.time = t == "nativo" ? hh::TimeProvider::Native
+                       : t == "experimental" ? hh::TimeProvider::Experimental : hh::TimeProvider::Legacy;
+        }
         else if (a == "--mods" && i + 1 < argc) opt.modsDir = argv[++i];
         else {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "

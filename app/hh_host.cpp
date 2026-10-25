@@ -8,6 +8,7 @@
 #include "cpu/sh4_threads.h"
 #include "debug/call_trace.h"
 #include "gdfs_adapter.h"
+#include "time_adapter.h"
 #include "hh_verified_files.h"
 #include "gdrom/data_source.h"
 #include "gdrom/gdrom.h"
@@ -17,6 +18,7 @@
 #include "pvr/pvr_video.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <cstdio>
 #include <stdexcept>
@@ -106,6 +108,17 @@ HostResult host_run(const HostOptions& opt) {
             // a identidade vem do executavel, nao da linha "version" do manifesto (revisao Codex HH08)
             throw std::runtime_error("os dados em " + opt.data.string() + " sao da versao " + boot.versionId +
                                      ", esperada " + opt.expectVersion + " (dados de outro disco). Refaca a instalacao com o Builder.");
+        // HH09: tempo e eventos pelo provedor nativo (antes do boot: o reset do hardware o inicia)
+        if (opt.time != TimeProvider::Legacy) {
+            transitional::time::Options to;
+            to.experimental = opt.time == TimeProvider::Experimental;
+            if (const char* v = std::getenv("HH_TIME_TRACE")) to.trace = v;
+            if (const char* v = std::getenv("HH_TEMPO_MUTACAO")) to.mutation = v;
+            if (const char* v = std::getenv("HH_PROGRESS_TRACE")) to.progress_trace = v;
+            if (const char* v = std::getenv("HH_PROGRESSO_LIMITE")) to.stall_units = std::strtoull(v, nullptr, 10);
+            else to.stall_units = transitional::time::kDefaultStallUnits;
+            transitional::time::install(to);
+        }
         boot_prepare(c, boot, rtc);
         gdrom_set_disc(open_runtime_data(opt.data, {}));
         if (opt.files == FileProvider::Native) {
@@ -148,6 +161,20 @@ HostResult host_run(const HostOptions& opt) {
         res.error = "falha ao liberar as fibras das threads do guest";
     }
     call_trace_flush();
+    if (transitional::time::installed()) {
+        transitional::time::uninstall();
+        std::fputs(transitional::time::progress_summary().c_str(), stderr);
+        const auto s = transitional::time::stats();
+        std::fprintf(stderr,
+                     "[tempo] %s: VBlank-In %llu, VBlank-Out %llu, render %llu, Maple %llu, GD-ROM %llu; agendados %llu, "
+                     "cancelados %llu, recuos do relogio %llu, VBlank-In colapsados %llu\n",
+                     opt.time == TimeProvider::Experimental ? "experimental" : "nativo",
+                     static_cast<unsigned long long>(s.delivered[0]), static_cast<unsigned long long>(s.delivered[1]),
+                     static_cast<unsigned long long>(s.delivered[2]), static_cast<unsigned long long>(s.delivered[3]),
+                     static_cast<unsigned long long>(s.delivered[4]), static_cast<unsigned long long>(s.posted),
+                     static_cast<unsigned long long>(s.cancelled), static_cast<unsigned long long>(s.clockRegressions),
+                     static_cast<unsigned long long>(s.vblankCollapsed));
+    }
     if (files) {
         const auto fs = transitional::gdfs::stats();
         std::fprintf(stderr,
