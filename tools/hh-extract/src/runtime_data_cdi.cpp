@@ -137,7 +137,7 @@ PrepareResult prepare_runtime_data(hh::CdiImage& img, const fs::path& dir, const
         const fs::path tmp = dir / (std::string(kManifest) + ".tmp");
         std::ofstream  m(tmp, std::ios::binary | std::ios::trunc);
         m << "hh-runtime-data " << kRuntimeDataFormat << "\n"
-          << "# Dados do Blue Stinger preparados pelo Builder a partir do CDI do usuario. Nao publique.\n"
+          << "# Dados do Head Hunter preparados pelo Builder a partir do CDI do usuario. Nao publique.\n"
           << "version " << res.versionId << "\n"
           << "boot " << ip.boot_file << " " << bootSha << " " << (scrambled ? 1 : 0) << " " << boot.start_lba << "\n"
           << "meta " << fileSha256(dir / kMetaIdx) << " " << fileSha256(dir / kMetaBin) << "\n";

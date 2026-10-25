@@ -14,8 +14,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH05 | CONCLUIDA | `docs/relatorios/HH05-RELATORIO.md` (boot até a tela-título sem CDI; trace e 1º quadro conferidos com o Flycast) |
 | HH06 | CONCLUIDA | `docs/relatorios/HH06-RELATORIO.md` (roteiro até a 1ª área controlável em janela e headless; Builder do CDI ao Preview) |
 | HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH14; catraca; native/legacy/transitional; produto sem CDI) |
-| HH08 | EM_ANDAMENTO | plano `docs/planos/HH08-PLANO.md` |
-| HH09 | PENDENTE | — |
+| HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; dois discos; troca pela tampa lógica; falhas seguras) |
+| HH09 | PLANEJADA | plano `docs/planos/HH09-PLANO.md`; execução aguarda aprovação do mantenedor (2026-10-25) |
 | HH10 | PENDENTE | — |
 | HH11 | PENDENTE | — |
 | HH12 | PENDENTE | — |
@@ -227,6 +227,22 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   motivo (relatório HH07, seção 9). A primeira execução do Codex ficou presa esperando stdin
   por 7 h; rodar sempre com `< /dev/null`.
 
+### HH08 (2026-10-25)
+
+- gdFs 1.09: as funções por GDFS são chamadas diretas (layout do 1.05); as por nome e as de drive
+  passam pela tabela do driver 0x8C185DAC (`*0x8C188D08`). Contratos no HH08-PLANO.
+- Adaptador gdFs nativo (`transitional/gdfs_adapter`, 17 slots) sobre `native/platform/data_files`
+  é o padrão; `--arquivos legado` fica para referência. P1: 4 838 blocos idênticos; P2: 0
+  setores de dado pelo GD-ROM HLE; hashes do roteiro iguais à referência do HH06.
+- Troca de disco: o jogo identifica o disco pelo `DISC\diskN.id` (0x8C09EBC4) e sai para o
+  BIOS com a tampa aberta (0x8C04E754 → 0x8C04E470). O host abre a tampa lógica (F8) e dá o boot
+  do outro disco; o Builder prepara `data\disc1` e `data\disc2`. Prompt real e continuidade:
+  HH11/HH16.
+- Falhas seguras: disco trocado (versão pelo hash do executável), ausente, arquivo alterado,
+  truncado ou ilegível, mod inválido.
+- Revisão Codex: 8 achados; 5 aceitos, 3 aceitos em parte (com rejeições motivadas no
+  relatório, seção 9).
+
 ### Formatos dos discos (investigação 2026-10-24)
 
 Relatório e scripts em `analysis/formatos/` (privado). Verificado em todos
@@ -260,9 +276,9 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir automaticamente por **HH08** (arquivos nativos e troca dos dois discos sem CDI
-em runtime; plano `docs/planos/HH08-PLANO.md`, começando pelo trace de chamadas gdFs do
-HH08.1), e depois pelas etapas seguintes. Commits por etapa autorizados pelo mantenedor
+**HH09 aguarda aprovação do mantenedor** (instrução de 2026-10-25: "Não faça o HH09 sem minha
+aprovação, mas deixe ele planejado"). O plano está em `docs/planos/HH09-PLANO.md`. Até a
+aprovação, só manutenção do HH08 e revisão do plano. Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando
 o mantenedor enviar `PAUSAR`.

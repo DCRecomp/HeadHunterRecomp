@@ -145,6 +145,18 @@ target_include_directories(hh07_transitional_tests PRIVATE unit)
 target_link_libraries(hh07_transitional_tests PRIVATE hh_transitional)
 add_test(NAME hh07_transitional_tests COMMAND hh07_transitional_tests)
 
+# HH08.2: sistema de arquivos nativo (data\disc + mods\assets).
+add_executable(hh08_files_tests unit/main.cpp unit/test_hh08_files.cpp)
+target_include_directories(hh08_files_tests PRIVATE unit)
+target_link_libraries(hh08_files_tests PRIVATE hh_native_files)
+add_test(NAME hh08_files_tests COMMAND hh08_files_tests)
+
+# HH08.3: adaptador gdFs 1.09 (contratos, legado repassado, guardas, slots obrigatorios).
+add_executable(hh08_gdfs_tests unit/main.cpp unit/test_hh08_gdfs.cpp)
+target_include_directories(hh08_gdfs_tests PRIVATE unit)
+target_link_libraries(hh08_gdfs_tests PRIVATE hh_transitional)
+add_test(NAME hh08_gdfs_tests COMMAND hh08_gdfs_tests)
+
 # HH07.8: a leitura de CDI fica fora do produto; conferido no mapa do linker (com caso negativo).
 add_test(NAME hh07_produto_sem_cdi_negativo
   COMMAND ${CMAKE_COMMAND} -DMAP=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/hh07/mapa_com_cdi.map
@@ -163,4 +175,25 @@ if(HH_GENERATED_DIR)
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh07_ordem.py
             $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR}/tools/dist/roteiros/newgame_area1.txt)
   set_tests_properties(hh07_ordem PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1200)
+endif()
+
+# HH08.4: portoes P1/P2 do provedor nativo de arquivos (legado x nativo no roteiro, com a
+# mutacao negativa; dados privados: HH_DATA_DIR; sem ele = SKIP).
+if(HH_GENERATED_DIR)
+  add_test(NAME hh08_arquivos
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh08_arquivos.py
+            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh08_arquivos PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
+  # HH08.5/.6: disco 2, troca pela tampa e falhas seguras (HH_DATA_DIR + HH_DATA_DIR2)
+  add_test(NAME hh08_discos
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh08_discos.py
+            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh08_discos PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
+endif()
+
+# HH08 (revisao Codex): instalacao sem o marcador do Builder e recusada e fica intacta.
+if(TARGET hh-builder)
+  add_test(NAME hh08_builder_sem_marcador
+    COMMAND ${CMAKE_COMMAND} -DBUILDER=$<TARGET_FILE:hh-builder> -DWORK=${CMAKE_CURRENT_BINARY_DIR}/hh08_builder_sem_marcador
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/hh08/check_builder_unmarked.cmake)
 endif()

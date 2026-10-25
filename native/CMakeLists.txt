@@ -10,3 +10,7 @@ if(BUILD_TESTS)
   add_executable(hh_native_api_check ${PROJECT_SOURCE_DIR}/tests/hh07/native_api_check.cpp)
   target_link_libraries(hh_native_api_check PRIVATE hh_native_api)
 endif()
+
+# HH08: arquivos do jogo sobre arquivos comuns (data\disc + mods\assets).
+add_library(hh_native_files STATIC platform/data_files.cpp)
+target_link_libraries(hh_native_files PUBLIC hh_native_api)

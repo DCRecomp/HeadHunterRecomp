@@ -17,9 +17,9 @@ if(HH_GENERATED_DIR)
   endif()
 
   # Nucleo de execucao comum (HH06): boot, dados, entrada, VBlank, parada.
-  add_library(hh_host STATIC hh_host.cpp)
+  add_library(hh_host STATIC hh_host.cpp hh_discs.cpp hh_verified_files.cpp)
   target_include_directories(hh_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-  target_link_libraries(hh_host PUBLIC hh_generated hh_runtime)
+  target_link_libraries(hh_host PUBLIC hh_generated hh_runtime hh_transitional)
 
   # hh-run: execucao sem janela.
   add_executable(hh-run hh_run.cpp)

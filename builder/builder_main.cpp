@@ -12,7 +12,9 @@
 //      Builder; troca interrompida e restaurada na execucao seguinte; uma execucao por saida.
 // Uma falha em qualquer etapa deixa a instalacao anterior intacta. O jogo instalado nao le o CDI.
 //
-//   hh-builder --disc <imagem.cdi> --out <pasta> [--kit <fontes>] [--verify-vblanks N]
+//   hh-builder --disc <disco 1.cdi> [--disc2 <disco 2.cdi>] --out <pasta> [--kit <fontes>] [--verify-vblanks N]
+// HH08: cada disco vira data/discN (conferido contra o proprio CDI e a versao do disco: o disco 1
+// e hedhunter_v1006_a, o 2 e hedhunter_v1006_b); o jogo troca de disco sem ler imagem.
 #include "app/recomp.h"
 #include "hh_extract/cdi.hpp"
 #include "hh_extract/runtime_data.hpp"
@@ -51,7 +53,7 @@ int run(const std::string& cmd) {
 }
 
 int usage() {
-    std::fprintf(stderr, "uso: hh-builder --disc <imagem.cdi> --out <pasta> [--kit <fontes>] [--verify-vblanks N]\n");
+    std::fprintf(stderr, "uso: hh-builder --disc <disco 1.cdi> [--disc2 <disco 2.cdi>] --out <pasta> [--kit <fontes>] [--verify-vblanks N]\n");
     return 2;
 }
 
@@ -95,11 +97,12 @@ struct Lock {
 } // namespace
 
 int main(int argc, char** argv) {
-    fs::path disc, out, kit = HH_KIT_DIR;
+    fs::path disc, disc2, out, kit = HH_KIT_DIR;
     unsigned verifyVblanks = 600;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "--disc" && i + 1 < argc) disc = argv[++i];
+        else if (a == "--disc2" && i + 1 < argc) disc2 = argv[++i];
         else if (a == "--out" && i + 1 < argc) out = argv[++i];
         else if (a == "--kit" && i + 1 < argc) kit = argv[++i];
         else if (a == "--verify-vblanks" && i + 1 < argc) verifyVblanks = unsigned(std::strtoul(argv[++i], nullptr, 10));
@@ -125,26 +128,37 @@ int main(int argc, char** argv) {
             fs::rename(backup, install);
             std::cout << "  instalacao anterior restaurada de uma troca interrompida" << std::endl;
         }
-        if (fs::exists(install) && !owned(install) && !fs::exists(install / "HeadHunter.exe"))
-            throw std::runtime_error(text(install) + " existe e nao e uma instalacao do Head Hunter");
+        // Sem o marcador do Builder a pasta nao e dele, mesmo com um HeadHunter.exe dentro: nunca e
+        // adotada, trocada ou apagada (revisao Codex HH08)
+        if (fs::exists(install) && !owned(install))
+            throw std::runtime_error(text(install) + " existe e nao foi criada pelo Builder; remova-a ou escolha outra saida");
         for (const fs::path& d : {staging, backup})  // falha cedo, antes de compilar
             if (fs::exists(d) && !owned(d))
                 throw std::runtime_error("a pasta " + text(d) + " existe e nao foi criada pelo Builder; remova-a ou escolha outra saida");
 
-        step(1, "dados de execucao (CDI -> data, conferidos setor a setor)");
+        step(1, "dados de execucao (CDI -> data/discN, conferidos setor a setor)");
         if (fs::exists(data)) fs::remove_all(data);  // dentro de .hh-build (marcada)
-        {
-            hh::CdiImage img(disc);
-            const auto   r = hh::disc::prepare_runtime_data(img, data);
-            std::cout << "  versao " << r.versionId << ", " << r.files << " arquivos" << std::endl;
-            if (const std::string d = hh::disc::verify_runtime_data(img, data); !d.empty())
-                throw std::runtime_error("dados de execucao diferem da imagem: " + d);
+        const std::pair<int, fs::path> discs[] = {{1, disc}, {2, disc2}};
+        for (const auto& [n, cdi] : discs) {
+            if (cdi.empty()) continue;
+            const fs::path dir  = data / ("disc" + std::to_string(n));
+            const char*    want = n == 1 ? "hedhunter_v1006_a" : "hedhunter_v1006_b";
+            hh::CdiImage   img(cdi);
+            const auto     r = hh::disc::prepare_runtime_data(img, dir);
+            std::cout << "  disco " << n << ": versao " << r.versionId << ", " << r.files << " arquivos" << std::endl;
+            if (r.versionId != want)  // disco trocado: --disc com o disco 2 ou --disc2 com o disco 1
+                throw std::runtime_error("o CDI de " + std::string(n == 1 ? "--disc" : "--disc2") + " (" + text(cdi) +
+                                         ") e a versao " + r.versionId + ", esperada " + want + " (disco " +
+                                         std::to_string(n) + ")");
+            if (const std::string d = hh::disc::verify_runtime_data(img, dir); !d.empty())
+                throw std::runtime_error("dados de execucao do disco " + std::to_string(n) + " diferem da imagem: " + d);
         }
+        if (disc2.empty()) std::cout << "  sem --disc2: a instalacao so tem o disco 1" << std::endl;
 
         step(2, "recompilacao do executavel (SH-4 -> C++)");
         hh::RecompOptions ro;
         ro.config      = kit / "config" / "headhunter.toml";
-        ro.executable  = data / "disc" / "1ST_READ.BIN";
+        ro.executable  = data / "disc1" / "disc" / "1ST_READ.BIN";
         ro.out         = gen;
         ro.analysisDir = work / "analysis";
         if (fs::exists(gen)) fs::remove_all(gen);  // dentro de .hh-build (marcada)
@@ -170,15 +184,19 @@ int main(int argc, char** argv) {
         const fs::path vlog = work / "verificacao.log";
         std::error_code ec;
         fs::remove(vlog, ec);
-        if (run(quote(staging / "HeadHunter.exe") + " --headless --data " + quote(staging / "data") + " --vblanks " +
-                std::to_string(verifyVblanks) + " --rtc 1700000000 --log " + quote(vlog) + " --hash-every 60") != 0 ||
-            !fs::exists(vlog) || fs::file_size(vlog) == 0)
-            throw std::runtime_error("a instalacao montada nao passou na verificacao");
+        for (const auto& [n, cdi] : discs) {
+            if (cdi.empty()) continue;
+            fs::remove(vlog, ec);
+            if (run(quote(staging / "HeadHunter.exe") + " --headless --data " + quote(staging / "data") + " --disco " +
+                    std::to_string(n) + " --vblanks " + std::to_string(verifyVblanks) + " --rtc 1700000000 --log " +
+                    quote(vlog) + " --hash-every 60") != 0 ||
+                !fs::exists(vlog) || fs::file_size(vlog) == 0)
+                throw std::runtime_error("a instalacao montada nao passou na verificacao do disco " + std::to_string(n));
+        }
 
         // Troca: a instalacao atual vira copia de seguranca; se a promocao falhar, ela volta.
         removeOwned(backup);
         if (fs::exists(install)) {
-            if (!owned(install)) mark(install);  // instalacao valida de versao anterior do Builder
             fs::rename(install, backup);
         }
         try {

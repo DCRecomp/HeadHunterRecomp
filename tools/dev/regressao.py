@@ -103,13 +103,13 @@ def private_inputs(names):
     parts = []
     for n in names:
         v = os.environ.get(n, '')
-        if n == 'HH_DATA_DIR':
+        if n in ('HH_DATA_DIR', 'HH_DATA_DIR2'):
             parts += [file_hash(os.path.join(v, f)) for f in ('disc.manifest', 'disc_meta.idx', 'disc_meta.bin')]
             parts.append(dir_stat(v))
         elif n == 'HH_SNAPSHOT_DIR':
             parts += [file_hash(os.path.join(v, f))
                       for f in ('boot_entry.bss', 'boot_entry.pvr', 'boot_flycast.tsv', 'fb_sega.vram', 'fb_sega.pvr')]
-        elif n == 'HH_DISC1':
+        elif n in ('HH_DISC1', 'HH_DISC2'):
             parts.append(file_hash(v, sample=True))
         else:
             parts.append(file_hash(v))
@@ -202,15 +202,27 @@ def step_gates_hh07():
         raise RuntimeError('portoes do HH07 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh08():
+    # HH08: P1/P2 do provedor nativo de arquivos; disco 2, troca e falhas seguras
+    need('HH_DATA_DIR'), need('HH_DATA_DIR2')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', 'hh08_arquivos|hh08_discos', '--no-tests=error',
+            '--output-on-failure'])
+    passed = [n for n in ('hh08_arquivos', 'hh08_discos')
+              if any(n in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 2:
+        raise RuntimeError('portoes do HH08 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
 
 
 def step_builder():
-    disc, want = need('HH_DISC1'), reference()
+    disc, disc2, want = need('HH_DISC1'), need('HH_DISC2'), reference()
     out = os.path.join(ROOT, 'dist', 'regressao')
-    if sh([EXE('builder', 'Release', 'hh-builder.exe'), '--disc', disc, '--out', out], timeout=7200).returncode != 0:
+    if sh([EXE('builder', 'Release', 'hh-builder.exe'), '--disc', disc, '--disc2', disc2, '--out', out],
+          timeout=7200).returncode != 0:
         raise RuntimeError('Builder falhou')
     # roteiro no executavel INSTALADO (HeadHunter.exe --headless), com os dados que vieram do CDI
     inst = os.path.join(out, 'HeadHunter')
@@ -222,8 +234,9 @@ def step_builder():
 STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh05', step_gates, ['HH_SNAPSHOT_DIR', 'HH_DATA_DIR']),
          ('portoes_hh07', step_gates_hh07, ['HH_DATA_DIR', 'HH07_BIN', 'HH07_SONDA']),
+         ('portoes_hh08', step_gates_hh08, ['HH_DATA_DIR', 'HH_DATA_DIR2', 'HH_AREA1_HASHES']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
-         ('builder', step_builder, ['HH_DISC1', 'HH_AREA1_HASHES'])]
+         ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 
 
 def step_key(name, private, src):

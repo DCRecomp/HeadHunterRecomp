@@ -639,7 +639,7 @@ chamadas = 10
 endereco = 0x8C019370
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = ["tempo"]
+subsistemas = []
 provedor = "legado"
 chamadas = 10
 
@@ -647,7 +647,7 @@ chamadas = 10
 endereco = 0x8C0193C4
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = ["tempo"]
+subsistemas = []
 provedor = "legado"
 chamadas = 1
 
@@ -1808,15 +1808,15 @@ endereco = 0x8C15C7A0
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
 endereco = 0x8C15C7B8
 tipo = "direta"
 familia = "shinobi"
-subsistemas = ["tempo"]
-provedor = "legado"
+subsistemas = []
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -1824,7 +1824,7 @@ endereco = 0x8C15C7F0
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
@@ -1832,15 +1832,15 @@ endereco = 0x8C15C83E
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C15C8E2
 tipo = "direta"
 familia = "shinobi"
-subsistemas = ["tempo"]
-provedor = "legado"
+subsistemas = []
+provedor = "nativo"
 chamadas = 4
 
 [[fronteira]]
@@ -1848,7 +1848,7 @@ endereco = 0x8C15CA48
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -1856,7 +1856,7 @@ endereco = 0x8C15CD68
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -1896,7 +1896,7 @@ endereco = 0x8C15D09A
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -1920,7 +1920,7 @@ endereco = 0x8C15D150
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]

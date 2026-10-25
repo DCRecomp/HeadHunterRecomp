@@ -57,4 +57,8 @@ public:
     virtual Result<std::vector<DirEntry>> list(std::string_view directory) const = 0;
 };
 
+// Nome logico canonico: maiusculas, separador '/', sem barra inicial, sem o sufixo de versao
+// ";1" e sem "." / partes vazias. Dois nomes do mesmo recurso dao o mesmo canonico.
+std::string canonical_path(std::string_view path);
+
 } // namespace hh::native::files

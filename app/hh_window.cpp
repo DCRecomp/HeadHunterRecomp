@@ -4,13 +4,17 @@
 // quadro mais recente na frequencia do monitor, com area logica 4:3 e barras. Entrada:
 // teclado (eventos da janela) + XInput; com HH_INPUT_SCRIPT, so o roteiro (modo espectador).
 //
-//   HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
+//   HeadHunter [--data <pasta>] [--disco 1|2] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
+//              [--arquivos legado|nativo] [--tampa-vblank N]
+// Troca de disco (HH08.5): F8 abre a tampa; o jogo sai para o BIOS pelo proprio caminho e a
+// janela da o boot do outro disco (data\disc1, data\disc2) num processo novo.
 // --log grava "quadro N: LxA hash H" a cada K VBlanks (mesmo hash do hh-run): prova que a
 // execucao na janela e a mesma do modo headless com o mesmo roteiro.
 // Pasta de dados padrao: data\ ao lado do executavel. Teclas padrao (runtime/input):
 // setas = direcional, ENTER = START, Z/X/A/S = A/B/X/Y. ESC fecha.
 //
 // Fase hibrida: liga o runtime temporario (removido do produto no HH15).
+#include "hh_discs.h"
 #include "hh_host.h"
 
 #include "input/input.h"
@@ -26,6 +30,10 @@
 #include <mutex>
 #include <string>
 #include <thread>
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 
 namespace fs = std::filesystem;
 
@@ -62,6 +70,27 @@ fs::path exeDir() {
     return base ? fs::path(reinterpret_cast<const char8_t*>(base)) : fs::current_path();
 }
 
+// Novo processo do proprio executavel com o outro disco (troca de disco, HH08.5).
+bool relaunch(const fs::path& dataRoot, int disc, hh::FileProvider files, const fs::path& mods) {
+    wchar_t self[MAX_PATH];
+    const DWORD n = GetModuleFileNameW(nullptr, self, MAX_PATH);
+    if (!n || n == MAX_PATH) return false;
+    std::wstring cmd = L"\"" + std::wstring(self) + L"\" --data \"" + dataRoot.wstring() + L"\" --disco " +
+                       std::to_wstring(disc) + L" --arquivos " +
+                       (files == hh::FileProvider::Native ? L"nativo" : L"legado");
+    if (!mods.empty()) cmd += L" --mods \"" + mods.wstring() + L"\"";  // --mods do usuario
+    STARTUPINFOW        si{};
+    PROCESS_INFORMATION pi{};
+    si.cb = sizeof si;
+    if (!CreateProcessW(self, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        std::printf("PARADA: nao foi possivel iniciar o disco %d (erro %lu)\n", disc, GetLastError());
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -69,6 +98,8 @@ int main(int argc, char** argv) {
     std::string     logPath;
     uint64_t        hashEvery = 0;
     bool            headless  = false;
+    int             disc      = 1;
+    fs::path        userMods;  // --mods dado pelo usuario (preservado na troca de disco)
     opt.realtime = true;
     opt.data     = exeDir() / "data";
     for (int i = 1; i < argc; ++i) {
@@ -79,11 +110,28 @@ int main(int argc, char** argv) {
         else if (a == "--log" && i + 1 < argc) logPath = argv[++i];
         else if (a == "--hash-every" && i + 1 < argc) hashEvery = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--headless") headless = true;
+        else if (a == "--arquivos" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
+            opt.files = std::string(argv[++i]) == "nativo" ? hh::FileProvider::Native : hh::FileProvider::Legacy;
+        else if (a == "--disco" && i + 1 < argc) disc = std::atoi(argv[++i]);
+        else if (a == "--tampa-vblank" && i + 1 < argc) opt.lidOpenAt = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--mods" && i + 1 < argc) opt.modsDir = userMods = argv[++i];
         else {
-            std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
-                                 "[--log <arquivo> --hash-every K] [--headless]\n");
+            std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--disco 1|2] [--vblanks N] [--rtc <segundos Unix>] "
+                                 "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
+                                 "[--tampa-vblank N]\n");
             return 2;
         }
+    }
+    const fs::path dataRoot = opt.data;
+    try {
+        opt.data          = hh::resolve_disc(dataRoot, disc).dir;
+        opt.expectVersion = hh::disc_version(disc);
+        // mods de recursos por disco: mods\assets\discN ao lado do executavel (opcional)
+        if (opt.modsDir.empty()) opt.modsDir = exeDir() / "mods" / "assets" / ("disc" + std::to_string(disc));
+    } catch (const std::exception& e) {
+        std::printf("PARADA: %s\n", e.what());
+        return 1;
     }
     // --headless (verificacao da instalacao pelo Builder e pela regressao): o mesmo executavel e
     // o mesmo nucleo, sem janela nem ritmo de tempo real; exige um limite de VBlanks.
@@ -113,7 +161,8 @@ int main(int argc, char** argv) {
     }
 
     Shared            shared;
-    std::atomic<bool> stop{false};
+    std::atomic<bool> stop{false}, lid{false};
+    opt.lidRequest = &lid;  // F8: abre a tampa (troca de disco)
     std::string       presentError;  // falha de apresentacao (thread da janela)
     opt.stop    = &stop;
     opt.onFrame = [&](const hh::HostFrame& f) {
@@ -140,7 +189,10 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
             return 1;
         }
-        SDL_Window*   win = SDL_CreateWindow("Head Hunter (Preview)", 1280, 960, SDL_WINDOW_RESIZABLE);
+        // a troca de disco aparece no titulo (F8 abre a tampa; o jogo volta ao BIOS e o outro disco
+        // e iniciado)
+        const std::string title = "Head Hunter (Preview) - disco " + std::to_string(disc) + " - F8 troca o disco";
+        SDL_Window*       win   = SDL_CreateWindow(title.c_str(), 1280, 960, SDL_WINDOW_RESIZABLE);
         SDL_Renderer* ren = win ? SDL_CreateRenderer(win, nullptr) : nullptr;
         if (!ren || !SDL_SetRenderLogicalPresentation(ren, 640, 480, SDL_LOGICAL_PRESENTATION_LETTERBOX)) {
             std::fprintf(stderr, "janela: %s\n", SDL_GetError());
@@ -164,6 +216,7 @@ int main(int argc, char** argv) {
                 if (e.type == SDL_EVENT_QUIT) running = false;
                 else if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && !e.key.repeat) {
                     if (e.key.key == SDLK_ESCAPE && e.type == SDL_EVENT_KEY_DOWN) running = false;
+                    else if (e.key.key == SDLK_F8 && e.type == SDL_EVENT_KEY_DOWN) lid = true;
                     else if (keys) {
                         const std::string n = keyName(e.key.key);
                         if (!n.empty()) keys->key(n, e.type == SDL_EVENT_KEY_DOWN);
@@ -208,7 +261,22 @@ int main(int argc, char** argv) {
     switch (result.end) {
     case hh::HostEnd::Limit: std::printf("ok: limite de VBlanks atingido (%llu)\n", (unsigned long long)result.vblanks); return 0;
     case hh::HostEnd::Stopped: std::printf("janela fechada no VBlank %llu\n", (unsigned long long)result.vblanks); return 0;
-    case hh::HostEnd::GameExit: std::printf("o jogo pediu para sair (codigo %08X)\n", result.exitCode); return 3;
+    case hh::HostEnd::GameExit:
+        std::printf("o jogo pediu para sair (codigo %08X)\n", result.exitCode);
+        if (result.lidOpenedAt && !headless) {
+            // Troca de disco: o jogo saiu pela tampa aberta, como no console (volta ao BIOS); o
+            // boot do outro disco e um processo novo, como o boot do console.
+            const int next = disc == 1 ? 2 : 1;
+            try {
+                hh::resolve_disc(dataRoot, next);
+            } catch (const std::exception& e) {
+                std::printf("PARADA: %s\n", e.what());
+                return 1;
+            }
+            std::printf("[disco] boot do disco %d\n", next);
+            return relaunch(dataRoot, next, opt.files, userMods) ? 0 : 1;
+        }
+        return 3;
     default: std::printf("PARADA: %s\n", result.error.c_str()); return 1;
     }
 }

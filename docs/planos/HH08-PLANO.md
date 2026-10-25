@@ -69,18 +69,70 @@ emular. O provedor nativo substitui a API de arquivos do SDK e não simula mais 
 - Correção de fato antigo: 0x8C16E2E8, que o HH05 chamou "driver de GD do jogo", está no
   bloco do SDK.
 
+## HH08.1 — resultados (2026-10-25)
+
+Trace: `HH_CALL_TRACE` (agora instalado pelo `GameHost`) no build `HH_MODS` (`build-mods/`),
+roteiro `newgame_area1`, 4 700 VBlanks, 29 funções envolvidas, 208 605 chamadas
+(`analysis/hh08/calls_area1.tsv`, ignorado). Disassembly: `hh-disasm` sobre o
+`1ST_READ.BIN` do disco 1.
+
+**O gdFs 1.09 tem uma camada de driver que o 1.05 do BS não tem.** As funções por nome e as de
+drive são stubs que leem o ponteiro global `0x8C188D08` e saltam para `tabela[deslocamento]`:
+
+- o instalador é 0x8C15CFDC; ele grava em `0x8C188D08` a tabela estática 0x8C185DAC e chama
+  `tabela[12]`;
+- o stub de 0x8C15D0F6 salta para +52, o de 0x8C15D150 para +84, o de 0x8C15D168 para +88 e
+  o de 0x8C15D122 para +116 (estado do drive, chamados por 0x8C04E754 cerca de 1 100 vezes);
+- a tabela tem 31 entradas, 0x8C15B9F8…0x8C15C674.
+
+As funções que recebem GDFS são chamadas diretas e usam a mesma estrutura do 1.05: +8 FAD,
++12 bytes, +16 setores, +20 posição, +24 transferidos, +52/+56 callback de erro, +76 aberto
+(w), +78 modo (w), +80 estado (w), +82 erro (w).
+
+Contratos confirmados por duas evidências (disassembly com os campos acima, mais trace de
+argumentos/retorno, ou ausência de código gerado):
+
+| Endereço | Contrato | Nome | Evidência / observado |
+|---|---|---|---|
+| 0x8C15D09A | stub `tabela[60]` = 0x8C15BE98; `(nome, dirrec)` → GDFS ou 0 | gdFsOpen | 38× (`r4` = nome, `r5` sempre 0) |
+| 0x8C15C7A0 | `(nome)` → 0x8C15D042(nome, 0) | gdFsChangeDir | 79× (`\`, `AHFDATA`, `Reverb`, `Headhunter`, `Texture`, `Icons`…) |
+| 0x8C15D042 | stub `tabela[32]`; `(nome, dirrec)`: dirrec 0 = muda de diretório, senão carrega o diretório no dirrec | gdFsLoadDir/ChangeDir | 80×; 1× com dirrec (`\Streams`, 0x8C02B6A0) |
+| 0x8C15C794 | `(buf, max)` → dirrec | gdFsCreateDirhn | 2× |
+| 0x8C15C7B8 | `(gdfs)`; testa +76, para se +80 = 2 | gdFsClose | 37× |
+| 0x8C15C7F0 | `(gdfs, &bytes)` → 1/0; lê +12 | gdFsGetFileSize | 51× |
+| 0x8C15C80A | `(gdfs, &setores)` → 1/0; lê +16 | gdFsGetFileSctSize | não exercitada no roteiro (tem código gerado) |
+| 0x8C15C824 | `(gdfs, &fad)` → 1/0; lê +8 | gdFsGetFileFad | sem código gerado |
+| 0x8C15C83E | `(gdfs, setor, origem 0/1/2)` → 0/−10; usa +16/+20 | gdFsSeek | 30× (origem 0) |
+| 0x8C15C88A | `(gdfs)` → +20 | gdFsTell | não exercitada |
+| 0x8C15C8A0 | `(gdfs, &fim)` → 0/−10 | (fim de arquivo) | sem código gerado |
+| 0x8C15C8C8 | `(gdfs, modo)` → 0/−10; grava +78 | gdFsSetTransMode | sem código gerado |
+| 0x8C15C8E2 | `(gdfs, nsct, buf)` → 0/erro; testa alinhamento de 32 | gdFsRead | 267× |
+| 0x8C15CA48 | `(gdfs, nsct, buf)` → unidades | gdFsReqRd32 | 276× (inclusive interna, de Read) |
+| 0x8C15CD68 | `(gdfs)` → +80 / −10 | gdFsGetStat | 1 403× |
+| 0x8C15CD80 | `(gdfs)` → +24 | gdFsGetTransStat | não exercitada no roteiro |
+| 0x8C15CD96 | `(gdfs)` → 0/−10; aborta se +80 = 2/4 | gdFsStop | 3× (de Close) |
+
+Camada de arquivos do jogo, observada no trace:
+- 0x8C0A1FF8 (open, 1 016×): faz ChangeDir e Open; abre os contêineres `.AHF` e, dentro
+  deles, arquivos virtuais;
+- 0x8C0A2388 (read, 197 663×) e 0x8C0A25E4 (assíncrona, 1 281×; Seek mais ReqRd32).
+
+O player de 4X Movie (0x8C124CCC) abre `Scene*.4xm` diretamente pelo gdFsOpen.
+
+`DISC\disk1.id`: aberto 1 vez, por 0x8C09EBC4 ← 0x8C029F40, no VBlank 93.
+
 ## Subetapas
 
 | ID | Entrega | Evidência de saída |
 |---|---|---|
-| HH08.1 | Trace de chamadas gdFs (`HH_CALL_TRACE`: argumentos/retornos/r15) no roteiro `newgame_area1` e na troca de disco | Contratos e nomes das hipóteses confirmados com duas evidências; tabela de offsets da struct GDFS 1.09 |
-| HH08.2 | `native/platform/data_files` (portado do N1 do BS): índice de `data\disc\`, nomes lógicos sem `;1`, sem LBA/FAD; mods em `mods\assets\` de qualquer tamanho | Testes unitários (`canonical_path`, abrir/ler/listar, mods válidos/ilegíveis/LEIA-ME) |
-| HH08.3 | `transitional/gdfs_adapter` + `[native] slots` das entradas gdFs; `--arquivos legado|nativo`; ReqRd32 assíncrono pelo servidor gdFs (achado ALTO do Codex no BS) | Contratos do adaptador; seleção de provedor; sem slot = erro claro |
-| HH08.4 | Portão P1: mesma sequência global `(arquivo, offset, SHA-256)` no legado (log do GD-ROM HLE) e no nativo (log do adaptador); aliases agrupados por conteúdo | Sequência idêntica no roteiro; 0 setores de dados de arquivo pelo GD-ROM HLE no modo nativo (P2) |
-| HH08.5 | Dois discos: Builder prepara `data\disc1` e `data\disc2` (cada um conferido contra o seu CDI); estado lógico de disco no nativo (bandeja/troca); `DISKn.ID` e o dword por disco tratados pelo provedor | Roteiro até a troca: o prompt do jogo aparece, a troca é aceita com o disco certo |
-| HH08.6 | Disco errado ou corrompido | Casos negativos: disco 1 no lugar do 2, arquivo alterado e dados ausentes falham com mensagem segura, sem travar nem ler setor |
-| HH08.7 | Produto sem caminho de setores para arquivos de jogo (o boot e o init do gdFs ficam no legado até o HH09/HH15, como no BS) | Teste de fechamento (catraca: `fronteira.provedor.legado` cai); mapa do linker sem CDI |
-| HH08.8 | Relatório + revisão Codex + commit | — |
+| HH08.1 ✔ | Trace de chamadas gdFs (`HH_CALL_TRACE`: argumentos/retornos/r15) no roteiro `newgame_area1` e na troca de disco | Contratos e nomes das hipóteses confirmados com duas evidências; tabela de offsets da struct GDFS 1.09 |
+| HH08.2 ✔ | `native/platform/data_files` (portado do N1 do BS): índice de `data\disc\`, nomes lógicos sem `;1`, sem LBA/FAD; mods em `mods\assets\` de qualquer tamanho | Testes unitários (`canonical_path`, abrir/ler/listar, mods válidos/ilegíveis/LEIA-ME) |
+| HH08.3 ✔ | `transitional/gdfs_adapter` + `[native] slots` das entradas gdFs; `--arquivos legado|nativo`; ReqRd32 assíncrono pelo servidor gdFs (achado ALTO do Codex no BS) | Contratos do adaptador; seleção de provedor; sem slot = erro claro |
+| HH08.4 ✔ | Portão P1: mesma sequência global `(arquivo, offset, SHA-256)` no legado (log do GD-ROM HLE) e no nativo (log do adaptador); aliases agrupados por conteúdo | Sequência idêntica no roteiro; 0 setores de dados de arquivo pelo GD-ROM HLE no modo nativo (P2) |
+| HH08.5 ✔ | Dois discos: Builder prepara `data\disc1` e `data\disc2` (cada um conferido contra o seu CDI); estado lógico de disco no nativo (bandeja/troca); `DISKn.ID` e o dword por disco tratados pelo provedor | Feito: tampa lógica → o jogo sai pelo próprio caminho → boot do outro disco; disco 2 nativo; identidade pela versão do executável. O prompt real do fim do disco 1 e a aceitação do `DISK2.ID` com progresso ficam com o HH11/HH16 (saves), ver relatório seção 6 |
+| HH08.6 ✔ | Disco errado ou corrompido | Casos negativos: disco 1 no lugar do 2, arquivo alterado e dados ausentes falham com mensagem segura, sem travar nem ler setor |
+| HH08.7 ✔ | Produto sem caminho de setores para arquivos de jogo (o boot e o init do gdFs ficam no legado até o HH09/HH15, como no BS) | Teste de fechamento (catraca: `fronteira.provedor.legado` cai); mapa do linker sem CDI |
+| HH08.8 ✔ | Relatório + revisão Codex + commit | — |
 
 ## Questões abertas (verificação dinâmica no HH08.1)
 

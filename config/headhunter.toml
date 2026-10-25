@@ -138,3 +138,15 @@ constantes_nao_hw = [
   0x8C0CE340,  # 0x90000000 em r4 para 0x8C070114 (8C0CE344), que usa (r4 & 0xFF000000) >> 24 como alfa: cor ARGB
   0x8C0CE35E,  # 0x90000000, mesma funcao 0x8C0CE2F8 e mesmo destino (8C0CE362): cor ARGB
 ]
+
+[native]
+# HH08: fronteiras migraveis chamadas sempre pelo slot (provedor legado ou nativo em todos os
+# builds). Funcoes gdFs 1.09 com codigo gerado (docs/planos/HH08-PLANO.md, HH08.1): Open
+# (stub), ChangeDir, Close, GetFileSize, GetFileSctSize, Seek, Tell, Read, ReqRd32, GetStat, GetTransStat, Stop,
+# GetErr e as internas que recebem GDFS (espera, PIO, inicializacao), guardadas no adaptador.
+slots = [
+  0x8C15D09A, 0x8C15C7A0, 0x8C15C7B8, 0x8C15C7F0, 0x8C15C80A, 0x8C15C83E, 0x8C15C88A, 0x8C15C8E2,
+  0x8C15CA48, 0x8C15CD68, 0x8C15CD80, 0x8C15CD96, 0x8C15CEC4,
+  0x8C15C6B4, 0x8C15C970, 0x8C15C746,
+  0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): estado logico do drive (troca de disco)
+]

@@ -31,15 +31,15 @@
 "fechamento.violacoes.sdk" = 0
 "fronteira.direta" = 285
 "fronteira.indireta" = 1
-"fronteira.provedor.legado" = 286
-"fronteira.provedor.nativo" = 0
+"fronteira.provedor.legado" = 277
+"fronteira.provedor.nativo" = 9
 "fronteira.subsistema.arquivos" = 1
 "fronteira.subsistema.audio" = 29
 "fronteira.subsistema.controles" = 9
 "fronteira.subsistema.render" = 33
 "fronteira.subsistema.saves" = 3
 "fronteira.subsistema.sistema" = 72
-"fronteira.subsistema.tempo" = 42
+"fronteira.subsistema.tempo" = 38
 "fronteira.total" = 286
 "funcoes.total" = 4699
 "gerado.arquivos" = 13
@@ -47,7 +47,7 @@
 "gerado.hh_call_reentrant" = 14
 "gerado.hh_fn_enter" = 4699
 "gerado.hh_poll" = 2578
-"gerado.linhas" = 1098862
+"gerado.linhas" = 1098896
 "gerado.ops_fpu" = 50580
 "gerado.sh4_dispatch" = 1107
 "hw.constantes_excluidas_config" = 4
@@ -70,7 +70,7 @@
 "legado.subsistema.render" = 33
 "legado.subsistema.saves" = 3
 "legado.subsistema.sistema" = 72
-"legado.subsistema.tempo" = 42
+"legado.subsistema.tempo" = 38
 "pref.nao_resolvido.funcoes.desconhecida" = 13
 "pref.nao_resolvido.funcoes.jogo" = 2
 "pref.nao_resolvido.funcoes.sdk" = 4

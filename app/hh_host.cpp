@@ -6,6 +6,9 @@
 #include "boot/native_boot.h"
 #include "cpu/sh4_runtime.h"
 #include "cpu/sh4_threads.h"
+#include "debug/call_trace.h"
+#include "gdfs_adapter.h"
+#include "hh_verified_files.h"
 #include "gdrom/data_source.h"
 #include "gdrom/gdrom.h"
 #include "hle/bios.h"
@@ -14,6 +17,7 @@
 #include "pvr/pvr_video.h"
 
 #include <chrono>
+#include <memory>
 #include <cstdio>
 #include <stdexcept>
 #include <thread>
@@ -69,6 +73,14 @@ void onVblank(void*) {
         }
     if (!blank && !r.nonBlank++) r.firstNonBlank = r.vblanks;
     if (g_opt->onFrame) g_opt->onFrame(g_frame);
+    const bool lidWanted = (g_opt->lidOpenAt && r.vblanks >= g_opt->lidOpenAt) || (g_opt->lidRequest && g_opt->lidRequest->load());
+    if (lidWanted && !r.lidOpenedAt) {
+        if (g_opt->files != FileProvider::Native)
+            throw std::runtime_error("a troca de disco exige o provedor nativo de arquivos (--arquivos nativo)");
+        transitional::gdfs::open_lid();
+        r.lidOpenedAt = r.vblanks;
+        std::fprintf(stderr, "[disco] tampa aberta no VBlank %llu\n", static_cast<unsigned long long>(r.vblanks));
+    }
     if (g_opt->stop && g_opt->stop->load()) throw StopRequest{};
     if (g_opt->vblankLimit && r.vblanks >= g_opt->vblankLimit) throw StopRequest{};
     if (g_opt->realtime) {  // ritmo do Dreamcast; atrasado mais de 250 ms: recomeca a contagem
@@ -83,6 +95,9 @@ void onVblank(void*) {
 
 HostResult host_run(const HostOptions& opt) {
     HostResult res;
+    transitional::BoundaryRegistry                   boundaries;
+    std::unique_ptr<native::files::DataFileSystem> files;
+    std::unique_ptr<VerifiedFileSystem>            verified;
     g_opt = &opt;
     g_res = &res;
     hhg::register_functions();
@@ -94,8 +109,25 @@ HostResult host_run(const HostOptions& opt) {
         bios_set_exit_hook([](Sh4Context*, uint32_t code) { throw GameExit{code}; });
         // Relogio fixo (testes deterministicos) ou hora local; 7305 dias = 1950 -> 1970.
         const uint32_t rtc = opt.rtcUnix >= 0 ? uint32_t(opt.rtcUnix + 7305ll * 86400) : boot_rtc_now();
-        boot_prepare(c, boot_read_data(opt.data), rtc);
+        const BootFiles boot = boot_read_data(opt.data);  // versao pelo SHA-256 do executavel de boot
+        if (!opt.expectVersion.empty() && boot.versionId != opt.expectVersion)
+            // a identidade vem do executavel, nao da linha "version" do manifesto (revisao Codex HH08)
+            throw std::runtime_error("os dados em " + opt.data.string() + " sao da versao " + boot.versionId +
+                                     ", esperada " + opt.expectVersion + " (disco trocado). Refaca a instalacao com o Builder.");
+        boot_prepare(c, boot, rtc);
         gdrom_set_disc(open_runtime_data(opt.data, {}));
+        if (opt.files == FileProvider::Native) {
+            // data\disc e o que o Builder extraiu do disco; nada de setor nem de disc_meta
+            files = std::make_unique<native::files::DataFileSystem>(opt.data / "disc", opt.modsDir);
+            transitional::gdfs::check_sizes(*files);
+            for (const auto& m : files->mods())
+                std::fprintf(stderr, "[mods] recurso substituido: %s (%llu -> %llu bytes)\n", m.logical.c_str(),
+                             static_cast<unsigned long long>(m.originalSize), static_cast<unsigned long long>(m.modSize));
+            // cada arquivo e conferido contra o manifesto do Builder na primeira abertura (HH08.6)
+            verified = std::make_unique<VerifiedFileSystem>(*files, opt.data / "disc.manifest");
+            transitional::gdfs::install(boundaries, *verified);
+        }
+        call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
         if (!input_source()) input_configure_from_env();  // HH_INPUT_SCRIPT=<roteiro> (deterministico)
         g_epoch = std::chrono::steady_clock::now();
         pvr_set_vblank_hook(&onVblank, nullptr);
@@ -121,6 +153,16 @@ HostResult host_run(const HostOptions& opt) {
     if (!sh4_threads_shutdown() && res.end != HostEnd::Error) {
         res.end   = HostEnd::Error;
         res.error = "falha ao liberar as fibras das threads do guest";
+    }
+    call_trace_flush();
+    if (files) {
+        const auto fs = transitional::gdfs::stats();
+        std::fprintf(stderr, "[arquivos] nativo: %llu aberturas, %llu leituras, %llu bytes, %llu nao encontrados\n",
+                     static_cast<unsigned long long>(fs.opens), static_cast<unsigned long long>(fs.reads),
+                     static_cast<unsigned long long>(fs.bytes), static_cast<unsigned long long>(fs.notFound));
+        transitional::gdfs::uninstall(boundaries);
+        verified.reset();
+        files.reset();
     }
     gdrom_set_disc(nullptr);
     return res;

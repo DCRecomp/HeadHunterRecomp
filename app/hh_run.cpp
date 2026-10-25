@@ -9,6 +9,7 @@
 // Saida: uma linha por quadro amostrado (VBlank, dimensoes, hash FNV-1a do ARGB, leituras do
 // controle) e o motivo da parada. rc: 0 = limite de VBlanks atingido; 3 = o jogo pediu para
 // sair antes do limite; 1 = erro (PC e valor). Os portoes de teste exigem rc 0.
+#include "hh_discs.h"
 #include "hh_host.h"
 
 #include <cstdint>
@@ -41,7 +42,7 @@ void writePpm(const fs::path& p, const std::vector<uint32_t>& argb, uint32_t w, 
 
 int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
-                         " [--watch <endereco>]...\n");
+                         " [--watch <endereco>]... [--arquivos legado|nativo] [--disco 1|2] [--tampa-vblank N] [--mods <pasta>]\n");
     return 2;
 }
 
@@ -52,6 +53,7 @@ int main(int argc, char** argv) {
     opt.vblankLimit = 600;
     fs::path capture;
     uint64_t every = 0;
+    int      disc  = 1;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
@@ -62,9 +64,21 @@ int main(int argc, char** argv) {
         else if (a == "--every" && (v = next())) every = std::strtoull(v, nullptr, 10);
         else if (a == "--rtc" && (v = next())) opt.rtcUnix = std::strtoll(v, nullptr, 10);
         else if (a == "--watch" && (v = next())) opt.watch.push_back(uint32_t(std::strtoul(v, nullptr, 16)));
+        else if (a == "--arquivos" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
+            opt.files = std::string(v) == "nativo" ? hh::FileProvider::Native : hh::FileProvider::Legacy;
+        else if (a == "--tampa-vblank" && (v = next())) opt.lidOpenAt = std::strtoull(v, nullptr, 10);
+        else if (a == "--disco" && (v = next())) disc = std::atoi(v);
+        else if (a == "--mods" && (v = next())) opt.modsDir = v;
         else return usage();
     }
     if (opt.data.empty()) return usage();
+    try {
+        opt.data          = hh::resolve_disc(opt.data, disc).dir;
+        opt.expectVersion = hh::disc_version(disc);
+    } catch (const std::exception& e) {
+        std::printf("PARADA: %s\n", e.what());
+        return 1;
+    }
     if (!capture.empty()) {
         fs::create_directories(capture);
         if (!every) every = 60;
