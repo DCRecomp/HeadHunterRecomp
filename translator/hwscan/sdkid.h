@@ -44,7 +44,7 @@ struct SdkFunction {
     Layer                    layer      = Layer::Unknown;
     Family                   family     = Family::Unknown;
     Confidence               confidence = Confidence::None;
-    std::string              name;       // nome extraido de mensagem (dica; vazio se nenhum)
+    std::string              name;       // nome com duas evidencias (mensagem unica na imagem + modulo/faixa/assinatura)
     std::vector<std::string> evidence;   // "nome:mwSndOpenPort", "faixa:cri", "grafo:cri", "hw:render"
     bool                     conflict = false;
 };

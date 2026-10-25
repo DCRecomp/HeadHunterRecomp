@@ -3,6 +3,7 @@
 // Recompiled contributors; ver third_party/licenses/recomp-BStinger-LICENSE.txt).
 #include "pipeline.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
@@ -23,6 +24,18 @@ std::unique_ptr<Report> run(const std::filesystem::path& config, const std::file
     }
     r->analysis = analysis::analyze(r->img, r->cfg.analysis);
     r->scan     = scan(r->img, r->analysis);
+    // HH07: literais declarados no config como nao-endereco saem do manifesto (so constantes;
+    // acesso de verdade nunca e removido). A quantidade fica nas metricas.
+    if (!r->cfg.hw_not_hardware.empty()) {
+        auto& refs = r->scan.refs;
+        const size_t before = refs.size();
+        refs.erase(std::remove_if(refs.begin(), refs.end(),
+                                  [&](const HwRef& x) { return x.kind == Kind::Constant && r->cfg.hw_not_hardware.count(x.pc); }),
+                   refs.end());
+        r->excludedConstants = before - refs.size();
+        if (r->excludedConstants != r->cfg.hw_not_hardware.size())
+            throw std::runtime_error("[hwscan] constantes_nao_hw: algum pc nao e um literal do manifesto (lista desatualizada)");
+    }
     set_game_markers(r->cfg.sdk_game_markers);
     r->sdk      = identify(r->img, r->analysis, r->scan);
     if (!probeTsv.empty()) {

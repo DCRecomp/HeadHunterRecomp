@@ -1,5 +1,6 @@
 # Ignore CI/CD and build outputs
 build/
+build-*/
 dist/
 # Ignore sensitive data
 ISO/

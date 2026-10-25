@@ -1,6 +1,6 @@
 # STATUS — Head Hunter Recompiled
 
-Atualizado em 2026-10-24. Este arquivo é a fonte autoritativa do checkpoint.
+Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 
 ## Estado das etapas
 
@@ -13,8 +13,8 @@ Atualizado em 2026-10-24. Este arquivo é a fonte autoritativa do checkpoint.
 | HH04 | CONCLUIDA | `docs/relatorios/HH04-RELATORIO.md` (4.698 funções, 0 fins mortos/órfãs; C++ idêntico nos dois discos, compila e linka) |
 | HH05 | CONCLUIDA | `docs/relatorios/HH05-RELATORIO.md` (boot até a tela-título sem CDI; trace e 1º quadro conferidos com o Flycast) |
 | HH06 | CONCLUIDA | `docs/relatorios/HH06-RELATORIO.md` (roteiro até a 1ª área controlável em janela e headless; Builder do CDI ao Preview) |
-| HH07 | EM_ANDAMENTO | plano `docs/planos/HH07-PLANO.md`; `hh-hwscan` portado e primeira medição |
-| HH08 | PENDENTE | — |
+| HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH14; catraca; native/legacy/transitional; produto sem CDI) |
+| HH08 | EM_ANDAMENTO | plano `docs/planos/HH08-PLANO.md` |
 | HH09 | PENDENTE | — |
 | HH10 | PENDENTE | — |
 | HH11 | PENDENTE | — |
@@ -205,6 +205,28 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - `tools/dev/regressao.py`: regressão retomável (chave = fontes + toolchain + executáveis +
   entradas privadas). Revisão Codex: 6 achados aceitos e corrigidos.
 
+### HH07 (2026-10-25)
+
+- `hh-hwscan` portado do N0 do BS. Defeito corrigido na identificação do SDK: nomes por
+  mensagem de chamador ("X() failed", "(ID)") e semente Kamui falsa em 0x8C090B1C. Nome agora
+  exige candidato único mais evidência de outro tipo (13 funções nomeadas). Camadas no disco 1:
+  jogo 3 032, SDK 1 515, desconhecida 151, conflito 1.
+- Fronteira `config/fronteiras.toml` (286 entradas) e fechamento com a sonda do roteiro
+  `newgame_area1`: 0 violações. O jogo acessa store queues/QACR diretamente em 0x8C090974 e
+  0x8C0C4CE0: `[[dependencia_hw]]` com regiões, dono HH14 e evidência; confirmação só pela
+  sonda; catraca em `config/metricas_base.toml` (96 chaves).
+- Alvos `hh_native_api` (interfaces, sem Dreamcast, conferido também no CMake),
+  `hh_legacy`, `hh_transitional`; opção `HH_MODS` (slots, custo dentro do ruído, hashes
+  iguais); ordem de eventos determinística (SHA igual em duas execuções); `HeadHunter.exe`
+  sem leitor de CDI (mapa do linker).
+- Comandos: `ctest --preset vs-release` (25 testes); `tools/dev/regressao.py` com
+  `HH07_BIN`/`HH07_SONDA` (etapa `portoes_hh07`).
+- Revisão Codex (`reviews/codex-hh07.log`): 5 achados aceitos e corrigidos (dependência
+  limitada por região; obsoleta só pela sonda; portões com motivo e mínimos; chave da
+  regressão com `hh-hwscan` e a árvore de dados; `native` limpo no CMake). 2 rejeitados com
+  motivo (relatório HH07, seção 9). A primeira execução do Codex ficou presa esperando stdin
+  por 7 h; rodar sempre com `< /dev/null`.
+
 ### Formatos dos discos (investigação 2026-10-24)
 
 Relatório e scripts em `analysis/formatos/` (privado). Verificado em todos
@@ -238,9 +260,9 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir automaticamente por **HH07** (fundação do port nativo: `hh-hwscan`,
-identificação do SDK, fronteira/fechamento/dominância, métricas com catraca, alvos
-`native`/`legacy`/`transitional`, interoperabilidade, inventário de eventos), e
-depois pelas etapas seguintes.
+Prosseguir automaticamente por **HH08** (arquivos nativos e troca dos dois discos sem CDI
+em runtime; plano `docs/planos/HH08-PLANO.md`, começando pelo trace de chamadas gdFs do
+HH08.1), e depois pelas etapas seguintes. Commits por etapa autorizados pelo mantenedor
+(2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando
 o mantenedor enviar `PAUSAR`.

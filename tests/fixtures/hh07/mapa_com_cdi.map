@@ -1,0 +1,2 @@
+ 0001:00000000       ?boot_read_data@hh@@YA 0000000140001000 f   hh_runtime:native_boot.obj
+ 0001:00000010       ??0CdiImage@hh@@QEAA@AEBVpath@ 0000000140001010 f   hh_extract_core:cdi.obj

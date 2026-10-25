@@ -121,15 +121,28 @@ std::map<uint32_t, std::set<uint32_t>> hw_dominance(const Scan& s, const SdkId& 
     return out;
 }
 
-ClosureResult check_closure(const Scan& s, const SdkId& id, const std::set<uint32_t>& boundary) {
+ClosureResult check_closure(const Scan& s, const SdkId& id, const std::set<uint32_t>& boundary,
+                            const DeclaredHw& declaredHw) {
     std::map<uint32_t, std::vector<uint32_t>> callees;
     std::set<uint32_t>                        indirectCallers, hwFuncs;
+    std::map<uint32_t, std::set<dcmap::Region>> hwRegions;
     for (const auto& e : s.edges) {
         if (e.kind == EdgeKind::Indirect || !e.callee) indirectCallers.insert(e.caller);
         else callees[e.caller].push_back(e.callee);
     }
     for (const auto& r : s.refs)
-        if (r.function) hwFuncs.insert(r.function);
+        if (r.function) {
+            hwFuncs.insert(r.function);
+            hwRegions[r.function].insert(r.region);
+        }
+    // declarada so se toda regiao acessada pela funcao estiver na declaracao
+    auto declaredCovers = [&](uint32_t fn) {
+        const auto d = declaredHw.find(fn);
+        if (d == declaredHw.end()) return false;
+        for (auto reg : hwRegions[fn])
+            if (!d->second.count(reg)) return false;
+        return true;
+    };
 
     ClosureResult               res;
     std::map<uint32_t, uint32_t> from;  // funcao -> quem a alcancou
@@ -171,9 +184,23 @@ ClosureResult check_closure(const Scan& s, const SdkId& id, const std::set<uint3
         const Layer l = layerOf(id, fn);
         if (l != Layer::Game && isSdkSide(l))
             res.violations.push_back({Violation::SdkBypass, fn, parent, viaInd.count(fn) > 0});
-        if (hwFuncs.count(fn)) res.violations.push_back({Violation::HardwareAccess, fn, parent, viaInd.count(fn) > 0});
+        if (hwFuncs.count(fn) && declaredCovers(fn)) {
+            res.declaredHw.push_back(fn);
+            res.declaredHwRegions += declaredHw.at(fn).size();
+        } else if (hwFuncs.count(fn)) res.violations.push_back({Violation::HardwareAccess, fn, parent, viaInd.count(fn) > 0});
     }
     return res;
+}
+
+std::vector<std::pair<uint32_t, dcmap::Region>> unconfirmed_hw_deps(const Scan& s, const DeclaredHw& declaredHw) {
+    std::set<std::pair<uint32_t, dcmap::Region>> seen;
+    for (const auto& r : s.refs)
+        if (r.dynamic && r.function) seen.insert({r.function, r.region});
+    std::vector<std::pair<uint32_t, dcmap::Region>> out;
+    for (const auto& [fn, regions] : declaredHw)
+        for (auto reg : regions)
+            if (!seen.count({fn, reg})) out.push_back({fn, reg});
+    return out;
 }
 
 } // namespace hh::hwscan

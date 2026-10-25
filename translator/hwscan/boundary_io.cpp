@@ -26,9 +26,31 @@ Family familyByName(const std::string& n) {
     return Family::Unknown;
 }
 
+std::string regionList(const std::set<dcmap::Region>& rs) {
+    std::string out;
+    for (auto r : rs) out += (out.empty() ? "\"" : ", \"") + std::string(dcmap::region_name(r)) + "\"";
+    return out;
+}
+
+bool regionByName(const std::string& n, dcmap::Region& out) {
+    for (int i = 1; i <= int(dcmap::Region::P4Other); ++i)
+        if (n == dcmap::region_name(dcmap::Region(i))) {
+            out = dcmap::Region(i);
+            return true;
+        }
+    return false;
+}
+
 } // namespace
 
-std::string boundary_toml(const std::map<uint32_t, BoundaryEntry>& b, const std::map<uint32_t, std::string>& providers) {
+DeclaredHw declared_hw(const DeclaredBoundary& d) {
+    DeclaredHw out;
+    for (const auto& [fn, h] : d.hwDeps) out[fn] = h.regions;
+    return out;
+}
+
+std::string boundary_toml(const std::map<uint32_t, BoundaryEntry>& b, const std::map<uint32_t, std::string>& providers,
+                          const std::map<uint32_t, HwDependency>& hwDeps) {
     std::ostringstream o;
     o << "# Fronteira declarada entre o jogo e o SDK/hardware (N0, docs/N0-RELATORIO.md).\n"
          "# Gerada por hh-hwscan --fronteira-gerar; conferida por hh-hwscan --fronteira (teste\n"
@@ -48,6 +70,9 @@ std::string boundary_toml(const std::map<uint32_t, BoundaryEntry>& b, const std:
         if (e.callSites) o << "chamadas = " << e.callSites << "\n";
         if (e.observed) o << "observada = true\n";
     }
+    for (const auto& [fn, d] : hwDeps)
+        o << "\n[[dependencia_hw]]\nfuncao = " << hex(fn) << "\nsubsistema = \"" << d.subsystem << "\"\ndono = \""
+          << d.owner << "\"\nregioes = [" << regionList(d.regions) << "]\nevidencia = \"" << d.evidence << "\"\n";
     return o.str();
 }
 
@@ -59,6 +84,32 @@ DeclaredBoundary parse_boundary(const std::string& text) {
     } catch (const toml::parse_error& e) {
         throw std::runtime_error(std::string("fronteira: TOML invalido: ") + std::string(e.description()));
     }
+    if (const toml::array* deps = t["dependencia_hw"].as_array())
+        for (const auto& node : *deps) {
+            const toml::table* e = node.as_table();
+            if (!e) throw std::runtime_error("dependencia_hw: entrada nao e tabela");
+            const auto fn = (*e)["funcao"].value<int64_t>();
+            if (!fn || *fn <= 0 || *fn > 0xFFFFFFFFll) throw std::runtime_error("dependencia_hw: funcao ausente/invalida");
+            HwDependency h;
+            h.function  = uint32_t(*fn);
+            h.subsystem = (*e)["subsistema"].value_or(std::string());
+            h.owner     = (*e)["dono"].value_or(std::string());
+            h.evidence  = (*e)["evidencia"].value_or(std::string());
+            // sem dono (etapa HHxx) e evidencia, a dependencia nao e aceita (criterio de saida do HH07)
+            if (h.subsystem.empty() || h.evidence.empty() || h.owner.size() != 4 || h.owner.rfind("HH", 0) != 0)
+                throw std::runtime_error("dependencia_hw: subsistema, dono (HHxx) e evidencia obrigatorios em " + hex(h.function));
+            const toml::array* regs = (*e)["regioes"].as_array();
+            if (!regs || regs->empty())
+                throw std::runtime_error("dependencia_hw: regioes obrigatorias em " + hex(h.function));
+            for (const auto& rn : *regs) {
+                dcmap::Region reg{};
+                if (!regionByName(rn.value_or(std::string()), reg))
+                    throw std::runtime_error("dependencia_hw: regiao desconhecida em " + hex(h.function));
+                h.regions.insert(reg);
+            }
+            if (d.hwDeps.count(h.function)) throw std::runtime_error("dependencia_hw: funcao repetida " + hex(h.function));
+            d.hwDeps[h.function] = h;
+        }
     const toml::array* arr = t["fronteira"].as_array();
     if (!arr) return d;
     for (const auto& node : *arr) {

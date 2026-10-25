@@ -114,6 +114,9 @@ bool plausible_constant(uint32_t a) {
     const Region r = dcmap::classify(a);
     if (!dcmap::is_hardware(r)) return false;
     if ((a >> 24) == (a & 0xFF) && (a >> 16 & 0xFF) == (a & 0xFF) && (a >> 8 & 0xFF) == (a & 0xFF)) return false;
+    // base pura de segmento (0x80000000, 0xA0000000, 0xC0000000...): mascara de conversao de
+    // ponteiro (`or`/`and`), nao endereco; antes so era excluida depois da regra da BIOS (HH07)
+    if ((a & 0x1FFFFFFFu) == 0) return false;
     // enderecos de registro e de bloco sao alinhados; cores ARGB (0x80704820, 0xF7FFFFFF) muitas vezes nao
     if (a & 3) return false;
     // 0xFF000000: preto opaco em ARGB / mascara de byte, muito mais comum no codigo que o PTEH do CCN

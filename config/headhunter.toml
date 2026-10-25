@@ -128,3 +128,13 @@ jogo = [
   "Gamedata version mismatch", "Version mismatch of lookat format", "Version mismatch of camera format",
   "Version mismatch of path format", "Script version mismatch",
 ]
+
+# --- literais com forma de endereco de hardware que nao sao endereco (HH07, hh-hwscan) ---
+# pc do `mov.l @(d,PC)` que carrega o literal; so constantes saem do manifesto (acesso nunca).
+[hwscan]
+constantes_nao_hw = [
+  0x8C0B089E,  # 0xE0E02020 em r4 para jsr @r3 em 0x8C0B08AC, com fr4/fr5 (coordenadas): cor ARGB
+  0x8C0B0996,  # 0xE020E020, mesma funcao 0x8C0B07B8 e mesmo uso (argumento de cor)
+  0x8C0CE340,  # 0x90000000 em r4 para 0x8C070114 (8C0CE344), que usa (r4 & 0xFF000000) >> 24 como alfa: cor ARGB
+  0x8C0CE35E,  # 0x90000000, mesma funcao 0x8C0CE2F8 e mesmo destino (8C0CE362): cor ARGB
+]

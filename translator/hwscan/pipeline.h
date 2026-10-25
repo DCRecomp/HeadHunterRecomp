@@ -23,6 +23,7 @@ struct Report {
     std::map<uint32_t, BoundaryEntry> boundary;  // derivada do grafo atual (com a sonda, se dada)
     ProbeStats                        probe;
     bool                              hasProbe = false;
+    size_t                            excludedConstants = 0;  // HH07: [hwscan] constantes_nao_hw aplicadas
 };
 
 // Lanca std::runtime_error em erro. A sonda (TSV de HH_HW_PROBE) entra depois da

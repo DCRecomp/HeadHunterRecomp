@@ -22,15 +22,15 @@ Regra permanente: recompilar, nunca emular (`AGENTS.md`).
 
 | ID | Entrega | Evidência de saída |
 |---|---|---|
-| HH07.1 | `hh-hwscan` portado: acessos a hardware com endereço resolvido, literais de registrador, grafo de chamadas, strings | Saídas em `analysis/hh07/` nos dois discos (idênticas) |
-| HH07.2 | Identificação do SDK (`sdkid`) com as famílias do HH (Shinobi, Kamui, Ninja se presente, CRI/ADX, 4X Movie, Audio64, BIOS, CRT): camada jogo/SDK com evidências e confiança; nomeação só com duas evidências | `sdk_funcs.tsv`; amostra conferida no disassembly |
-| HH07.3 | Fronteira declarada `config/fronteiras.toml`, fechamento e dominância (estático + sonda nos roteiros `newgame_area1`) | 0 violações; caso negativo (fronteira sem uma entrada) falha |
-| HH07.4 | Métricas com catraca `config/metricas_base.toml` | Catraca não piora; teste de catraca |
-| HH07.5 | Alvos `native`, `legacy`, `transitional` separados; interfaces nativas tipadas sem `Sh4Context`/endereço guest; teste "native limpo" | Teste proíbe `Sh4Context`, `sh4_`, `dcmap` e endereços guest em `native/` |
-| HH07.6 | Modelo de interoperabilidade: tabela de handles com geração, ABI guest documentada, registro de fronteiras; slots sempre ativos nas fronteiras migráveis (`[native] slots`) com custo medido | Hashes do roteiro iguais com e sem slots; custo em tempo de quadro |
-| HH07.7 | Inventário de threads, reentradas e eventos (`HH_EVENT_TRACE`) e teste de ordem `(quadro, tarefa, callback, evento)` no roteiro | Ordem reproduzível em duas execuções |
-| HH07.8 | Produto sem leitura de CDI (mapa do linker do `HeadHunter.exe` sem `CdiImage`) | Teste sobre o mapa do linker |
-| HH07.9 | Relatório + revisão Codex | — |
+| HH07.1 ✔ | `hh-hwscan` portado: acessos a hardware com endereço resolvido, literais de registrador, grafo de chamadas, strings | Saídas em `analysis/hh07/` nos dois discos (idênticas) |
+| HH07.2 ✔ | Identificação do SDK (`sdkid`) com as famílias do HH (Shinobi, Kamui, Ninja se presente, CRI/ADX, 4X Movie, Audio64, BIOS, CRT): camada jogo/SDK com evidências e confiança; nomeação só com duas evidências | `sdk_funcs.tsv`; amostra conferida no disassembly |
+| HH07.3 ✔ | Fronteira declarada `config/fronteiras.toml`, fechamento e dominância (estático + sonda nos roteiros `newgame_area1`) | 0 violações; caso negativo (fronteira sem uma entrada) falha |
+| HH07.4 ✔ | Métricas com catraca `config/metricas_base.toml` | Catraca não piora; teste de catraca |
+| HH07.5 ✔ | Alvos `native`, `legacy`, `transitional` separados; interfaces nativas tipadas sem `Sh4Context`/endereço guest; teste "native limpo" | Teste proíbe `Sh4Context`, `sh4_`, `dcmap` e endereços guest em `native/` |
+| HH07.6 ✔ | Modelo de interoperabilidade: tabela de handles com geração, ABI guest documentada, registro de fronteiras; slots sempre ativos nas fronteiras migráveis (`[native] slots`) com custo medido | Hashes do roteiro iguais com e sem slots; custo em tempo de quadro |
+| HH07.7 ✔ | Inventário de threads, reentradas e eventos (`HH_EVENT_TRACE`) e teste de ordem `(quadro, tarefa, callback, evento)` no roteiro | Ordem reproduzível em duas execuções |
+| HH07.8 ✔ | Produto sem leitura de CDI (mapa do linker do `HeadHunter.exe` sem `CdiImage`) | Teste sobre o mapa do linker |
+| HH07.9 ✔ | Relatório + revisão Codex | `docs/relatorios/HH07-RELATORIO.md`; 5 achados aceitos e corrigidos, 2 rejeitados com motivo |
 
 ## Bibliotecas do executável (banners, `analysis/hh07/banners.txt`)
 
@@ -48,7 +48,7 @@ confirmado, sem Ninja.
 
 ## Fatos de entrada (HH05–HH06)
 
-- Bibliotecas já observadas: driver de GD do jogo (0x8C16E2E8…), fila de comandos de som
+- Bibliotecas já observadas: driver de GD (0x8C16E2E8…; o HH05 o chamou "do jogo", mas o `sdkid` do HH07 o põe no bloco do SDK, provavelmente a camada gdc do Shinobi), fila de comandos de som
   para o driver Audio64 (0x8C122440), CRI ADX (banner na tela de logos), 4X Movie, threads
   cooperativas (setjmp 0x8C131F3C / longjmp 0x8C131E9C), tratadores de exceção em VBR.
 - Sonda dinâmica já mostrou acessos a AICA (RAM, RTC, registradores), store queues e G2.
@@ -72,3 +72,15 @@ constantes); 4 referências em funções do jogo, todas **constantes, não acess
 passado como argumento). Falsos positivos a tratar no filtro do HH07.1/HH07.3. Fronteira
 derivada: 538 entradas (521 diretas, 17 indiretas); fechamento 0 violações de SDK, 744
 indiretos não resolvidos (catraca).
+
+## Execução (2026-10-25)
+
+Resultados e evidências em `docs/relatorios/HH07-RELATORIO.md`. Desvios em relação a este plano:
+
+- HH07.2: a amostra no disassembly mostrou nomes errados herdados da heurística do BS. A regra
+  de nomeação passou a exigir duas evidências, e a reclassificação foi conferida por strings.
+  Os números da "Primeira medição" acima estão superados.
+- HH07.3: o Head Hunter acessa store queues e QACR a partir do próprio código. Esses acessos
+  são declarados em `[[dependencia_hw]]` (dono HH14) em vez de "0 acessos do jogo".
+- HH07.8: o teste do mapa do linker achou `cdi.obj` no produto. A leitura de CDI foi separada
+  em `runtime_data_cdi.cpp`.

@@ -76,6 +76,20 @@ target_include_directories(hh_runtime_tests PRIVATE unit)
 target_link_libraries(hh_runtime_tests PRIVATE hh_translator hh_runtime)
 add_test(NAME hh_runtime_tests COMMAND hh_runtime_tests)
 
+# HH07: hh-hwscan (varredura, sdkid, fronteira/fechamento, dependencias de hardware declaradas,
+# catraca, sonda), com programas sinteticos; portado do N0 do Blue Stinger (MIT).
+add_executable(hh07_hwscan_tests unit/main.cpp unit/test_hh07_hwscan.cpp)
+target_include_directories(hh07_hwscan_tests PRIVATE unit)
+target_link_libraries(hh07_hwscan_tests PRIVATE hh_hwscan hh_runtime)
+add_test(NAME hh07_hwscan_tests COMMAND hh07_hwscan_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# HH07.3/HH07.4: fechamento + catraca sobre o executavel real com a sonda (dados privados; sem = SKIP).
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME hh07_fechamento
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh07_fechamento.py
+          $<TARGET_FILE:hh-hwscan> ${PROJECT_SOURCE_DIR})
+set_tests_properties(hh07_fechamento PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
+
 # HH05.5: trace do boot contra o Flycast (dados privados; sem HH_SNAPSHOT_DIR/HH_DATA_DIR = SKIP).
 if(HH_GENERATED_DIR)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -100,3 +114,53 @@ add_test(NAME hh_gate_comparators
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/test_gates.py
           ${PROJECT_SOURCE_DIR}/tools/dev/hh05_boot_check.py ${PROJECT_SOURCE_DIR}/tools/dev/hh05_fb.py
           ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh_boot_accepted.tsv)
+
+# HH07.5: interfaces nativas compilam sozinhas e nao dependem do Dreamcast (com caso negativo).
+add_test(NAME hh07_native_api COMMAND hh_native_api_check)
+add_test(NAME hh07_native_limpo
+  COMMAND ${CMAKE_COMMAND} -DROOT=${PROJECT_SOURCE_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_native_clean.cmake)
+add_test(NAME hh07_native_limpo_negativo
+  COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/hh07/native_sujo
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_native_clean.cmake)
+set_tests_properties(hh07_native_limpo_negativo PROPERTIES PASS_REGULAR_EXPRESSION "native/ depende do Dreamcast")
+# so o CMake liga native/ ao runtime (os cabecalhos estao limpos): tambem precisa falhar
+add_test(NAME hh07_native_limpo_cmake_negativo
+  COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/hh07/native_cmake_sujo
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_native_clean.cmake)
+set_tests_properties(hh07_native_limpo_cmake_negativo PROPERTIES
+  PASS_REGULAR_EXPRESSION "native/CMakeLists.txt: 'hh_runtime'")
+# e a ligacao efetiva do alvo, conferida no configure (pega a vinda de fora de native/)
+get_target_property(_hh_native_links hh_native_api INTERFACE_LINK_LIBRARIES)
+if(_hh_native_links)
+  foreach(_l IN LISTS _hh_native_links)
+    if(_l MATCHES "^hh_(runtime|legacy|transitional|dcmap|generated|translator)")
+      message(FATAL_ERROR "hh_native_api liga ${_l}: native/ nao pode depender do Dreamcast")
+    endif()
+  endforeach()
+endif()
+
+# HH07.6: handles com geracao, ABI guest e registro de fronteiras (legado/nativo).
+add_executable(hh07_transitional_tests unit/main.cpp unit/test_hh07_transitional.cpp)
+target_include_directories(hh07_transitional_tests PRIVATE unit)
+target_link_libraries(hh07_transitional_tests PRIVATE hh_transitional)
+add_test(NAME hh07_transitional_tests COMMAND hh07_transitional_tests)
+
+# HH07.8: a leitura de CDI fica fora do produto; conferido no mapa do linker (com caso negativo).
+add_test(NAME hh07_produto_sem_cdi_negativo
+  COMMAND ${CMAKE_COMMAND} -DMAP=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/hh07/mapa_com_cdi.map
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_product_map.cmake)
+set_tests_properties(hh07_produto_sem_cdi_negativo PROPERTIES PASS_REGULAR_EXPRESSION "o produto contem a leitura de CDI: CdiImage;cdi.obj")
+if(TARGET HeadHunter AND MSVC)
+  add_test(NAME hh07_produto_sem_cdi
+    COMMAND ${CMAKE_COMMAND} -DMAP=$<TARGET_FILE_DIR:HeadHunter>/HeadHunter.map
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_product_map.cmake)
+endif()
+
+# HH07.7: ordem de eventos (VBlank, interrupcao, threads, longjmp) identica em duas execucoes do
+# roteiro newgame_area1 (dados privados: HH_DATA_DIR; sem ele = SKIP).
+if(HH_GENERATED_DIR)
+  add_test(NAME hh07_ordem
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh07_ordem.py
+            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR}/tools/dist/roteiros/newgame_area1.txt)
+  set_tests_properties(hh07_ordem PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1200)
+endif()

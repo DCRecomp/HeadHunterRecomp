@@ -23,6 +23,7 @@ struct GameConfig {
     std::set<uint32_t> native_slots;                 // [native] slots (fronteiras migraveis)
     std::set<uint32_t> native_waits;                 // [native] esperas (back-edges de lacos de espera, N2b)
     std::vector<std::string> sdk_game_markers;       // [sdkid] jogo: mensagens do proprio jogo (HH07)
+    std::set<uint32_t> hw_not_hardware;              // [hwscan] constantes_nao_hw: pc de literais que nao sao endereco (HH07)
 };
 
 GameConfig loadConfig(const std::filesystem::path& path);

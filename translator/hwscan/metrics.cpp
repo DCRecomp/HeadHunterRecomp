@@ -92,6 +92,8 @@ Metrics compute_metrics(const Scan& s, const SdkId& id, const std::map<uint32_t,
     m.try_emplace("fechamento.violacoes.sdk", 0);
     m.try_emplace("fechamento.violacoes.hw", 0);
     m["fechamento.indireto_nao_resolvido"] = int64_t(closure.unresolved.size());
+    m["fechamento.dependencias_hw_declaradas"] = int64_t(closure.declaredHw.size());
+    m["fechamento.dependencias_hw_regioes"]    = int64_t(closure.declaredHwRegions);
     for (const auto& v : closure.violations)
         m[v.kind == Violation::SdkBypass ? "fechamento.violacoes.sdk" : "fechamento.violacoes.hw"]++;
     return m;
@@ -102,6 +104,8 @@ const std::vector<std::string>& ratchet_keys() {
         "hw.refs.camada.jogo",        // jogo acessando hardware diretamente
         "fechamento.violacoes.sdk",   // chamadas que contornam a fronteira declarada
         "fechamento.violacoes.hw",    // hardware alcancado sem passar pela fronteira
+        "fechamento.dependencias_hw_declaradas",  // acessos do jogo ao hardware aceitos com dono (HH07)
+        "fechamento.dependencias_hw_regioes",     // pares (funcao, regiao) dessas declaracoes
         "fechamento.indireto_nao_resolvido",  // alvos indiretos possiveis sem prova (so em dado)
         "camada.desconhecida",        // funcoes sem camada atribuida
         "pref.nao_resolvido.funcoes.jogo",  // funcoes do jogo com pref de endereco calculado

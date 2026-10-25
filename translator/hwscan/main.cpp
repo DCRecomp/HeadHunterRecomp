@@ -278,6 +278,7 @@ void writeClosure(const ClosureResult& c, const fs::path& dir) {
         o << (v.kind == Violation::SdkBypass ? "contorna_fronteira" : "acesso_hw") << '\t' << hex(v.function) << '\t'
           << hex(v.from) << '\t' << (v.viaIndirect ? "sim" : "nao") << '\n';
     for (uint32_t fn : c.unresolved) o << "indireto_nao_resolvido\t" << hex(fn) << "\t-\tsim\n";
+    for (uint32_t fn : c.declaredHw) o << "acesso_hw_declarado\t" << hex(fn) << "\t-\t-\n";
 }
 
 } // namespace
@@ -322,10 +323,16 @@ int main(int argc, char** argv) {
         else declared.entries = r->boundary;
         std::set<uint32_t> bset;
         for (const auto& [addr, e] : declared.entries) bset.insert(addr);
-        const ClosureResult closure = check_closure(r->scan, r->sdk, bset);
+        const DeclaredHw    hwDeclared = declared_hw(declared);
+        const ClosureResult closure    = check_closure(r->scan, r->sdk, bset, hwDeclared);
+        // dependencia declarada (funcao, regiao) sem acesso visto pela sonda esta obsoleta: a
+        // lista nao pode esconder nada nem sobrar. Referencia estatica nao confirma.
+        std::vector<std::pair<uint32_t, dcmap::Region>> staleHw;
+        if (!probe.empty()) staleHw = unconfirmed_hw_deps(r->scan, hwDeclared);
         writeClosure(closure, dir);
         writeDominance(r->scan, r->sdk, bset, dir);
         Metrics m = compute_metrics(r->scan, r->sdk, declared.entries, closure, declared.providers);
+        m["hw.constantes_excluidas_config"] = int64_t(r->excludedConstants);  // HH07: transparencia
         if (!generated.empty()) m.merge(generatedMetrics(generated));
         if (!runtimeDir.empty()) m.merge(runtimeMetrics(runtimeDir, dir / "runtime_ciclos.tsv"));
         writeText(dir / "metricas.toml", metrics_toml(m));
@@ -334,7 +341,7 @@ int main(int argc, char** argv) {
             std::map<uint32_t, std::string> providers;
             for (const auto& [addr, e] : r->boundary)
                 if (r->cfg.native_slots.count(addr)) providers[addr] = "nativo";
-            writeText(boundaryOut, boundary_toml(r->boundary, providers));
+            writeText(boundaryOut, boundary_toml(r->boundary, providers, declared.hwDeps));
         }
         if (!metricsOut.empty()) writeText(metricsOut, metrics_toml(m));
 
@@ -348,11 +355,17 @@ int main(int argc, char** argv) {
                   << ", nativo " << m.at("fronteira.provedor.nativo") << ")\n"
                   << "fechamento: " << closure.reached << " alcancadas, violacoes " << m.at("fechamento.violacoes.sdk")
                   << " (sdk) + " << m.at("fechamento.violacoes.hw") << " (hw); indiretos nao resolvidos "
-                  << m.at("fechamento.indireto_nao_resolvido") << "\n";
+                  << m.at("fechamento.indireto_nao_resolvido") << "; acessos hw declarados "
+                  << m.at("fechamento.dependencias_hw_declaradas") << "\n";
 
         int rc = 0;
         if (!boundaryIn.empty() && !closure.violations.empty()) {
             std::cout << "FECHAMENTO VIOLADO: ver fechamento.tsv\n";
+            rc = 3;
+        }
+        for (const auto& [fn, reg] : staleHw) {
+            std::cout << "DEPENDENCIA_HW OBSOLETA: " << hex(fn) << " regiao " << dcmap::region_name(reg)
+                      << " declarada e nao vista pela sonda\n";
             rc = 3;
         }
         if (!metricsBase.empty()) {

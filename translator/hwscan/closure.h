@@ -72,8 +72,21 @@ struct ClosureResult {
     // Funcoes do SDK fora da fronteira com endereco so em dado, possiveis alvos de uma chamada
     // indireta do jogo: o fechamento estatico e inconclusivo para elas (nao conta como prova).
     std::vector<uint32_t>  unresolved;
+    // HH07: acesso a hardware do jogo declarado na fronteira ([[dependencia_hw]], com dono e
+    // evidencia): conta a parte, nao como violacao (a catraca impede que a lista cresca)
+    std::vector<uint32_t>  declaredHw;
+    size_t                 declaredHwRegions = 0;  // pares (funcao, regiao) aceitos
 };
 
-ClosureResult check_closure(const Scan& s, const SdkId& id, const std::set<uint32_t>& boundary);
+// HH07: dependencia de hardware declarada = funcao do jogo -> regioes que ela pode acessar.
+// Um acesso da funcao a regiao fora da lista continua violacao (revisao Codex HH07 [ALTA]).
+using DeclaredHw = std::map<uint32_t, std::set<dcmap::Region>>;
+
+ClosureResult check_closure(const Scan& s, const SdkId& id, const std::set<uint32_t>& boundary,
+                            const DeclaredHw& declaredHw = {});
+
+// Pares (funcao, regiao) declarados sem acesso observado pela sonda (HwRef::dynamic): a
+// declaracao esta obsoleta. Referencia estatica nao confirma (revisao Codex HH07 [MEDIA]).
+std::vector<std::pair<uint32_t, dcmap::Region>> unconfirmed_hw_deps(const Scan& s, const DeclaredHw& declaredHw);
 
 } // namespace hh::hwscan

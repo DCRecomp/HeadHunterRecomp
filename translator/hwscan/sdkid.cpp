@@ -111,7 +111,9 @@ Family owner_of(const std::string& textIn, std::string* name) {
         const size_t open = text.rfind('(');
         if (open != std::string::npos) {
             const std::string id = identAt(text, open + 1);
-            if (open + 1 + id.size() + 1 == text.size())
+            // HH07: "(ADXT_STAT_PLAYEND)" e uma constante (so maiusculas), nao o nome de uma funcao
+            const bool hasLower = std::any_of(id.begin(), id.end(), [](char ch) { return ch >= 'a' && ch <= 'z'; });
+            if (hasLower && open + 1 + id.size() + 1 == text.size())
                 if (const Family f = found(id); f != Family::Unknown) return f;
         }
     }
@@ -131,8 +133,17 @@ Family owner_of(const std::string& textIn, std::string* name) {
         size_t q = p + id.size();
         while (q < text.size() && text[q] == ' ' && !coded) ++q;
         const char next = q < text.size() ? text[q] : '\0';
-        if (next == '(' || next == ':' || (coded && next == ' ') ||
-            (next == '.' && text.compare(q, std::string::npos, ".c") == 0))
+        // HH07: "kmCreateVertexBuffer() failed!" e quem chamou relatando a falha da chamada; o
+        // dono vem seguido de "():" ou "( ):" ("FT_LoadRoomData (): ...")
+        bool callerReport = false;
+        if (next == '(' && !coded)
+            if (const size_t close = text.find(')', q); close != std::string::npos) {
+                size_t t = close + 1;
+                while (t < text.size() && text[t] == ' ') ++t;
+                callerReport = t < text.size() && text[t] != ':';
+            }
+        if (!callerReport && (next == '(' || next == ':' || (coded && next == ' ') ||
+            (next == '.' && text.compare(q, std::string::npos, ".c") == 0)))
             return f;
     }
     if (name) name->clear();
@@ -295,7 +306,8 @@ SdkId identify(const analysis::Image& img, const analysis::Analysis& a, const Sc
     }
     for (const auto& [fn, v] : votes) seed[fn] = v.best();
 
-    // 1) nome
+    // 1) nome (o nome so e atribuido no fim, com duas evidencias: ver "nomeacao")
+    std::map<uint32_t, std::set<std::string>> nameCandidates;
     for (const auto& [fn, list] : s.strings) {
         std::set<Family> fams;
         for (const auto& str : list) {
@@ -303,8 +315,8 @@ SdkId identify(const analysis::Image& img, const analysis::Analysis& a, const Sc
             const Family f = owner_of(str.text, &name);
             if (f == Family::Unknown) continue;
             fams.insert(f);
-            auto& sf = out.functions[fn];
-            if (!name.empty() && sf.name.empty()) sf.name = name;
+            out.functions[fn];
+            if (!name.empty()) nameCandidates[fn].insert(name);
             vote(fn, f, "nome", name.empty() ? str.text.substr(0, 24) : name);
         }
         if (fams.size() == 1) seed[fn] = *fams.begin();
@@ -400,6 +412,24 @@ SdkId identify(const analysis::Image& img, const analysis::Analysis& a, const Sc
         if (!sf.conflict && (strong || structural >= 2)) sf.confidence = Confidence::High;
         else if ((!sf.conflict && structural >= 1) || (strong && !contra.count("nome"))) sf.confidence = Confidence::Medium;
         else sf.confidence = Confidence::Low;
+    }
+
+    // nomeacao (HH07.2, AGENTS.md: identificacao exige duas evidencias independentes). O nome
+    // vem das mensagens e so e atribuido se: (a) as mensagens da funcao apontam um unico nome;
+    // (b) nenhuma outra funcao da imagem aponta o mesmo nome (mensagens copiadas, como
+    // "acDigiClose fail in mwSndOpenPort" no close, nao nomeiam duas funcoes); (c) outra
+    // evidencia de tipo diferente (modulo, faixa, assinatura, padrao, BIOS) confirma a familia.
+    std::map<std::string, int> nameUses;
+    for (const auto& [fn, names] : nameCandidates)
+        for (const auto& n : names) ++nameUses[n];
+    for (const auto& [fn, names] : nameCandidates) {
+        auto& sf = out.functions[fn];
+        if (names.size() != 1 || nameUses[*names.begin()] != 1 || sf.family != owner_of(*names.begin() + "()")) continue;
+        const auto& byKind = votes.at(fn).byKind;
+        bool        second = false;
+        for (const char* k : {"modulo", "faixa", "assinatura", "padrao", "bios"})
+            if (auto it = byKind.find(k); it != byKind.end() && it->second.count(sf.family)) second = true;
+        if (second) sf.name = *names.begin();
     }
 
     // camada

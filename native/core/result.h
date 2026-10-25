@@ -2,7 +2,7 @@
 // Derivado de recomp-BStinger native/core/result.h (MIT, Copyright (c) 2026 Blue Stinger
 // Recompiled contributors; ver third_party/licenses/recomp-BStinger-LICENSE.txt).
 #pragma once
-// Tipos basicos das interfaces nativas (N0). Nada aqui conhece o Dreamcast: sem enderecos
+// Tipos basicos das interfaces nativas (HH07). Nada aqui conhece o Dreamcast: sem enderecos
 // do guest, registradores, contexto da CPU emulada ou layout de hardware.
 #include <cstdint>
 #include <string>

@@ -91,6 +91,10 @@ GameConfig loadConfig(const std::filesystem::path& path) {
     // [native] slots: fronteiras migraveis do port nativo, chamadas sempre pelo slot
     if (auto arr = t["native"]["slots"].as_array())
         for (auto& el : *arr) c.native_slots.insert(u32(&el, "native.slots"));
+    // [hwscan] constantes_nao_hw: pc de literais com forma de endereco de hardware que a analise
+    // mostrou nao serem endereco (cor, mascara); cada um com evidencia no config (HH07)
+    if (auto arr = t["hwscan"]["constantes_nao_hw"].as_array())
+        for (auto& el : *arr) c.hw_not_hardware.insert(u32(&el, "hwscan.constantes_nao_hw"));
     // [sdkid] jogo: mensagens que identificam codigo do proprio jogo (HH07, hh-hwscan)
     if (auto arr = t["sdkid"]["jogo"].as_array())
         for (auto& el : *arr)

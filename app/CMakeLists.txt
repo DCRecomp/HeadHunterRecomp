@@ -6,6 +6,12 @@ if(HH_GENERATED_DIR)
   add_library(hh_generated STATIC ${hh_generated_srcs})
   target_include_directories(hh_generated PUBLIC "${HH_GENERATED_DIR}")
   target_link_libraries(hh_generated PUBLIC hh_runtime_cpu)
+  # HH07.6: slots em todas as funcoes (o codigo gerado chama pelo slot; mods e provedores
+  # nativos trocam a funcao sem editar o gerado). Desligado: so as fronteiras de [native] slots.
+  option(HH_MODS "Compilar o codigo gerado com slots em todas as funcoes" OFF)
+  if(HH_MODS)
+    target_compile_definitions(hh_generated PUBLIC HH_MODS=1)
+  endif()
   if(MSVC)
     target_compile_options(hh_generated PRIVATE /bigobj)
   endif()
@@ -41,6 +47,11 @@ if(HH_GENERATED_DIR)
     FetchContent_MakeAvailable(SDL3)
     add_executable(HeadHunter WIN32 hh_window.cpp)
     target_link_libraries(HeadHunter PRIVATE hh_host SDL3::SDL3-static)
+    if(MSVC)
+      # mapa do linker (so no diretorio de build; o Builder copia apenas o .exe): o teste
+      # hh07_produto_sem_cdi confere que a leitura de CDI nao entrou no produto
+      target_link_options(HeadHunter PRIVATE "/MAP:$<TARGET_FILE_DIR:HeadHunter>/HeadHunter.map")
+    endif()
     # Recompilar, nunca emular: nem o executor de passo unico (sh4_core), nem o tradutor, nem o
     # stub sem hardware podem ser alcancados pelo executavel do jogo (falha na configuracao).
     hh_assert_product_clean(HeadHunter)

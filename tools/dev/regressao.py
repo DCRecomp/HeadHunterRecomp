@@ -18,7 +18,9 @@ Dados privados (sem eles as etapas que dependem deles falham com mensagem clara)
   HH_DATA_DIR      dados de execucao do disco 1 (hh-extract --runtime)
   HH_SNAPSHOT_DIR  snapshots do oraculo (portoes do HH05)
   HH_DISC1         imagem CDI do disco 1 (etapa do Builder)
-  HH_AREA1_HASHES  hashes de referencia do roteiro newgame_area1"""
+  HH_AREA1_HASHES  hashes de referencia do roteiro newgame_area1
+  HH07_BIN         1ST_READ.BIN do disco 1 (fechamento do HH07)
+  HH07_SONDA       TSV da sonda do roteiro newgame_area1 (HH_HW_PROBE)"""
 import hashlib
 import json
 import os
@@ -32,7 +34,7 @@ SRC_DIRS = ['app', 'builder', 'cmake', 'config', 'runtime', 'tests', 'tools/hh-e
             'tools/sh4-tablegen', 'tools/dist', 'tools/dcmap', 'translator', 'native', 'transitional', 'legacy',
             'CMakeLists.txt', 'CMakePresets.json']
 ARTIFACTS = [('app', 'Release', 'hh-run.exe'), ('app', 'Release', 'HeadHunter.exe'), ('app', 'Release', 'hh-diff.exe'),
-             ('builder', 'Release', 'hh-builder.exe')]
+             ('builder', 'Release', 'hh-builder.exe'), ('translator', 'Release', 'hh-hwscan.exe')]
 SCRIPT = os.path.join(ROOT, 'tools', 'dist', 'roteiros', 'newgame_area1.txt')
 FRAMES = 94  # 4700 VBlanks, amostra a cada 50
 
@@ -75,6 +77,18 @@ def file_hash(path, sample=False):
     return h.hexdigest()
 
 
+def dir_stat(path):
+    """Caminho, tamanho e data de cada arquivo da arvore: um arquivo de dados trocado sem mudar o
+    manifesto invalida as etapas que o leem (revisao Codex HH07)."""
+    h = hashlib.sha256()
+    for d, _, fs in sorted(os.walk(path)):
+        for f in sorted(fs):
+            st = os.stat(os.path.join(d, f))
+            rel = os.path.relpath(os.path.join(d, f), path).replace(os.sep, '/')
+            h.update(('%s:%d:%d|' % (rel, st.st_size, st.st_mtime_ns)).encode())
+    return h.hexdigest()
+
+
 def toolchain():
     """Compilador e gerador do cache do CMake: mudar de toolchain invalida as etapas."""
     cache = EXE('CMakeCache.txt')
@@ -91,6 +105,7 @@ def private_inputs(names):
         v = os.environ.get(n, '')
         if n == 'HH_DATA_DIR':
             parts += [file_hash(os.path.join(v, f)) for f in ('disc.manifest', 'disc_meta.idx', 'disc_meta.bin')]
+            parts.append(dir_stat(v))
         elif n == 'HH_SNAPSHOT_DIR':
             parts += [file_hash(os.path.join(v, f))
                       for f in ('boot_entry.bss', 'boot_entry.pvr', 'boot_flycast.tsv', 'fb_sega.vram', 'fb_sega.pvr')]
@@ -176,6 +191,17 @@ def step_gates():
         raise RuntimeError('portoes do HH05 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh07():
+    # HH07: fechamento da fronteira + catraca (executavel e sonda privados) e ordem de eventos
+    need('HH_DATA_DIR'), need('HH07_BIN'), need('HH07_SONDA')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', 'hh07_fechamento|hh07_ordem', '--no-tests=error',
+            '--output-on-failure'])
+    passed = [n for n in ('hh07_fechamento', 'hh07_ordem')
+              if any(n in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 2:
+        raise RuntimeError('portoes do HH07 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -195,6 +221,7 @@ def step_builder():
 # (nome, funcao, entradas privadas consumidas)
 STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh05', step_gates, ['HH_SNAPSHOT_DIR', 'HH_DATA_DIR']),
+         ('portoes_hh07', step_gates_hh07, ['HH_DATA_DIR', 'HH07_BIN', 'HH07_SONDA']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_AREA1_HASHES'])]
 
