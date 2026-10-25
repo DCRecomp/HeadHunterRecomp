@@ -31,8 +31,8 @@
 "fechamento.violacoes.sdk" = 0
 "fronteira.direta" = 285
 "fronteira.indireta" = 1
-"fronteira.provedor.legado" = 277
-"fronteira.provedor.nativo" = 9
+"fronteira.provedor.legado" = 276
+"fronteira.provedor.nativo" = 10
 "fronteira.subsistema.arquivos" = 1
 "fronteira.subsistema.audio" = 29
 "fronteira.subsistema.controles" = 9
@@ -47,7 +47,7 @@
 "gerado.hh_call_reentrant" = 14
 "gerado.hh_fn_enter" = 4699
 "gerado.hh_poll" = 2578
-"gerado.linhas" = 1098896
+"gerado.linhas" = 1098898
 "gerado.ops_fpu" = 50580
 "gerado.sh4_dispatch" = 1107
 "hw.constantes_excluidas_config" = 4

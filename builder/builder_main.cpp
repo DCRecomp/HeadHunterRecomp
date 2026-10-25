@@ -12,9 +12,9 @@
 //      Builder; troca interrompida e restaurada na execucao seguinte; uma execucao por saida.
 // Uma falha em qualquer etapa deixa a instalacao anterior intacta. O jogo instalado nao le o CDI.
 //
-//   hh-builder --disc <disco 1.cdi> [--disc2 <disco 2.cdi>] --out <pasta> [--kit <fontes>] [--verify-vblanks N]
-// HH08: cada disco vira data/discN (conferido contra o proprio CDI e a versao do disco: o disco 1
-// e hedhunter_v1006_a, o 2 e hedhunter_v1006_b); o jogo troca de disco sem ler imagem.
+//   hh-builder --disc <disco 1.cdi> --disc2 <disco 2.cdi> --out <pasta> [--kit <fontes>] [--verify-vblanks N]
+// HH08: os dois discos (cada um conferido contra o proprio CDI e a versao: o disco 1 e
+// hedhunter_v1006_a, o 2 e hedhunter_v1006_b) viram uma instalacao unica, sem troca de disco.
 #include "app/recomp.h"
 #include "hh_extract/cdi.hpp"
 #include "hh_extract/runtime_data.hpp"
@@ -53,7 +53,7 @@ int run(const std::string& cmd) {
 }
 
 int usage() {
-    std::fprintf(stderr, "uso: hh-builder --disc <disco 1.cdi> [--disc2 <disco 2.cdi>] --out <pasta> [--kit <fontes>] [--verify-vblanks N]\n");
+    std::fprintf(stderr, "uso: hh-builder --disc <disco 1.cdi> --disc2 <disco 2.cdi> --out <pasta> [--kit <fontes>] [--verify-vblanks N]\n");
     return 2;
 }
 
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
         else if (a == "--verify-vblanks" && i + 1 < argc) verifyVblanks = unsigned(std::strtoul(argv[++i], nullptr, 10));
         else return usage();
     }
-    if (disc.empty() || out.empty()) return usage();
+    if (disc.empty() || disc2.empty() || out.empty()) return usage();
     try {
         out = fs::absolute(out).lexically_normal();
         kit = fs::absolute(kit).lexically_normal();
@@ -136,29 +136,34 @@ int main(int argc, char** argv) {
             if (fs::exists(d) && !owned(d))
                 throw std::runtime_error("a pasta " + text(d) + " existe e nao foi criada pelo Builder; remova-a ou escolha outra saida");
 
-        step(1, "dados de execucao (CDI -> data/discN, conferidos setor a setor)");
-        if (fs::exists(data)) fs::remove_all(data);  // dentro de .hh-build (marcada)
-        const std::pair<int, fs::path> discs[] = {{1, disc}, {2, disc2}};
-        for (const auto& [n, cdi] : discs) {
-            if (cdi.empty()) continue;
-            const fs::path dir  = data / ("disc" + std::to_string(n));
-            const char*    want = n == 1 ? "hedhunter_v1006_a" : "hedhunter_v1006_b";
-            hh::CdiImage   img(cdi);
-            const auto     r = hh::disc::prepare_runtime_data(img, dir);
+        step(1, "dados de execucao (os dois CDIs -> data, conferidos setor a setor e juntos)");
+        const fs::path data2 = work / "data_disco2";  // disco 2 antes de juntar
+        for (const fs::path& d : {data, data2})
+            if (fs::exists(d)) fs::remove_all(d);  // dentro de .hh-build (marcada)
+        const std::pair<fs::path, fs::path> discs[] = {{disc, data}, {disc2, data2}};
+        for (int n = 1; n <= 2; ++n) {
+            const auto& [cdi, dir] = discs[n - 1];
+            const char*  want      = n == 1 ? "hedhunter_v1006_a" : "hedhunter_v1006_b";
+            hh::CdiImage img(cdi);
+            const auto   r = hh::disc::prepare_runtime_data(img, dir);
             std::cout << "  disco " << n << ": versao " << r.versionId << ", " << r.files << " arquivos" << std::endl;
-            if (r.versionId != want)  // disco trocado: --disc com o disco 2 ou --disc2 com o disco 1
+            if (r.versionId != want)  // --disc com o disco 2 ou --disc2 com o disco 1
                 throw std::runtime_error("o CDI de " + std::string(n == 1 ? "--disc" : "--disc2") + " (" + text(cdi) +
                                          ") e a versao " + r.versionId + ", esperada " + want + " (disco " +
                                          std::to_string(n) + ")");
             if (const std::string d = hh::disc::verify_runtime_data(img, dir); !d.empty())
                 throw std::runtime_error("dados de execucao do disco " + std::to_string(n) + " diferem da imagem: " + d);
         }
-        if (disc2.empty()) std::cout << "  sem --disc2: a instalacao so tem o disco 1" << std::endl;
+        // HH08: instalacao unica, sem troca de disco (o disco 2 entra na arvore do disco 1)
+        const auto mr = hh::disc::merge_runtime_discs(data, data2, false);
+        std::cout << "  discos juntos: " << mr.added << " arquivos do disco 2, " << mr.identical << " iguais, "
+                  << mr.variants << " variantes" << std::endl;
+        fs::remove_all(data2);  // sobra: os iguais e o executavel do disco 2 (dentro de .hh-build)
 
         step(2, "recompilacao do executavel (SH-4 -> C++)");
         hh::RecompOptions ro;
         ro.config      = kit / "config" / "headhunter.toml";
-        ro.executable  = data / "disc1" / "disc" / "1ST_READ.BIN";
+        ro.executable  = data / "disc" / "1ST_READ.BIN";
         ro.out         = gen;
         ro.analysisDir = work / "analysis";
         if (fs::exists(gen)) fs::remove_all(gen);  // dentro de .hh-build (marcada)
@@ -184,15 +189,10 @@ int main(int argc, char** argv) {
         const fs::path vlog = work / "verificacao.log";
         std::error_code ec;
         fs::remove(vlog, ec);
-        for (const auto& [n, cdi] : discs) {
-            if (cdi.empty()) continue;
-            fs::remove(vlog, ec);
-            if (run(quote(staging / "HeadHunter.exe") + " --headless --data " + quote(staging / "data") + " --disco " +
-                    std::to_string(n) + " --vblanks " + std::to_string(verifyVblanks) + " --rtc 1700000000 --log " +
-                    quote(vlog) + " --hash-every 60") != 0 ||
-                !fs::exists(vlog) || fs::file_size(vlog) == 0)
-                throw std::runtime_error("a instalacao montada nao passou na verificacao do disco " + std::to_string(n));
-        }
+        if (run(quote(staging / "HeadHunter.exe") + " --headless --data " + quote(staging / "data") + " --vblanks " +
+                std::to_string(verifyVblanks) + " --rtc 1700000000 --log " + quote(vlog) + " --hash-every 60") != 0 ||
+            !fs::exists(vlog) || fs::file_size(vlog) == 0)
+            throw std::runtime_error("a instalacao montada nao passou na verificacao");
 
         // Troca: a instalacao atual vira copia de seguranca; se a promocao falhar, ela volta.
         removeOwned(backup);

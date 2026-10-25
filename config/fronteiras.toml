@@ -1880,7 +1880,7 @@ endereco = 0x8C15D042
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]

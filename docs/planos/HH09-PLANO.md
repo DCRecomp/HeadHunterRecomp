@@ -168,7 +168,7 @@ permite.
   do BS.
 - VBlanks fundidos no boot e lag de carga mudam a fase lógica (BS N2a §4).
 - Cobertura: uma rota de 4 700 VBlanks; a guarda de vivacidade é calibrada só nela. Rotas da
-  troca de disco (HH08) e da campanha entram quando existirem.
+  passagem do disco 1 para o 2 (discos juntos, HH08) e da campanha entram quando existirem.
 - O render por software domina o custo; B9 é refeito depois do HH14.
 - `runtime/mods/mod_api.h` cita 0x8C064A20 (endereço do BS) no exemplo; corrigir no HH09.5.
 

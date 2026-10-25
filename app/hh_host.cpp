@@ -73,14 +73,6 @@ void onVblank(void*) {
         }
     if (!blank && !r.nonBlank++) r.firstNonBlank = r.vblanks;
     if (g_opt->onFrame) g_opt->onFrame(g_frame);
-    const bool lidWanted = (g_opt->lidOpenAt && r.vblanks >= g_opt->lidOpenAt) || (g_opt->lidRequest && g_opt->lidRequest->load());
-    if (lidWanted && !r.lidOpenedAt) {
-        if (g_opt->files != FileProvider::Native)
-            throw std::runtime_error("a troca de disco exige o provedor nativo de arquivos (--arquivos nativo)");
-        transitional::gdfs::open_lid();
-        r.lidOpenedAt = r.vblanks;
-        std::fprintf(stderr, "[disco] tampa aberta no VBlank %llu\n", static_cast<unsigned long long>(r.vblanks));
-    }
     if (g_opt->stop && g_opt->stop->load()) throw StopRequest{};
     if (g_opt->vblankLimit && r.vblanks >= g_opt->vblankLimit) throw StopRequest{};
     if (g_opt->realtime) {  // ritmo do Dreamcast; atrasado mais de 250 ms: recomeca a contagem
@@ -113,7 +105,7 @@ HostResult host_run(const HostOptions& opt) {
         if (!opt.expectVersion.empty() && boot.versionId != opt.expectVersion)
             // a identidade vem do executavel, nao da linha "version" do manifesto (revisao Codex HH08)
             throw std::runtime_error("os dados em " + opt.data.string() + " sao da versao " + boot.versionId +
-                                     ", esperada " + opt.expectVersion + " (disco trocado). Refaca a instalacao com o Builder.");
+                                     ", esperada " + opt.expectVersion + " (dados de outro disco). Refaca a instalacao com o Builder.");
         boot_prepare(c, boot, rtc);
         gdrom_set_disc(open_runtime_data(opt.data, {}));
         if (opt.files == FileProvider::Native) {
@@ -124,7 +116,8 @@ HostResult host_run(const HostOptions& opt) {
                 std::fprintf(stderr, "[mods] recurso substituido: %s (%llu -> %llu bytes)\n", m.logical.c_str(),
                              static_cast<unsigned long long>(m.originalSize), static_cast<unsigned long long>(m.modSize));
             // cada arquivo e conferido contra o manifesto do Builder na primeira abertura (HH08.6)
-            verified = std::make_unique<VerifiedFileSystem>(*files, opt.data / "disc.manifest");
+            verified = std::make_unique<VerifiedFileSystem>(
+                *files, opt.filesManifest.empty() ? opt.data / "disc.manifest" : opt.filesManifest);
             transitional::gdfs::install(boundaries, *verified);
         }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
@@ -157,9 +150,11 @@ HostResult host_run(const HostOptions& opt) {
     call_trace_flush();
     if (files) {
         const auto fs = transitional::gdfs::stats();
-        std::fprintf(stderr, "[arquivos] nativo: %llu aberturas, %llu leituras, %llu bytes, %llu nao encontrados\n",
+        std::fprintf(stderr,
+                     "[arquivos] nativo: %llu aberturas, %llu leituras, %llu bytes, %llu nao encontrados; disco %d\n",
                      static_cast<unsigned long long>(fs.opens), static_cast<unsigned long long>(fs.reads),
-                     static_cast<unsigned long long>(fs.bytes), static_cast<unsigned long long>(fs.notFound));
+                     static_cast<unsigned long long>(fs.bytes), static_cast<unsigned long long>(fs.notFound),
+                     transitional::gdfs::current_disc());
         transitional::gdfs::uninstall(boundaries);
         verified.reset();
         files.reset();

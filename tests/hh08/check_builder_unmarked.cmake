@@ -6,7 +6,7 @@ file(REMOVE_RECURSE "${WORK}")
 file(MAKE_DIRECTORY "${WORK}/HeadHunter")
 file(WRITE "${WORK}/HeadHunter/HeadHunter.exe" "nao e do builder")
 file(WRITE "${WORK}/HeadHunter/meu_arquivo.txt" "dado do usuario")
-execute_process(COMMAND "${BUILDER}" --disc "${WORK}/nao_existe.cdi" --out "${WORK}"
+execute_process(COMMAND "${BUILDER}" --disc "${WORK}/nao_existe.cdi" --disc2 "${WORK}/nao_existe2.cdi" --out "${WORK}"
                 RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(rc EQUAL 0)
   message(FATAL_ERROR "o Builder aceitou uma instalacao sem marcador")

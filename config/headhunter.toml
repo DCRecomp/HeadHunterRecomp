@@ -148,5 +148,6 @@ slots = [
   0x8C15D09A, 0x8C15C7A0, 0x8C15C7B8, 0x8C15C7F0, 0x8C15C80A, 0x8C15C83E, 0x8C15C88A, 0x8C15C8E2,
   0x8C15CA48, 0x8C15CD68, 0x8C15CD80, 0x8C15CD96, 0x8C15CEC4,
   0x8C15C6B4, 0x8C15C970, 0x8C15C746,
-  0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): estado logico do drive (troca de disco)
+  0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): drive sempre pronto (sem troca de disco)
+  0x8C15D042,  # gdFsLoadDir (stub, tabela[32]): diretorio dos dirrec pelo provedor nativo
 ]

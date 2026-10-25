@@ -19,11 +19,14 @@ void usage() {
                  "uso: hh-extract [--info] [--force] <imagem.cdi> [saida]\n"
                  "     hh-extract --runtime <imagem.cdi> <pasta de dados>\n"
                  "     hh-extract --verify-data <imagem.cdi> <pasta de dados>\n"
+                 "     hh-extract --juntar-discos <dados do disco 1> <dados do disco 2> [--links]\n"
                  "  saida      pasta de destino (padrao: game-data)\n"
                  "  --info     so mostra faixas, IP.BIN e hash do executavel\n"
                  "  --force    extrai mesmo com hash de executavel desconhecido\n"
                  "  --runtime  dados de execucao do jogo nativo (o jogo nao le o CDI), conferidos setor a setor\n"
-                 "  --verify-data  compara todos os setores de dados da imagem com os da pasta\n");
+                 "  --verify-data  compara todos os setores de dados da imagem com os da pasta\n"
+                 "  --juntar-discos  junta o disco 2 nos dados do disco 1 (instalacao unica; MOVE os arquivos\n"
+                 "                   do disco 2, ou --links para ligar sem mover)\n");
 }
 
 int runtimeData(bool prepare, const std::string& image, const std::string& out) {
@@ -50,6 +53,25 @@ int runtimeData(bool prepare, const std::string& image, const std::string& out) 
 } // namespace
 
 int main(int argc, char** argv) {
+    // HH08: hh-extract --juntar-discos <dados do disco 1> <dados do disco 2> [--links]
+    // junta o disco 2 nos dados do disco 1 (instalacao unica); --links liga em vez de mover.
+    if ((argc == 4 || argc == 5) && std::string(argv[1]) == "--juntar-discos") {
+        if (argc == 5 && std::string(argv[4]) != "--links") {  // revisao Codex: nada de mover por engano
+            std::cerr << "erro: opcao desconhecida '" << argv[4] << "' (so --links)\n";
+            usage();
+            return 2;
+        }
+        try {
+            const bool links = argc == 5;
+            const auto r     = hh::disc::merge_runtime_discs(argv[2], argv[3], links);
+            std::cout << "discos juntos: " << r.added << " arquivos do disco 2, " << r.identical << " iguais, "
+                      << r.variants << " variantes em " << hh::disc::kDisc2Variants << "\n";
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "erro: " << e.what() << "\n";
+            return 1;
+        }
+    }
     if (argc == 4 && (std::string(argv[1]) == "--runtime" || std::string(argv[1]) == "--verify-data")) {
         try {
             return runtimeData(std::string(argv[1]) == "--runtime", argv[2], argv[3]);

@@ -15,50 +15,37 @@ std::string u8(const fs::path& p) {
     return std::string(s.begin(), s.end());
 }
 
-// Linha "version <id>" do disc.manifest (hh-extract --runtime); "" se ausente.
-std::string manifestVersion(const fs::path& manifest) {
+// Linha "<chave> <valor>" de um manifesto; "" se ausente.
+std::string field(const fs::path& manifest, const std::string& key) {
     std::ifstream f(manifest);
     if (!f) throw std::runtime_error("nao foi possivel ler " + u8(manifest) + ". Refaca a instalacao com o Builder.");
     std::string line;
     while (std::getline(f, line))
-        if (line.rfind("version ", 0) == 0) return line.substr(8);
+        if (line.rfind(key + " ", 0) == 0) return line.substr(key.size() + 1);
     return {};
 }
 
 } // namespace
 
-const char* disc_version(int number) {
-    switch (number) {
-    case 1: return "hedhunter_v1006_a";
-    case 2: return "hedhunter_v1006_b";
-    default: return nullptr;
-    }
-}
-
-DiscData resolve_disc(const fs::path& root, int number) {
-    const char* want = disc_version(number);
-    if (!want) throw std::runtime_error("disco " + std::to_string(number) + " invalido: o Head Hunter tem os discos 1 e 2");
-    DiscData d;
-    d.number = number;
+InstallData resolve_install(const fs::path& dir) {
     std::error_code ec;
-    const fs::path sub = root / ("disc" + std::to_string(number));
-    if (fs::exists(sub / "disc.manifest", ec)) d.dir = sub;
-    else if (fs::exists(root / "disc.manifest", ec)) d.dir = root;  // pasta de um disco
-    else
-        throw std::runtime_error("dados do disco " + std::to_string(number) + " ausentes em " + u8(root) +
-                                 ". Refaca a instalacao com o Builder informando o CDI desse disco.");
-    d.version = manifestVersion(d.dir / "disc.manifest");
-    if (d.version != want) {
-        const std::string other = d.version == disc_version(1) ? " (e o disco 1)"
-                                  : d.version == disc_version(2) ? " (e o disco 2)"
-                                                                 : "";
-        throw std::runtime_error("a pasta " + u8(d.dir) + " nao tem o disco " + std::to_string(number) + ": versao '" +
-                                 d.version + "'" + other + ", esperada '" + want +
-                                 "'. Refaca a instalacao com o Builder.");
+    if (!fs::exists(dir / "disc.manifest", ec) || !fs::is_directory(dir / "disc", ec))
+        throw std::runtime_error("dados do jogo ausentes em " + u8(dir) + ". Refaca a instalacao com o Builder.");
+    InstallData d;
+    d.dir = dir;
+    const std::string v1 = field(dir / "disc.manifest", "version");
+    if (v1 != kInstallBootVersion)
+        throw std::runtime_error("os dados em " + u8(dir) + " sao '" + v1 + "', esperado o disco 1 ('" +
+                                 kInstallBootVersion + "') com o disco 2 junto. Refaca a instalacao com o Builder.");
+    const fs::path merged = dir / "arquivos.manifest";
+    if (fs::exists(merged, ec)) {
+        if (field(merged, "disco2") != "hedhunter_v1006_b")
+            throw std::runtime_error("o disco 2 junto em " + u8(dir) + " e de outra versao. Refaca a instalacao com o Builder.");
+        d.manifest = merged;
+        d.merged   = true;
+    } else {
+        d.manifest = dir / "disc.manifest";  // dados de desenvolvimento: so o disco 1
     }
-    if (!fs::is_directory(d.dir / "disc", ec))
-        throw std::runtime_error("arquivos do disco " + std::to_string(number) + " ausentes em " + u8(d.dir / "disc") +
-                                 ". Refaca a instalacao com o Builder.");
     return d;
 }
 

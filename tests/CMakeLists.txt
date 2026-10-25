@@ -184,10 +184,10 @@ if(HH_GENERATED_DIR)
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh08_arquivos.py
             $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh08_arquivos PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
-  # HH08.5/.6: disco 2, troca pela tampa e falhas seguras (HH_DATA_DIR + HH_DATA_DIR2)
+  # HH08.5/.6: discos juntos (sem troca de disco) e falhas seguras (HH_DATA_DIR + HH_DATA_DIR2)
   add_test(NAME hh08_discos
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh08_discos.py
-            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+            $<TARGET_FILE:hh-run> $<TARGET_FILE:hh-extract> ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh08_discos PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
 endif()
 

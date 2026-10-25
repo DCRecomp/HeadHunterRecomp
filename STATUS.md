@@ -14,7 +14,7 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH05 | CONCLUIDA | `docs/relatorios/HH05-RELATORIO.md` (boot até a tela-título sem CDI; trace e 1º quadro conferidos com o Flycast) |
 | HH06 | CONCLUIDA | `docs/relatorios/HH06-RELATORIO.md` (roteiro até a 1ª área controlável em janela e headless; Builder do CDI ao Preview) |
 | HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH14; catraca; native/legacy/transitional; produto sem CDI) |
-| HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; dois discos; troca pela tampa lógica; falhas seguras) |
+| HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; os dois discos numa instalação só, sem troca; falhas seguras) |
 | HH09 | PLANEJADA | plano `docs/planos/HH09-PLANO.md`; execução aguarda aprovação do mantenedor (2026-10-25) |
 | HH10 | PENDENTE | — |
 | HH11 | PENDENTE | — |
@@ -231,17 +231,17 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 
 - gdFs 1.09: as funções por GDFS são chamadas diretas (layout do 1.05); as por nome e as de drive
   passam pela tabela do driver 0x8C185DAC (`*0x8C188D08`). Contratos no HH08-PLANO.
-- Adaptador gdFs nativo (`transitional/gdfs_adapter`, 17 slots) sobre `native/platform/data_files`
-  é o padrão; `--arquivos legado` fica para referência. P1: 4 838 blocos idênticos; P2: 0
-  setores de dado pelo GD-ROM HLE; hashes do roteiro iguais à referência do HH06.
-- Troca de disco: o jogo identifica o disco pelo `DISC\diskN.id` (0x8C09EBC4) e sai para o
-  BIOS com a tampa aberta (0x8C04E754 → 0x8C04E470). O host abre a tampa lógica (F8) e dá o boot
-  do outro disco; o Builder prepara `data\disc1` e `data\disc2`. Prompt real e continuidade:
-  HH11/HH16.
-- Falhas seguras: disco trocado (versão pelo hash do executável), ausente, arquivo alterado,
-  truncado ou ilegível, mod inválido.
-- Revisão Codex: 8 achados; 5 aceitos, 3 aceitos em parte (com rejeições motivadas no
-  relatório, seção 9).
+- Adaptador gdFs nativo (`transitional/gdfs_adapter`, 18 slots) sobre `native/platform/data_files`
+  é o padrão; `--arquivos legado` fica para referência (só o disco 1). P1: 4 838 blocos
+  idênticos; P2: 0 setores de dado pelo GD-ROM HLE; hashes do roteiro iguais à referência do HH06.
+- **Sem troca de disco** (mantenedor, 2026-10-25): o Builder junta os dois discos numa `data\`
+  (`arquivos.manifest`, variante do disco 2 em `disc\_DISCO2`); o provedor mostra o disco em que
+  o jogo está pela variável dele (0x8C15174C) e o drive está sempre pronto. A passagem real do
+  disco 1 para o 2 e o save do disco 2 são verificados no HH11/HH16.
+- Falhas seguras: dados de outro disco (versão pelo hash do executável), disco 2 de outra versão,
+  dados/variante/`DISK2.ID` ausentes, arquivo alterado/truncado/ilegível, mod inválido.
+- Revisões Codex: 8 achados na primeira entrega (5 aceitos, 3 em parte) e 4 no retrabalho
+  (aceitos); relatório, seção 9.
 
 ### Formatos dos discos (investigação 2026-10-24)
 

@@ -10,6 +10,8 @@
 #include "mods/mod_api.h"
 
 #include <algorithm>
+#include <map>
+#include <optional>
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
@@ -29,8 +31,10 @@ enum Status : int32_t { kIdle = 0, kComplete = 1, kBusy = 2, kError = 6 };
 constexpr int32_t kErrNotOpen = -10, kErrAlign = -14, kErrOrigin = -16, kErrRange = -17;
 constexpr int32_t kErrRead = -1;  // falha de E/S do host (o legado nao tem equivalente observado)
 // Estado do drive devolvido por gdFsGetDrvStat (0x8C15D150): o jogo (0x8C04E754) sai para o
-// BIOS com 6 (tampa aberta) ou 7 (sem disco); o legado devolve sempre 1 no roteiro.
-constexpr int32_t kDrivePause = 1, kDriveOpen = 6;
+// BIOS com 6 (tampa aberta) ou 7 (sem disco). Sem troca de disco, o drive esta sempre pronto (1,
+// o mesmo que o legado devolve no roteiro).
+constexpr int32_t kDrivePause = 1;
+constexpr const char* kDisc2Dir = "_DISCO2";  // variantes do disco 2 (hh-extract, merge_runtime_discs)
 
 struct Gdfs {
     nf::FileHandle file;
@@ -47,6 +51,7 @@ struct State {
     Addresses         a{};
     HandleTable<Gdfs> table{15};  // gen <= 15: o handle cabe em 24 bits sob a etiqueta 0x7E
     std::string       dir;        // diretorio corrente (nome logico, "" = raiz)
+    std::map<uint32_t, std::string> dirrecs;  // dirrec do guest (gdFsLoadDir) -> diretorio logico
     Stats             stats;
     // Pedido assincrono (gdFsReqRd32): os dados vao para o buffer na propria chamada, como no
     // GD-ROM HLE do legado (transferencia imediata; o P1 mostra os blocos entregues mesmo quando o
@@ -54,8 +59,9 @@ struct State {
     // GetTransStat) ou fazer outro pedido: so entao vira concluido (1). Os getters nao leem nada
     // (revisao Codex HH08): nenhum caminho depende de consulta para receber os dados.
     uint32_t busyToken = 0, busyTrans = 0;
-    // Estado logico do drive (gdFsGetDrvStat): o host abre a tampa para trocar de disco.
-    int32_t driveStat = kDrivePause;
+    // Discos juntos: a arvore tem DISC/DISK1.ID e DISC/DISK2.ID (sem troca de disco).
+    bool merged = false;
+    int  singleDisc = 1, lastDisc = 0;  // disco da arvore com um disco so; ultimo disco visto
 };
 
 State& st() {
@@ -138,16 +144,38 @@ void fOpen(Sh4Context* c) {
     GuestCall  call(c);
     const auto name = call.memory().cstring(c->r[4], 255);
     if (!name) return call.ret(0);
+    std::string base = s.dir;
     if (c->r[5] != 0) {
-        // Registro de diretorio carregado pelo legado (0x8C15D042 com dirrec, visto 1x em
-        // 0x8C02B6A0, "\Streams"): a funcao original abre e devolve um GDFS legado, que as demais
-        // funcoes reconhecem pelo endereco na RAM (revisao Codex HH08). Nenhuma abertura assim
-        // aparece no roteiro newgame_area1.
-        ++s.stats.legacyPassThrough;
-        return sh4_lookup_generated(s.a.open)(c);
+        // Registro de diretorio (dirrec) carregado por gdFsLoadDir (0x8C15D042; visto 1x em
+        // 0x8C02B6A0, "\Streams"). O adaptador guardou o diretorio dele: abre pelo provedor nativo,
+        // inclusive arquivos do disco 2 que o legado (so o disco 1) nao conhece. Dirrec desconhecido
+        // vai para a funcao original (GDFS legado) (revisao Codex HH08).
+        const auto it = s.dirrecs.find(c->r[5]);
+        if (it == s.dirrecs.end()) {
+            ++s.stats.legacyPassThrough;
+            return sh4_lookup_generated(s.a.open)(c);
+        }
+        base = it->second;
     }
-    const std::string logical = joinPath(s.dir, *name);
-    const auto        h       = s.fs->open(logical);
+    const std::string logical = joinPath(base, *name);
+    const std::string canon   = nf::canonical_path(logical);
+    // Visao do disco em que o jogo esta (discos juntos): DISKn.ID do outro disco nao existe, e
+    // as variantes do disco 2 substituem o arquivo do disco 1. A pasta das variantes e interna.
+    if (s.merged) {
+        const auto var = GuestMemory(c).load<uint32_t>(s.a.discVar);
+        s.lastDisc     = var && *var == 2 ? 2 : 1;
+    }
+    const bool hidden = canon.rfind(kDisc2Dir, 0) == 0 ||
+                        (s.merged && canon == (s.lastDisc == 2 ? "DISC/DISK1.ID" : "DISC/DISK2.ID"));
+    auto h = hidden ? native::Result<nf::FileHandle>(native::Error::NotFound) : s.fs->open(logical);
+    if (h && s.merged && s.lastDisc == 2) {
+        if (auto v = s.fs->open(std::string(kDisc2Dir) + "/" + canon)) {
+            s.fs->close(h.value());
+            h = v;
+        } else if (v.error() != native::Error::NotFound) {
+            h = v;  // variante presente mas recusada (alterada/ilegivel): o mesmo tratamento abaixo
+        }
+    }
     if (!h && (h.error() == native::Error::Corrupt || h.error() == native::Error::Io)) {
         // arquivo do disco alterado ou truncado (HH08.6) ou ilegivel no Windows (permissao,
         // bloqueio): parar com mensagem, nunca seguir como se o arquivo nao existisse
@@ -181,13 +209,10 @@ void fOpen(Sh4Context* c) {
     call.ret(kTokenTag | t);
 }
 
-// gdFsChangeDir (0x8C15C7A0 -> 0x8C15D042(nome, 0)): (nome) -> 0, ou -1 sem o diretorio.
-void fChangeDir(Sh4Context* c) {
-    State&     s = st();
-    GuestCall  call(c);
-    const auto name = call.memory().cstring(c->r[4], 255);
-    if (!name) return call.ret(uint32_t(-1));
-    std::string next = joinPath(s.dir, *name);
+// Diretorio logico normalizado a partir do corrente; vazio se nao existe ("" = raiz existe).
+std::optional<std::string> resolveDir(const std::string& name) {
+    State&      s    = st();
+    std::string next = joinPath(s.dir, name);
     std::string norm;  // ".." sobe um nivel
     for (size_t i = 0; i <= next.size();) {
         const size_t      j    = std::min(next.find_first_of("\\/", i), next.size());
@@ -198,10 +223,32 @@ void fChangeDir(Sh4Context* c) {
     }
     if (!norm.empty() && !s.fs->list(norm)) {
         std::fprintf(stderr, "[arquivos] diretorio nao encontrado: %s\n", norm.c_str());
-        return call.ret(uint32_t(-1));
+        return std::nullopt;
     }
-    s.dir = norm;
+    return norm;
+}
+
+// gdFsChangeDir (0x8C15C7A0 -> 0x8C15D042(nome, 0)): (nome) -> 0, ou -1 sem o diretorio.
+void fChangeDir(Sh4Context* c) {
+    GuestCall  call(c);
+    const auto name = call.memory().cstring(c->r[4], 255);
+    const auto dir  = name ? resolveDir(*name) : std::nullopt;
+    if (!dir) return call.ret(uint32_t(-1));
+    st().dir = *dir;
     call.ret(0);
+}
+
+// gdFsLoadDir (stub 0x8C15D042 -> tabela[32]): (nome, dirrec). dirrec 0 = ChangeDir. Com dirrec,
+// a funcao original preenche o registro (o jogo pode le-lo) e o adaptador guarda o diretorio,
+// para os gdFsOpen(nome, dirrec) seguintes abrirem pelo provedor nativo.
+void fLoadDir(Sh4Context* c) {
+    if (c->r[5] == 0) return fChangeDir(c);
+    State&     s    = st();
+    const auto name = GuestMemory(c).cstring(c->r[4], 255);
+    const auto dir  = name ? resolveDir(*name) : std::nullopt;
+    const uint32_t rec = c->r[5];
+    sh4_lookup_generated(s.a.loadDir)(c);
+    if (dir) s.dirrecs[rec] = *dir;
 }
 
 void fClose(Sh4Context* c) {
@@ -346,7 +393,7 @@ void fGetErr(Sh4Context* c) {
 
 // gdFsGetDrvStat (stub 0x8C15D150 -> tabela[84]): () -> estado do drive. Nativo: o estado logico
 // do host (pausa, ou tampa aberta para a troca de disco); nada do drive do legado.
-void fDriveStat(Sh4Context* c) { GuestCall(c).ret(uint32_t(st().driveStat)); }
+void fDriveStat(Sh4Context* c) { GuestCall(c).ret(uint32_t(kDrivePause)); }
 
 // Funcoes internas sem equivalente nativo: um handle nativo aqui e erro de integracao, nao dado.
 template <int Which>
@@ -367,6 +414,7 @@ std::vector<std::pair<uint32_t, Sh4Func>> functions(const Addresses& a) {
     return {
         {a.open, &fOpen},
         {a.changeDir, &fChangeDir},
+        {a.loadDir, &fLoadDir},
         {a.close, &fClose},
         {a.getFileSize, &fGetFileSize},
         {a.getFileSctSize, &fGetFileSctSize},
@@ -405,10 +453,19 @@ void install(BoundaryRegistry& registry, nf::IFileSystem& fs, const Addresses& a
     s.fs = &fs;
     s.a  = a;
     s.dir.clear();
+    s.dirrecs.clear();
     s.table.clear();
     s.busyToken = 0;
     s.stats        = {};
-    s.driveStat    = kDrivePause;
+    auto has = [&](const char* n) {
+        const auto h = fs.open(n);
+        if (h) fs.close(h.value());
+        return bool(h);
+    };
+    const bool d1 = has("DISC/DISK1.ID"), d2 = has("DISC/DISK2.ID");
+    s.merged     = d1 && d2;
+    s.singleDisc = d2 && !d1 ? 2 : 1;
+    s.lastDisc   = s.merged ? 1 : s.singleDisc;
     for (const auto& [addr, fn] : fns) {
         if (!sh4_lookup_generated(addr)) continue;
         registry.add(addr, dcmap::Subsystem::Files, "gdFs");
@@ -436,7 +493,6 @@ void check_sizes(const nf::DataFileSystem& fs) {
 
 Stats stats() { return st().stats; }
 
-void open_lid() { st().driveStat = kDriveOpen; }
-bool lid_open() { return st().driveStat == kDriveOpen; }
+int current_disc() { return st().fs ? st().lastDisc : 0; }
 
 } // namespace hh::transitional::gdfs

@@ -17,6 +17,12 @@
 // Um GDFS legado (ponteiro na RAM) que chegue a uma funcao migrada vai para a funcao original.
 // Um handle nativo que chegue a uma funcao interna sem equivalente nativo (espera, PIO,
 // inicializacao do GDFS) e erro fatal com mensagem: nunca leitura silenciosa de memoria.
+//
+// Discos juntos (HH08, sem troca de disco): a arvore de dados tem os dois discos. O disco
+// "inserido" e o disco em que o jogo esta: a variavel do proprio jogo 0x8C15174C (gravada pela
+// checagem do DISKn.ID, 0x8C09EBC4, e pelo comando de script 0x8C02A974 na passagem para o disco
+// 2). Com 2, o jogo ve DISC/DISK2.ID (e nao o DISK1.ID) e as variantes do disco 2
+// (_DISCO2/<caminho>); a checagem acha o disco 2 sem pedir troca. O drive esta sempre pronto.
 #include "boundary_registry.h"
 #include "platform/data_files.h"
 #include "platform/files.h"
@@ -30,13 +36,15 @@ namespace hh::transitional::gdfs {
 struct Addresses {
     uint32_t open, changeDir, close, getFileSize, getFileSctSize, getFileFad, seek, tell, eof, setTransMode,
         read, reqPio, reqRd32, wait, getStat, getTransStat, stop, getErr, initGdfs, driveStat;
+    uint32_t discVar;  // variavel do jogo: disco atual (0/1 = disco 1, 2 = disco 2)
+    uint32_t loadDir;  // gdFsLoadDir (stub, tabela[32]): (nome, dirrec)
 };
 
 // Head Hunter (hedhunter_v1006_a/b: o executavel e o mesmo nos dois discos fora de um dword).
 constexpr Addresses kHeadHunter = {
     0x8C15D09A, 0x8C15C7A0, 0x8C15C7B8, 0x8C15C7F0, 0x8C15C80A, 0x8C15C824, 0x8C15C83E, 0x8C15C88A,
     0x8C15C8A0, 0x8C15C8C8, 0x8C15C8E2, 0x8C15C970, 0x8C15CA48, 0x8C15C6B4, 0x8C15CD68, 0x8C15CD80,
-    0x8C15CD96, 0x8C15CEC4, 0x8C15C746, 0x8C15D150,
+    0x8C15CD96, 0x8C15CEC4, 0x8C15C746, 0x8C15D150, 0x8C15174C, 0x8C15D042,
 };
 
 constexpr uint32_t kTokenTag = 0x7E000000;
@@ -58,10 +66,8 @@ struct Stats {
 };
 Stats stats();
 
-// Troca de disco (HH08.5): abre a tampa logica. O jogo le o estado do drive antes de cada
-// abertura de arquivo (0x8C04E754) e, com a tampa aberta, desliga os subsistemas e sai para o
-// BIOS (0x8C04E470); o host da o boot do outro disco. Fica aberta ate o proximo install().
-void open_lid();
-bool lid_open();
+// Disco que o jogo ve agora (1 ou 2); 0 sem install(). Com os dois discos na arvore, segue a
+// variavel do jogo; com um disco so, e esse disco.
+int current_disc();
 
 } // namespace hh::transitional::gdfs

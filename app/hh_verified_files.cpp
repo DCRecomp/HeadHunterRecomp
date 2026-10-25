@@ -30,6 +30,19 @@ VerifiedFileSystem::VerifiedFileSystem(nf::DataFileSystem& inner, const std::fil
     }
     if (expected_.empty()) throw std::runtime_error("manifesto sem arquivos: " + manifest.string());
     for (const auto& m : inner_.mods()) modded_.insert(m.logical);
+    // Presenca e tamanho de todos os arquivos ja no boot (rapido; o conteudo e conferido na
+    // primeira abertura): um arquivo do disco 2 ou uma variante ausente nunca vira "serve o do
+    // disco 1" em silencio (revisao Codex HH08).
+    for (const auto& [name, e] : expected_) {
+        if (modded_.count(name)) continue;
+        const auto h = inner_.open(name);
+        if (!h) throw std::runtime_error("arquivo do jogo ausente ou ilegivel: " + name + ". Refaca a instalacao com o Builder.");
+        const uint64_t size = inner_.size(h.value()).value();
+        inner_.close(h.value());
+        if (size != e.size)
+            throw std::runtime_error("arquivo do jogo com tamanho errado: " + name + " (" + std::to_string(size) +
+                                     ", esperado " + std::to_string(e.size) + "). Refaca a instalacao com o Builder.");
+    }
 }
 
 native::Result<nf::FileHandle> VerifiedFileSystem::open(std::string_view path) {

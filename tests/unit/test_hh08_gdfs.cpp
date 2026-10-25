@@ -73,7 +73,7 @@ constexpr gd::Addresses kA = gd::kHeadHunter;
 const uint32_t kAll[] = {kA.open,  kA.changeDir, kA.close,   kA.getFileSize, kA.getFileSctSize, kA.getFileFad,
                          kA.seek,  kA.tell,      kA.eof,     kA.setTransMode, kA.read,          kA.reqPio,
                          kA.reqRd32, kA.wait,    kA.getStat, kA.getTransStat, kA.stop,          kA.getErr,
-                         kA.initGdfs, kA.driveStat};
+                         kA.initGdfs, kA.driveStat, kA.loadDir};
 
 struct Guest {
     std::vector<Sh4FuncEntry> table;
@@ -186,10 +186,8 @@ HH_TEST(hh08_gdfs_adapter_contracts) {
     g.call(kA.close, h);
     HH_CHECK(g.call(kA.getStat, h) == uint32_t(-10) && g.call(kA.getFileSize, h, 0x8C100100) == 0);
     HH_CHECK(g.call(kA.read, h, 1, 0x8C200000) == uint32_t(-10));
-    // estado logico do drive: pausa (1); com a tampa aberta, 6 (o jogo sai para o BIOS)
-    HH_CHECK(g.call(kA.driveStat) == 1 && !gd::lid_open());
-    gd::open_lid();
-    HH_CHECK(g.call(kA.driveStat) == 6 && gd::lid_open());
+    // sem troca de disco: o drive esta sempre pronto (1); a arvore so tem o disco 1
+    HH_CHECK(g.call(kA.driveStat) == 1 && gd::current_disc() == 1);
     // inexistente: 0
     g.str(0x8C100010, "NAO.AHF");
     HH_CHECK(g.call(kA.open, 0x8C100010, 0) == 0 && gd::stats().notFound == 1);
@@ -234,4 +232,64 @@ HH_TEST(hh08_gdfs_adapter_requires_slots) {
     HH_CHECK(throwsWith([&] { gd::install(r, fsys); }, "nao tem slot"));
     HH_CHECK(r.count(transitional::Provider::Native) == 0);
     sh4_set_function_table(nullptr, 0);
+}
+
+// Discos juntos (sem troca de disco): o jogo ve o disco em que esta, pela propria variavel
+// 0x8C15174C. Disco 1: DISK1.ID e o arquivo comum; disco 2: DISK2.ID e a variante _DISCO2. A
+// pasta das variantes nunca aparece para o jogo.
+HH_TEST(hh08_gdfs_merged_discs_follow_game_variable) {
+    TempTree t;
+    t.write("disc/DISC/DISK1.ID", "1");
+    t.write("disc/DISC/DISK2.ID", "2");
+    t.write("disc/MOVIES/SCENE0.4XM", "um");
+    t.write("disc/_DISCO2/MOVIES/SCENE0.4XM", "dois!");
+    t.write("disc/AHFDATA/SO_DO_2.AHF", "x");
+    nf::DataFileSystem fsys(t.root / "disc");
+    Guest              g;
+    gd::install(g.registry, fsys);
+    auto opens = [&](const char* name) {
+        g.str(0x8C100010, name);
+        const uint32_t h = g.call(kA.open, 0x8C100010, 0);
+        if (h) g.call(kA.close, h);
+        return h != 0;
+    };
+    auto size = [&](const char* name) {
+        g.str(0x8C100010, name);
+        const uint32_t h = g.call(kA.open, 0x8C100010, 0);
+        if (!h) return uint32_t(0);
+        g.call(kA.getFileSize, h, 0x8C100100);
+        g.call(kA.close, h);
+        return g.u32(0x8C100100);
+    };
+    // variavel 0 (inicio) = disco 1
+    HH_CHECK(opens("/DISC/disk1.id;1") && !opens("/DISC/disk2.id;1") && size("/MOVIES/Scene0.4xm") == 2);
+    HH_CHECK(gd::current_disc() == 1 && opens("/AHFDATA/SO_DO_2.AHF") && !opens("/_DISCO2/MOVIES/SCENE0.4XM"));
+    // o jogo passa para o disco 2 (0x8C02A974 grava 2): sem troca, a checagem acha o disco 2
+    const uint32_t two = 2;
+    std::memcpy(g.ram.data() + 0x15174C, &two, 4);
+    HH_CHECK(!opens("/DISC/disk1.id;1") && opens("/DISC/disk2.id;1") && size("/MOVIES/Scene0.4xm") == 5);
+    HH_CHECK(gd::current_disc() == 2 && !opens("/_DISCO2/MOVIES/SCENE0.4XM"));
+    HH_CHECK(g.call(kA.driveStat) == 1);  // o drive nunca abre
+}
+
+// gdFsLoadDir com dirrec (revisao Codex HH08): a funcao original preenche o registro e o
+// adaptador guarda o diretorio; o gdFsOpen(nome, dirrec) seguinte abre pelo provedor nativo,
+// inclusive arquivo que so existe no disco 2. Dirrec desconhecido continua no legado.
+HH_TEST(hh08_gdfs_dirrec_opens_native) {
+    TempTree t;
+    t.write("disc/STREAMS/SO_DO_2.ADX", "abcd");
+    nf::DataFileSystem fsys(t.root / "disc");
+    Guest              g;
+    gd::install(g.registry, fsys);
+    g_legacyCalls = 0;
+    g.str(0x8C100000, "/Streams");
+    g.call(kA.loadDir, 0x8C100000, 0x8C100400);
+    HH_CHECK(g_legacyCalls == 1);  // o registro do guest foi preenchido pela funcao original
+    g.str(0x8C100010, "so_do_2.adx");
+    const uint32_t h = g.call(kA.open, 0x8C100010, 0x8C100400);
+    HH_CHECK(gd::is_native_handle(h) && g.call(kA.getFileSize, h, 0x8C100100) == 1 && g.u32(0x8C100100) == 4);
+    HH_CHECK(g.call(kA.open, 0x8C100010, 0x8C100800) == 0x1234 && g_legacyCalls == 2);  // dirrec desconhecido
+    // loadDir sem dirrec = ChangeDir nativo
+    g.str(0x8C100000, "/NADA");
+    HH_CHECK(g.call(kA.loadDir, 0x8C100000, 0) == uint32_t(-1) && g_legacyCalls == 2);
 }

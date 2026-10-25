@@ -134,4 +134,19 @@ std::string verify_runtime_data(hh::CdiImage& img, const std::filesystem::path& 
 // Vazio = ok.
 std::string check_runtime_files(const std::filesystem::path& dir, const ProgressFn& progress = {});
 
+// HH08 (instalacao unica, sem troca de disco): junta os dados do disco 2 (`dir2`, preparados por
+// prepare_runtime_data) nos do disco 1 (`dir1`). Os arquivos so do disco 2 entram em
+// <dir1>/disc/<caminho>; os iguais nos dois discos ficam uma vez; os que diferem (fora o
+// executavel de boot, que vem do disco 1) ficam em <dir1>/disc/_DISCO2/<caminho>, a variante que
+// o provedor nativo entrega quando o jogo esta no disco 2. Escreve <dir1>/arquivos.manifest
+// (tamanho e SHA-256 de cada arquivo da arvore junta). `hardlinks`: liga em vez de mover (dados
+// de desenvolvimento; o Builder move). Lanca RuntimeDataError (versao errada, conflito de nome).
+constexpr const char* kMergedManifest = "arquivos.manifest";
+constexpr const char* kDisc2Variants  = "_DISCO2";
+struct MergeResult {
+    size_t      added = 0, identical = 0, variants = 0;
+    std::string version1, version2;
+};
+MergeResult merge_runtime_discs(const std::filesystem::path& dir1, const std::filesystem::path& dir2, bool hardlinks);
+
 } // namespace hh::disc

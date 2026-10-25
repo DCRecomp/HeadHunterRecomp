@@ -31,16 +31,15 @@ struct HostOptions {
     bool                  realtime    = false;  // segura o jogo em 59,94 VBlanks por segundo
     std::vector<uint32_t> watch;          // diagnostico: entradas nessas funcoes
     FileProvider          files = FileProvider::Native;  // --arquivos legado|nativo (nativo: HH08, P1/P2)
-    // HH08.5: troca de disco. Abre a tampa logica nesse VBlank (> 0) ou quando `lidRequest` ficar
-    // true (tecla na janela); o jogo sai para o BIOS e o chamador da o boot do outro disco.
-    // So com o provedor nativo de arquivos (o estado do drive e dele).
-    uint64_t                 lidOpenAt  = 0;
-    const std::atomic<bool>* lidRequest = nullptr;
-    // HH08: mods de recursos (mesma arvore de data\discN\disc; qualquer tamanho), so no provedor
+    // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;
-    // HH08: versao esperada do disco (hh::disc_version); o boot confere pelo hash do executavel.
+    // HH08: versao esperada do executavel de boot (a do disco 1, hh::kInstallBootVersion),
+    // conferida pelo hash; vazio = qualquer versao aceita.
     std::string expectVersion;
+    // HH08: lista de arquivos conferida pelo provedor nativo (arquivos.manifest dos discos
+    // juntos, ou disc.manifest); vazio = <data>\disc.manifest.
+    std::filesystem::path filesManifest;
     // Chamado na thread do jogo a cada VBlank, depois do quadro exibido.
     std::function<void(const HostFrame&)> onFrame;
     const std::atomic<bool>*              stop = nullptr;  // pedido de parada (janela fechada)
@@ -53,7 +52,6 @@ struct HostResult {
     std::string error;       // HostEnd::Error
     uint32_t    exitCode = 0;  // HostEnd::GameExit
     uint64_t    vblanks = 0, nonBlank = 0, firstNonBlank = 0;
-    uint64_t    lidOpenedAt = 0;  // VBlank em que a tampa logica abriu (0 = nao abriu)
 };
 
 // Executa o jogo ate o limite, a parada pedida, a saida do jogo ou um erro fatal. A entrada

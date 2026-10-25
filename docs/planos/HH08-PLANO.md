@@ -1,4 +1,7 @@
-# HH08 — Plano detalhado: arquivos nativos e troca dos dois discos sem CDI em runtime
+# HH08 — Plano detalhado: arquivos nativos e os dois discos numa instalação só
+
+> Revisão de escopo (mantenedor, 2026-10-25): no produto nativo não existe troca de disco; os
+> dois discos ficam juntos. O texto abaixo da seção "Subetapas" sobre troca é histórico.
 
 Validação mínima: **V2**. Critério de saída (ROADMAP): as rotas dos dois discos funcionam sem
 acesso a setores nem à imagem; disco errado ou corrompido falha com mensagem segura.
@@ -129,8 +132,8 @@ O player de 4X Movie (0x8C124CCC) abre `Scene*.4xm` diretamente pelo gdFsOpen.
 | HH08.2 ✔ | `native/platform/data_files` (portado do N1 do BS): índice de `data\disc\`, nomes lógicos sem `;1`, sem LBA/FAD; mods em `mods\assets\` de qualquer tamanho | Testes unitários (`canonical_path`, abrir/ler/listar, mods válidos/ilegíveis/LEIA-ME) |
 | HH08.3 ✔ | `transitional/gdfs_adapter` + `[native] slots` das entradas gdFs; `--arquivos legado|nativo`; ReqRd32 assíncrono pelo servidor gdFs (achado ALTO do Codex no BS) | Contratos do adaptador; seleção de provedor; sem slot = erro claro |
 | HH08.4 ✔ | Portão P1: mesma sequência global `(arquivo, offset, SHA-256)` no legado (log do GD-ROM HLE) e no nativo (log do adaptador); aliases agrupados por conteúdo | Sequência idêntica no roteiro; 0 setores de dados de arquivo pelo GD-ROM HLE no modo nativo (P2) |
-| HH08.5 ✔ | Dois discos: Builder prepara `data\disc1` e `data\disc2` (cada um conferido contra o seu CDI); estado lógico de disco no nativo (bandeja/troca); `DISKn.ID` e o dword por disco tratados pelo provedor | Feito: tampa lógica → o jogo sai pelo próprio caminho → boot do outro disco; disco 2 nativo; identidade pela versão do executável. O prompt real do fim do disco 1 e a aceitação do `DISK2.ID` com progresso ficam com o HH11/HH16 (saves), ver relatório seção 6 |
-| HH08.6 ✔ | Disco errado ou corrompido | Casos negativos: disco 1 no lugar do 2, arquivo alterado e dados ausentes falham com mensagem segura, sem travar nem ler setor |
+| HH08.5 ✔ | Os dois discos numa instalação só, sem troca de disco (revisão de escopo do mantenedor, 2026-10-25): o Builder prepara e confere os dois CDIs e os junta (`hh-extract merge_runtime_discs`; variante do disco 2 em `disc\_DISCO2`); o provedor mostra o disco em que o jogo está pela variável 0x8C15174C | Roteiro completo na instalação junta igual à referência; unitário da visão pela variável; a passagem real do disco 1 para o 2 fica para verificação no HH11/HH16 (relatório, seção 6) |
+| HH08.6 ✔ | Instalação errada ou corrompida | Pasta só com o disco 2, disco 2 de outra versão, versão falsificada, dados/variante/`DISK2.ID` ausentes, arquivo alterado/truncado/ilegível e mod inválido falham com mensagem segura, sem travar nem ler setor |
 | HH08.7 ✔ | Produto sem caminho de setores para arquivos de jogo (o boot e o init do gdFs ficam no legado até o HH09/HH15, como no BS) | Teste de fechamento (catraca: `fronteira.provedor.legado` cai); mapa do linker sem CDI |
 | HH08.8 ✔ | Relatório + revisão Codex + commit | — |
 

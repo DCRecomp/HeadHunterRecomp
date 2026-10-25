@@ -9,6 +9,7 @@ add_library(hh_extract_core STATIC
   src/scramble.cpp
   src/runtime_data.cpp
   src/runtime_data_cdi.cpp
+  src/runtime_data_merge.cpp
 )
 target_include_directories(hh_extract_core PUBLIC include)
 target_compile_features(hh_extract_core PUBLIC cxx_std_20)
