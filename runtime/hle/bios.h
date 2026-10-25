@@ -21,10 +21,14 @@ constexpr uint32_t kBiosVecMisc     = 0x8C0000E0;
 // e pela sysinfo); aqui o boot nativo a monta (0xFF, mais as variaveis, vetores, stubs e a tabela
 // 0x8C003174 medidos, bios_entry_state.inc) e o BIOS HLE e o dono. Dentro dela, longe dessas
 // estruturas, fica a area de dados do runtime nativo: memoria guest que o host precisa expor ao
-// jogo e que nao pertence a nenhuma estrutura do SDK. Reserva conferida no N3-2
-// (docs/N3-2-RELATORIO.md): o jogo nao escreve na faixa (dumps de gameplay) e nao tem literal que
-// aponte para ela; quem a usa confere a cada passada que ninguem mais a escreveu.
-constexpr uint32_t kHleNativeAreaBase = 0x8C004000;
+// jogo e que nao pertence a nenhuma estrutura do SDK. HH10 (revisao Codex): a faixa 0x8C004000 do Blue
+// Stinger NAO serve no HH: o executavel tem 4 literais nela (0x8C1254FC = 0x8C004020, comparada com
+// "Katana Debug Adapter" por 0x8C1254E0; 0xAC004000 em 0x8C180BB8/C14/C48, chamada pelo tratador de
+// excecao do SDK atras de um bra), a area do adaptador de depuracao. 0x8C006000: 0 literais de
+// 0x8C004100 a 0x8C007FFF (varredura dos dois 1ST_READ.BIN), longe das estruturas do boot (ate
+// 0x8C0031DC); o legado nao a altera em nenhum VBlank do roteiro (portao hh10_controles) e quem a usa
+// confere a cada passada que ninguem mais a escreveu.
+constexpr uint32_t kHleNativeAreaBase = 0x8C006000;
 constexpr uint32_t kHleNativeAreaSize = 0x100;
 // Alocacoes na area nativa:
 constexpr uint32_t kHleNativePadInfo     = kHleNativeAreaBase;  // 0x78 B: info do controle da porta A (N3-2)

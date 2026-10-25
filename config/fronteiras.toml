@@ -1968,7 +1968,7 @@ endereco = 0x8C15DB3A
 tipo = "direta"
 familia = "shinobi"
 subsistemas = ["sistema"]
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
@@ -1976,7 +1976,7 @@ endereco = 0x8C15DC40
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]

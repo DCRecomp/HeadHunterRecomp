@@ -150,6 +150,10 @@ slots = [
   0x8C15C6B4, 0x8C15C970, 0x8C15C746,
   0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): drive sempre pronto (sem troca de disco)
   0x8C15D042,  # gdFsLoadDir (stub, tabela[32]): diretorio dos dirrec pelo provedor nativo
+  # HH10: controles (pd 1.50; transitional/pad_adapter)
+  0x8C15DB3A,  # servidor pd (chamado pelo jogo em 0x8C0915F8)
+  0x8C15DC40,  # pdGetPeripheral
+  0x8C17F0AA,  # disparo do DMA da camada per (ponto de amostragem)
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

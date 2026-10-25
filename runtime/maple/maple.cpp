@@ -265,6 +265,10 @@ bool maple_write(Sh4Context* c, uint32_t a, uint32_t v) {
         warned = true;
     }
     if (p == kMdst) {
+        // HH10: o pd 1.50 do HH so ESCREVE o MDST (disparo do DMA pela camada per, 8C17F0AA); a transicao
+        // vale no primeiro acesso, leitura ou escrita, depois do VBlank-In: antes da amostra nos dois
+        // provedores de controles (legado: GET_CONDITION no runDma abaixo; nativo: depois do disparo)
+        if (g_transitionArmed) g_transitionArmed = false, input_transition_tick();
         if (g_due && time_now(c) >= g_due) {  // fim anterior ainda nao visto pelo controlador
             holly_intc_raise(kIstMapleDma);
             g_due = 0;

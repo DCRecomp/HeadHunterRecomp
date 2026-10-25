@@ -18,3 +18,7 @@ target_link_libraries(hh_native_files PUBLIC hh_native_api)
 # HH09: relogio logico, fila de eventos e monitor de progresso (portados do N2a/N2b do BS).
 add_library(hh_native_time STATIC platform/clock.cpp platform/event_queue.cpp platform/progress.cpp)
 target_link_libraries(hh_native_time PUBLIC hh_native_api)
+
+# HH10: entrada nativa (SDL3/XInput, mapa de acoes em TOML, perfis), portada do N3 do BS.
+add_library(hh_native_input STATIC platform/input_map.cpp platform/input_system.cpp)
+target_link_libraries(hh_native_input PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus xinput)

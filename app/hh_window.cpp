@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 // HeadHunter (Preview, HH06): janela SDL3 sobre o nucleo de execucao (hh_host). O jogo roda
 // numa thread propria no ritmo do Dreamcast (59,94 VBlanks por segundo); a janela apresenta o
-// quadro mais recente na frequencia do monitor, com area logica 4:3 e barras. Entrada:
-// teclado (eventos da janela) + XInput; com HH_INPUT_SCRIPT, so o roteiro (modo espectador).
+// quadro mais recente na frequencia do monitor, com area logica 4:3 e barras. Entrada (HH10,
+// --controles nativo, padrao): nucleo nativo (native/platform/input.h) com o teclado da janela e
+// os controles do SDL3 Gamepad (ou XInput, se o controles.toml pedir), mapa em controles.toml ao
+// lado do executavel; no legado, teclado + XInput do runtime. Com HH_INPUT_SCRIPT, so o roteiro
+// (modo espectador).
 //
 //   HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
-//              [--arquivos legado|nativo] [--mods <pasta>]
+//              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
+//              [--mods <pasta>]
 // Os dois discos estao juntos em data\ (HH08): nao ha troca de disco; o jogo continua do disco
 // 1 para o 2 sozinho.
 // --log grava "quadro N: LxA hash H" a cada K VBlanks (mesmo hash do hh-run): prova que a
@@ -18,6 +22,8 @@
 #include "hh_host.h"
 
 #include "input/input.h"
+#include "input_bridge.h"
+#include "platform/input.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -27,6 +33,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -61,9 +70,68 @@ struct Shared {
     uint64_t              seq = 0;
 };
 
+namespace ni = hh::native::input;
+
+std::string readFile(const fs::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    if (!f) throw std::runtime_error("nao foi possivel ler " + p.string());
+    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+// Controles pelo SDL3 (HH10, como no Blue Stinger N3-1): o SDL traz o banco de mapeamentos de
+// Xbox, PlayStation, Switch e genericos; os nomes de botoes e eixos do SDL sao os do controles.toml.
+void gamepadEvent(ni::InputSystem& sys, const SDL_Event& e) {
+    switch (e.type) {
+    case SDL_EVENT_GAMEPAD_ADDED:
+        if (SDL_Gamepad* g = SDL_OpenGamepad(e.gdevice.which)) {
+            const char* n        = SDL_GetGamepadName(g);
+            char        guid[33] = {};  // perfis por GUID ([perfis."<guid>"] no controles.toml)
+            SDL_GUIDToString(SDL_GetGamepadGUIDForID(e.gdevice.which), guid, sizeof guid);
+            sys.gamepad_added(e.gdevice.which, n ? n : "controle", guid);
+        }
+        break;
+    case SDL_EVENT_GAMEPAD_REMOVED:
+        sys.gamepad_removed(e.gdevice.which);
+        if (SDL_Gamepad* g = SDL_GetGamepadFromID(e.gdevice.which)) SDL_CloseGamepad(g);
+        break;
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+        if (const char* n = SDL_GetGamepadStringForButton(SDL_GamepadButton(e.gbutton.button)))
+            sys.gamepad_button(e.gbutton.which, n, e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+        break;
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+        if (const char* n = SDL_GetGamepadStringForAxis(SDL_GamepadAxis(e.gaxis.axis))) {
+            const bool trig = e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || e.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+            sys.gamepad_axis(e.gaxis.which, n, trig ? ni::trigger_from_s16(e.gaxis.value) : ni::axis_from_s16(e.gaxis.value));
+        }
+        break;
+    default: break;
+    }
+}
+
 fs::path exeDir() {
     const char* base = SDL_GetBasePath();
     return base ? fs::path(reinterpret_cast<const char8_t*>(base)) : fs::current_path();
+}
+
+// controles.toml ao lado do executavel (criado com o texto padrao se faltar). Arquivo com erro:
+// valem os controles padrao, com aviso.
+ni::ActionMap loadActionMap() {
+    const fs::path  path = exeDir() / "controles.toml";
+    std::error_code ec;
+    if (!fs::exists(path, ec)) {
+        std::ofstream out(path, std::ios::binary);
+        out << ni::ActionMap::default_text();
+    }
+    ni::ActionMap m = ni::ActionMap::defaults();
+    if (fs::exists(path, ec)) {
+        std::string err;
+        auto        parsed = ni::ActionMap::parse(readFile(path), &err);
+        if (parsed) m = parsed.value();
+        else std::fprintf(stderr, "[controles] %s tem um erro e foi ignorado (valem os padrao): %s\n",
+                          path.string().c_str(), err.c_str());
+    }
+    return m;
 }
 
 } // namespace
@@ -94,10 +162,13 @@ int main(int argc, char** argv) {
                        : t == "experimental" ? hh::TimeProvider::Experimental : hh::TimeProvider::Legacy;
         }
         else if (a == "--mods" && i + 1 < argc) opt.modsDir = argv[++i];
+        else if (a == "--controles" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
+            opt.controls = std::string(argv[++i]) == "nativo" ? hh::ControlsProvider::Native : hh::ControlsProvider::Legacy;
         else {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
                                  "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
-                                 "[--mods <pasta>]\n");
+                                 "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--mods <pasta>]\n");
             return 2;
         }
     }
@@ -130,9 +201,30 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Entrada: roteiro (espectador) ou teclado da janela + XInput.
-    hh::KeyEventInput* keys = nullptr;
-    if (std::getenv("HH_INPUT_SCRIPT") || headless) {
+    // Entrada. Nativo: InputSystem com o roteiro (espectador; ponte do runtime/input), nenhum
+    // dispositivo no headless (controle presente e neutro) ou o teclado da janela + controles.
+    // Legado: roteiro ou teclado da janela + XInput do runtime/input.
+    hh::KeyEventInput*               keys = nullptr;
+    std::unique_ptr<ni::InputSystem> input;
+    const char*                      script = std::getenv("HH_INPUT_SCRIPT");
+    if (opt.controls == hh::ControlsProvider::Native) {
+        try {
+            if (script && *script) {
+                input = std::make_unique<ni::InputSystem>();
+                input->set_test_source(hh::transitional::input_bridge::from_runtime_source(
+                    std::shared_ptr<hh::InputSource>(hh::make_scripted_input(readFile(script)))));
+            } else if (headless) {
+                input = std::make_unique<ni::InputSystem>();
+            } else {
+                input = std::make_unique<ni::InputSystem>(loadActionMap());
+                if (input->map().options.backend == "xinput") input->enable_xinput();
+            }
+        } catch (const std::exception& e) {
+            std::printf("PARADA: %s\n", e.what());
+            return 1;
+        }
+        opt.input = input.get();
+    } else if (script || headless) {
         hh::input_configure_from_env();
     } else {
         auto k = hh::make_key_event_input();
@@ -167,7 +259,7 @@ int main(int argc, char** argv) {
         opt.realtime = false;
         result       = hh::host_run(opt);
     } else {
-        if (!SDL_Init(SDL_INIT_VIDEO)) {
+        if (!SDL_Init(SDL_INIT_VIDEO | (input ? SDL_INIT_GAMEPAD : 0))) {
             std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
             return 1;
         }
@@ -195,12 +287,15 @@ int main(int argc, char** argv) {
                 if (e.type == SDL_EVENT_QUIT) running = false;
                 else if ((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && !e.key.repeat) {
                     if (e.key.key == SDLK_ESCAPE && e.type == SDL_EVENT_KEY_DOWN) running = false;
-                    else if (keys) {
-                        const std::string n = keyName(e.key.key);
-                        if (!n.empty()) keys->key(n, e.type == SDL_EVENT_KEY_DOWN);
+                    else if (const std::string n = keyName(e.key.key); !n.empty()) {
+                        if (input) input->key(n, e.type == SDL_EVENT_KEY_DOWN);
+                        else if (keys) keys->key(n, e.type == SDL_EVENT_KEY_DOWN);
                     }
-                } else if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST && keys) {
-                    keys->releaseAll();
+                } else if (e.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+                    if (input) input->release_keyboard();
+                    else if (keys) keys->releaseAll();
+                } else if (input) {
+                    gamepadEvent(*input, e);
                 }
             }
             {

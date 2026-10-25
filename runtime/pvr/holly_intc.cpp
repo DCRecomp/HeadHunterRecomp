@@ -54,6 +54,9 @@ void update(uint64_t now) {
     if (vblankIn && (reg(kIstNrm) & kIstVblankIn)) ++g_vblankFused;
     if (vblankIn) reg(kIstNrm) |= kIstVblankIn;
     if (vblankIn) ++g_vblanks, g_vblankAt = now;
+    // HH10: arma a transicao injetada dos roteiros "indice transicao" (e o negativo amostra_vblank_in);
+    // sem esta chamada o indice ficava em 0 no HH (medido: 1 543 leituras, transicao 0)
+    if (vblankIn) maple_vblank_in();
     if (vblankIn && g_event_trace) event_trace(TraceEvent::VBlank, now, uint32_t(g_vblanks));
     if (vblankIn && g_clock_log) clock_log_vblank(g_vblanks);
     if (due & kDueVblankOut) reg(kIstNrm) |= kIstVblankOut;

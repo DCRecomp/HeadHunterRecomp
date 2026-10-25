@@ -16,8 +16,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH14; catraca; native/legacy/transitional; produto sem CDI) |
 | HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; os dois discos numa instalação só, sem troca; falhas seguras) |
 | HH09 | CONCLUIDA | `docs/relatorios/HH09-RELATORIO.md` (tempo nativo estável padrão: ordem, quadros e relógios idênticos ao legado; 7 esperas declaradas; experimental opcional) |
-| HH10 | EM_ANDAMENTO | — |
-| HH11 | PENDENTE | — |
+| HH10 | CONCLUIDA | `docs/relatorios/HH10-RELATORIO.md` (controles nativos padrão: pd 1.50 sem Maple; traço do PDS, info/name e quadros idênticos ao legado, inclusive desconexão; janela com teclado + SDL3 Gamepad e `controles.toml`) |
+| HH11 | EM_ANDAMENTO | — |
 | HH12 | PENDENTE | — |
 | HH13 | PENDENTE | — |
 | HH14 | PENDENTE | — |
@@ -255,6 +255,18 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Catraca `tempo.consumidores.ciclos` 2 → 0 (artefato do classificador), varrendo também
   `transitional/`.
 
+### HH10 (2026-10-25)
+
+- Portados do N3 do BS: `native/platform/{input.h,input_map,input_system}`, `transitional/{input_bridge,
+  pad_contract,pad_adapter,pad_probe}`; contrato refeito para o `pd Ver 1.50` (gatilhos com histerese,
+  travas na RAM do SDK). `--controles legado|nativo`; nativo padrão (C1–C9).
+- Sonda de contrato: 0 divergências em 54 264 unidades; matriz: 0 diferenças em 53 520 casos contra
+  o gerado. Coleta da amostra no próprio disparo (regra medida no HH, diferente do BS).
+- Corrigido: a transição injetada dos roteiros `indice transicao` nunca andava no HH (arma no VBlank-In,
+  conta no primeiro acesso ao MDST). Área nativa do BIOS HLE movida de 0x8C004000 (área do adaptador
+  de depuração, 4 literais no executável) para 0x8C006000.
+- Revisão Codex: 11 achados, todos aceitos e corrigidos (relatório, seção 9).
+
 ### Formatos dos discos (investigação 2026-10-24)
 
 Relatório e scripts em `analysis/formatos/` (privado). Verificado em todos
@@ -288,7 +300,7 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir pelo **HH10** (controles nativos) e as etapas seguintes. O teste da passagem real do
+Prosseguir pelo **HH11** (saves nativos e continuidade entre discos) e as etapas seguintes. O teste da passagem real do
 disco 1 para o 2 fica para depois (HH11/HH16). Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando

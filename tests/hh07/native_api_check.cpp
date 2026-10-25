@@ -108,14 +108,14 @@ int main() {
     CHECK(!none && files::FileHandle{5} == files::FileHandle{5});
 
     MemFiles fs;
-    const char text[] = "BLUE STINGER";
+    const char text[] = "TESTE NATIVO";
     fs.data["\\DATA\\TESTE.BIN"].assign(reinterpret_cast<const std::byte*>(text),
                                         reinterpret_cast<const std::byte*>(text) + 12);
     files::IFileSystem& ifs = fs;
     auto                h   = ifs.open("\\DATA\\TESTE.BIN");
     CHECK(h && ifs.size(h.value()).value() == 12);
     std::byte buf[4];
-    CHECK(ifs.read(h.value(), 5, buf).value() == 4 && std::memcmp(buf, "STIN", 4) == 0);
+    CHECK(ifs.read(h.value(), 5, buf).value() == 4 && std::memcmp(buf, " NAT", 4) == 0);
     auto rq = ifs.read_async(h.value(), 0, buf);
     CHECK(rq && ifs.poll(rq.value()).state == files::RequestState::Done);
     ifs.close(h.value());
@@ -134,9 +134,10 @@ int main() {
     CHECK(rd.submit(frame) && dev.frames == 1 && dev.draws == 1);
     CHECK(rd.create_texture({0, 0}, {}).error() == Error::Unsupported);
 
-    input::PadState pad;
+    input::ControllerState pad;  // HH10: contrato do nucleo de entrada do BS N3
     pad.buttons = input::A | input::Start;
-    CHECK((pad.buttons & input::Start) && !(pad.buttons & input::B));
+    pad.axis(input::Axis::StickY) = 1.0f;
+    CHECK((pad.buttons & input::Start) && !(pad.buttons & input::B) && pad.axis(input::Axis::StickY) == 1.0f);
     saves::SaveInfo si{"HEADHUNT.000", "HEAD HUNTER", 10, 0, 1};
     CHECK(si.blocks == 10);
     constexpr time::TimeBase tb;  // campo NTSC exato (HH09: base de tempo do N2a do BS)

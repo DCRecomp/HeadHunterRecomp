@@ -211,3 +211,25 @@ if(HH_GENERATED_DIR)
             $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh09_tempo PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 2400)
 endif()
+
+# HH10.1: matriz do contrato do decodificador do pd 1.50 contra o codigo gerado (f_8C15D900).
+if(HH_GENERATED_DIR AND TARGET hh_host)
+  add_executable(hh10_pad_matrix unit/main.cpp unit/test_hh10_pad_matrix.cpp)
+  target_include_directories(hh10_pad_matrix PRIVATE unit)
+  target_link_libraries(hh10_pad_matrix PRIVATE hh_host)
+  add_test(NAME hh10_pad_matrix COMMAND hh10_pad_matrix)
+endif()
+
+# HH10.2/10.3: nucleo nativo de entrada e adaptador do pd 1.50.
+add_executable(hh10_input_tests unit/main.cpp unit/test_hh10_input.cpp unit/test_hh10_pad_adapter.cpp)
+target_include_directories(hh10_input_tests PRIVATE unit)
+target_link_libraries(hh10_input_tests PRIVATE hh_transitional)
+add_test(NAME hh10_input_tests COMMAND hh10_input_tests)
+
+# HH10: portoes dos controles nativos (C1/C2/C3/C8 e negativos; HH_DATA_DIR).
+if(HH_GENERATED_DIR)
+  add_test(NAME hh10_controles
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh10_controles.py
+            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR} ${HH_GENERATED_DIR})
+  set_tests_properties(hh10_controles PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3000)
+endif()

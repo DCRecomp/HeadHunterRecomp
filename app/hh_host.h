@@ -11,6 +11,10 @@
 #include <string>
 #include <vector>
 
+namespace hh::native::input {
+class InputSystem;
+}
+
 namespace hh {
 
 struct HostFrame {
@@ -27,6 +31,10 @@ enum class FileProvider { Legacy, Native };
 // Nativo: relogio logico e filas de eventos (transitional/time_adapter), entrega nos mesmos pontos.
 // Experimental: o tempo so anda nas esperas declaradas ([native] esperas).
 enum class TimeProvider { Legacy, Native, Experimental };
+// HH10: provedor dos controles. Legado: a fonte de entrada do runtime responde ao Maple e o SDK pd
+// recompilado decodifica. Nativo: InputSystem -> adaptador do pd (transitional/pad_adapter), Maple
+// sem controle.
+enum class ControlsProvider { Legacy, Native };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -36,6 +44,8 @@ struct HostOptions {
     std::vector<uint32_t> watch;          // diagnostico: entradas nessas funcoes
     FileProvider          files = FileProvider::Native;  // --arquivos legado|nativo (nativo: HH08, P1/P2)
     TimeProvider          time  = TimeProvider::Native;  // --tempo legado|nativo|experimental (HH09: nativo estavel padrao, A1-A8)
+    ControlsProvider      controls = ControlsProvider::Native;  // --controles legado|nativo (HH10: nativo padrao, C1-C8)
+    native::input::InputSystem* input = nullptr;  // fonte das amostras no --controles nativo (dono: chamador)
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;

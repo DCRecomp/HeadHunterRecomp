@@ -9,6 +9,9 @@
 #include "debug/call_trace.h"
 #include "gdfs_adapter.h"
 #include "time_adapter.h"
+#include "pad_probe.h"
+#include "pad_adapter.h"
+#include "input_bridge.h"
 #include "hh_verified_files.h"
 #include "gdrom/data_source.h"
 #include "gdrom/gdrom.h"
@@ -21,6 +24,7 @@
 #include <cstdlib>
 #include <memory>
 #include <cstdio>
+#include <cstring>
 #include <stdexcept>
 #include <thread>
 
@@ -36,6 +40,15 @@ struct FatalError : std::runtime_error {
 };
 
 const HostOptions* g_opt = nullptr;
+// HH10 (portao C1): HH_PAD_TRACE=<arquivo> grava, a cada VBlank, a unidade 0 do PDS_PERIPHERAL
+// (52 bytes em 0x8C311DAC) e as leituras do controle: a linha do tempo do que o jogo le, igual nos
+// dois provedores de controles; depois, o conteudo apontado por info e name (portao C7)
+const uint8_t* g_ram      = nullptr;
+std::FILE*     g_padTrace = nullptr;
+// HH10 (com HH_PAD_FECHAMENTO, so no legado): VBlanks em que a area nativa do BIOS HLE nao esta como o
+// boot a deixa (0xFF): prova dinamica de que o jogo nao usa a faixa (bios.h)
+bool           g_areaCheck   = false;
+uint64_t       g_areaChanged = 0;
 HostResult*        g_res = nullptr;
 HostFrame          g_frame;
 std::chrono::steady_clock::time_point g_epoch;
@@ -75,6 +88,31 @@ void onVblank(void*) {
         }
     if (!blank && !r.nonBlank++) r.firstNonBlank = r.vblanks;
     if (g_opt->onFrame) g_opt->onFrame(g_frame);
+    if (g_areaCheck && !transitional::pad::installed())
+        for (uint32_t i = 0; i < kHleNativeAreaSize; ++i)
+            if (g_ram[(kHleNativeAreaBase & 0xFFFFFF) + i] != 0xFF) {
+                ++g_areaChanged;
+                break;
+            }
+    if (g_padTrace) {
+        std::fprintf(g_padTrace, "%llu\t%llu\t", static_cast<unsigned long long>(r.vblanks),
+                     static_cast<unsigned long long>(transitional::pad::installed() ? transitional::pad::reads() : g_frame.reads));
+        for (int i = 0; i < 52; ++i) std::fprintf(g_padTrace, "%02X", g_ram[0x311DAC + i]);
+        // portao C7: o conteudo apontado por info (+0x30, 120 bytes) e por name (+0x24, texto), que
+        // os provedores poem em areas diferentes
+        auto ptr = [](uint32_t off) {
+            uint32_t v;
+            std::memcpy(&v, g_ram + 0x311DAC + off, 4);
+            return (v >> 24) == 0x8C && (v & 0xFFFFFF) + 120 <= (16u << 20) ? g_ram + (v & 0xFFFFFF) : nullptr;
+        };
+        std::fputc('\t', g_padTrace);
+        if (const uint8_t* info = ptr(0x30))
+            for (int i = 0; i < 120; ++i) std::fprintf(g_padTrace, "%02X", info[i]);
+        std::fputc('\t', g_padTrace);
+        if (const uint8_t* name = ptr(0x24))
+            for (int i = 0; i < 64 && name[i]; ++i) std::fputc(name[i] >= 0x20 && name[i] < 0x7F ? name[i] : '?', g_padTrace);
+        std::fputc('\n', g_padTrace);
+    }
     if (g_opt->stop && g_opt->stop->load()) throw StopRequest{};
     if (g_opt->vblankLimit && r.vblanks >= g_opt->vblankLimit) throw StopRequest{};
     if (g_opt->realtime) {  // ritmo do Dreamcast; atrasado mais de 250 ms: recomeca a contagem
@@ -98,6 +136,10 @@ HostResult host_run(const HostOptions& opt) {
     std::vector<uint8_t> ram(16u << 20);
     Sh4Context           c{};
     c.ram = ram.data();
+    g_ram = ram.data();
+    if (const char* v = std::getenv("HH_PAD_TRACE"); v && *v) g_padTrace = std::fopen(v, "w");
+    const char* closurePath = std::getenv("HH_PAD_FECHAMENTO");
+    g_areaCheck = closurePath && *closurePath, g_areaChanged = 0;
     try {
         sh4_set_fatal_handler(onFatal);
         bios_set_exit_hook([](Sh4Context*, uint32_t code) { throw GameExit{code}; });
@@ -134,7 +176,21 @@ HostResult host_run(const HostOptions& opt) {
             transitional::gdfs::install(boundaries, *verified);
         }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
-        if (!input_source()) input_configure_from_env();  // HH_INPUT_SCRIPT=<roteiro> (deterministico)
+        transitional::pad::probe_install();  // HH_PAD_CONTRATO=<tsv>: contrato do pd contra o legado (HH10.1)
+        transitional::pad::closure_install();  // HH_PAD_FECHAMENTO=<tsv>: prova de fechamento (HH10.4)
+        if (opt.controls == ControlsProvider::Native) {
+            // HH10: controles pelo provedor nativo do pd; o Maple fica sem controle (a camada per
+            // continua, para a VMU ate o HH11). A mutacao "maple" (negativo) deixa o controle no Maple.
+            if (!opt.input) throw std::runtime_error("--controles nativo sem fonte de entrada (InputSystem)");
+            if (std::getenv("HH_PAD_CONTRATO")) throw std::runtime_error("HH_PAD_CONTRATO confere o servidor legado: use --controles legado");
+            const char*    mv  = std::getenv("HH_PAD_NATIVO_MUTACAO");
+            const uint32_t mut = transitional::pad::parse_mutations(mv ? mv : "");
+            maple_set_controller_present((mut & transitional::pad::kNatMaple) != 0);
+            transitional::input_bridge::install((mut & transitional::pad::kNatMaple) ? opt.input : nullptr);
+            transitional::pad::install(boundaries, *opt.input, mut);  // coleta no disparo (pad_adapter.h)
+        } else if (!input_source()) {
+            input_configure_from_env();  // HH_INPUT_SCRIPT=<roteiro> (deterministico)
+        }
         g_epoch = std::chrono::steady_clock::now();
         pvr_set_vblank_hook(&onVblank, nullptr);
         if (opt.stop) sh4_set_service_hook(onService);
@@ -161,6 +217,17 @@ HostResult host_run(const HostOptions& opt) {
         res.error = "falha ao liberar as fibras das threads do guest";
     }
     call_trace_flush();
+    if (g_padTrace) std::fclose(g_padTrace), g_padTrace = nullptr;
+    transitional::pad::closure_finish(transitional::pad::installed());
+    if (g_areaCheck && !transitional::pad::installed())
+        if (std::FILE* f = std::fopen(closurePath, "a"))
+            std::fprintf(f, "area_nativa_alterada\t%llu\n", static_cast<unsigned long long>(g_areaChanged)), std::fclose(f);
+    if (transitional::pad::installed()) {
+        std::fputs(transitional::pad::summary().c_str(), stderr);
+        transitional::pad::uninstall(boundaries);
+        maple_set_controller_present(true);
+        transitional::input_bridge::install(nullptr);
+    }
     if (transitional::time::installed()) {
         transitional::time::uninstall();
         std::fputs(transitional::time::progress_summary().c_str(), stderr);

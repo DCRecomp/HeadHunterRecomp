@@ -4,13 +4,20 @@
 //
 //   hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]
 //          [--watch <endereco>]...   (diagnostico: VBlank e r4-r7 de cada entrada na funcao)
-// Entrada: HH_INPUT_SCRIPT=<roteiro> (deterministico); sem ele, nenhum botao.
+// Entrada: HH_INPUT_SCRIPT=<roteiro> (deterministico); sem ele, nenhum botao. --controles nativo
+// (padrao, HH10) entrega as amostras pelo nucleo nativo; legado, pelo Maple do runtime.
 //
 // Saida: uma linha por quadro amostrado (VBlank, dimensoes, hash FNV-1a do ARGB, leituras do
 // controle) e o motivo da parada. rc: 0 = limite de VBlanks atingido; 3 = o jogo pediu para
 // sair antes do limite; 1 = erro (PC e valor). Os portoes de teste exigem rc 0.
 #include "hh_discs.h"
 #include "hh_host.h"
+#include "input_bridge.h"
+#include "input/input.h"
+#include "platform/input.h"
+
+#include <iterator>
+#include <memory>
 
 #include <cstdint>
 #include <cstdio>
@@ -42,7 +49,8 @@ void writePpm(const fs::path& p, const std::vector<uint32_t>& argb, uint32_t w, 
 
 int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
-                         " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--mods <pasta>]\n");
+                         " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental]"
+                         " [--controles legado|nativo] [--mods <pasta>]\n");
     return 2;
 }
 
@@ -71,6 +79,8 @@ int main(int argc, char** argv) {
                        : std::string(v) == "experimental" ? hh::TimeProvider::Experimental
                                                           : hh::TimeProvider::Legacy;
         else if (a == "--mods" && (v = next())) opt.modsDir = v;
+        else if (a == "--controles" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
+            opt.controls = std::string(v) == "nativo" ? hh::ControlsProvider::Native : hh::ControlsProvider::Legacy;
         else return usage();
     }
     if (opt.data.empty()) return usage();
@@ -104,6 +114,24 @@ int main(int argc, char** argv) {
         }
     };
 
+    // HH10: no --controles nativo, as amostras vem de um InputSystem: o roteiro (HH_INPUT_SCRIPT),
+    // pela ponte, ou nenhum (controle presente e neutro, como o estado fixo do Maple no legado)
+    std::unique_ptr<hh::native::input::InputSystem> input;
+    if (opt.controls == hh::ControlsProvider::Native) {
+        input = std::make_unique<hh::native::input::InputSystem>();
+        if (const char* script = std::getenv("HH_INPUT_SCRIPT"); script && *script) {
+            std::ifstream f(script, std::ios::binary);
+            if (!f) {
+                std::printf("PARADA: roteiro de entrada nao encontrado: %s\n", script);
+                return 1;
+            }
+            const std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            input->set_test_source(hh::transitional::input_bridge::from_runtime_source(
+                std::shared_ptr<hh::InputSource>(hh::make_scripted_input(text))));
+            std::fprintf(stderr, "[input] roteiro %s (controles nativos)\n", script);
+        }
+        opt.input = input.get();
+    }
     const hh::HostResult r = hh::host_run(opt);
     std::printf("vblanks: %llu | quadros nao pretos: %llu (primeiro no vblank %llu)\n", (unsigned long long)r.vblanks,
                 (unsigned long long)r.nonBlank, (unsigned long long)r.firstNonBlank);

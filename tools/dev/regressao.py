@@ -224,6 +224,18 @@ def step_gates_hh09():
         raise RuntimeError('portoes do HH09 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh10():
+    # HH10: nucleo nativo de entrada + adaptador do pd 1.50 (unitarios), matriz do decodificador contra o
+    # codigo gerado (exige o 1ST_READ.BIN: HH_EXIGIR_DADOS) e C1/C2/C3/C8 com os negativos no roteiro
+    need('HH_DATA_DIR'), need('HH07_BIN'), need('HH_AREA1_HASHES')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh10_(input_tests|pad_matrix|controles)$', '--no-tests=error',
+            '--output-on-failure', '--timeout', '3000'], env={'HH_EXIGIR_DADOS': '1'}, timeout=7200)
+    passed = [n for n in ('hh10_input_tests', 'hh10_pad_matrix', 'hh10_controles')
+              if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 3:
+        raise RuntimeError('portoes do HH10 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -247,6 +259,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh07', step_gates_hh07, ['HH_DATA_DIR', 'HH07_BIN', 'HH07_SONDA']),
          ('portoes_hh08', step_gates_hh08, ['HH_DATA_DIR', 'HH_DATA_DIR2', 'HH_AREA1_HASHES']),
          ('portoes_hh09', step_gates_hh09, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
+         ('portoes_hh10', step_gates_hh10, ['HH_DATA_DIR', 'HH07_BIN', 'HH_AREA1_HASHES']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 
