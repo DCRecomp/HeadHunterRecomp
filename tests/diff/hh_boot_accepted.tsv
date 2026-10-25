@@ -1,0 +1,13 @@
+# Diferencas aceitas no trace do boot (entrada 0x8C010000, funcoes folha 8C1793EA e 8C159820
+# excluidas dos dois lados) contra o Flycast. So vale se chamada, funcao, coluna e os dois
+# valores casarem exatamente; toda entrada precisa ocorrer.
+# <chamada> <funcao> <coluna> <flycast> <recompilado> <motivo>
+#
+# r2 na entrada de 8C168940 e sobra da funcao anterior: 8C168940 grava r2 em 8C16894E antes
+# de qualquer leitura (registrador morto).
+239	8C168940	r2	00001A5B	00001AA2	registrador morto (sobrescrito em 8C16894E antes de ler)
+#
+# Fim da comparacao (unica divergencia de sequencia aceita): na chamada #558 o Flycast recebe
+# outra interrupcao (VBR+0x600) e o recompilado sai do tratador por jmp @VBR (VBR+0); o
+# momento de entrega de interrupcao e aproximado no runtime hibrido (poll em back-edges).
+divergencia	558	8C00FA00	8C00F400	momento de entrega de interrupcao (runtime hibrido)

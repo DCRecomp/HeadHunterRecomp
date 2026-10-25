@@ -1,0 +1,36 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "vs",
+      "displayName": "Visual Studio (sem Developer Prompt)",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build"
+    },
+    {
+      "name": "ninja-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "environment": { "VSLANG": "1033" }
+    },
+    { "name": "msvc-debug",    "inherits": "ninja-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug",   "CMAKE_CXX_COMPILER": "cl" } },
+    { "name": "msvc-release",  "inherits": "ninja-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "CMAKE_CXX_COMPILER": "cl" } },
+    { "name": "clang-debug",   "inherits": "ninja-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug",   "CMAKE_CXX_COMPILER": "clang-cl" } },
+    { "name": "clang-release", "inherits": "ninja-base", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "CMAKE_CXX_COMPILER": "clang-cl" } }
+  ],
+  "buildPresets": [
+    { "name": "vs-debug",      "configurePreset": "vs", "configuration": "Debug" },
+    { "name": "vs-release",    "configurePreset": "vs", "configuration": "Release" },
+    { "name": "msvc-debug",    "configurePreset": "msvc-debug" },
+    { "name": "msvc-release",  "configurePreset": "msvc-release" },
+    { "name": "clang-debug",   "configurePreset": "clang-debug" },
+    { "name": "clang-release", "configurePreset": "clang-release" }
+  ],
+  "testPresets": [
+    { "name": "vs-debug",     "configurePreset": "vs", "configuration": "Debug",   "output": { "outputOnFailure": true }, "execution": { "timeout": 900 } },
+    { "name": "vs-release",   "configurePreset": "vs", "configuration": "Release", "output": { "outputOnFailure": true }, "execution": { "timeout": 900 } },
+    { "name": "msvc-debug",   "configurePreset": "msvc-debug",   "output": { "outputOnFailure": true }, "execution": { "timeout": 900 } },
+    { "name": "msvc-release", "configurePreset": "msvc-release", "output": { "outputOnFailure": true }, "execution": { "timeout": 900 } }
+  ]
+}

@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Derivado de recomp-BStinger runtime/boot/native_boot.h (MIT, Copyright (c) 2026 Blue Stinger
+// Recompiled contributors; ver third_party/licenses/recomp-BStinger-LICENSE.txt).
+#pragma once
+// Boot nativo: le o IP.BIN e o executavel de boot dos dados do jogo e monta o
+// estado em que o BIOS entrega o controle ao jogo (RAM, registradores, PVR), sem BIOS nem
+// snapshot do Flycast. O codigo recompilado so vale para o executavel com o hash da
+// versao suportada; outro executavel e recusado.
+#include "cpu/sh4_context.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+namespace hh {
+
+struct BootFiles {
+    std::vector<uint8_t> ipBin;      // 32 KB
+    std::vector<uint8_t> firstRead;  // 1ST_READ.BIN desembaralhado
+    std::string          product, version, title, versionId;
+};
+
+// Le os arquivos de boot dos dados preparados pelo Builder (runtime_data.h), sem o CDI.
+// Lanca disc::RuntimeDataError (dados ausentes/incompletos ou de outra versao). A leitura
+// direta da imagem de disco (boot_read_disc) fica fora do produto: boot/disc_boot.h.
+BootFiles boot_read_data(const std::filesystem::path& dir);
+
+// Estado na entrada do jogo (0xAC010000), como o BIOS o deixa: RAM (area do sistema,
+// IP.BIN em 0x8C008000, executavel em 0x8C010000), registradores da CPU e do PVR,
+// vetores das syscalls HLE e a hora do RTC (`rtcSeconds`, desde 1950-01-01).
+// `ram` aponta para os 16 MB de c.ram. O resto do hardware parte do reset.
+void boot_prepare(Sh4Context& c, const BootFiles& files, uint32_t rtcSeconds);
+
+// Segundos desde 1950-01-01 (epoca do RTC do Dreamcast) para a hora local do host.
+uint32_t boot_rtc_now();
+
+} // namespace hh

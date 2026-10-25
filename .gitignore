@@ -1,0 +1,33 @@
+# Ignore CI/CD and build outputs
+build/
+dist/
+# Ignore sensitive data
+ISO/
+dream-recomp/
+analysis/
+game-data/
+generated/
+reviews/
+snapshots/
+tmp_run/
+# Ignored compiled binaries and object files
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.app
+# Other temporary files
+*.tmp
+*.log
+# IDE files
+*.suo
+*.sdf
+*.user
+*.vcxproj.user
+.opencode-autonomo.*
+# Ferramentas externas e arquivos locais do ambiente
+tools/dc-re-ghidra/
+opencode-ios-pair.png
+__pycache__/
+*.pyc

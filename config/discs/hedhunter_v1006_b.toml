@@ -1,0 +1,46 @@
+# hedhunter_v1006_b — alvo HH01
+# Fatos de identidade discal; só metadados e hashes (nada de conteúdo proprietário).
+# Fontes: bs-extract 0.1 (referência MIT) e hh_discinfo.py (implementação independente).
+# Confirmado verbatim por ambas em lba/size/sha256/crc32 de 160 arquivos na sessão
+# high-density (2026-10-24).
+
+[id]
+name = "hedhunter_v1006_b"
+product = "MK-5104150"
+version = "V1.006"
+region = "JUE"
+disc = 2
+
+[disc]
+image = "HeadHunter (Disc 2).cdi"
+cdi_format = "CDI v3.5"
+image_size = 814010399
+session_count = 2
+boot_track = { session = 2, number = 2, start_lba = 251469, length = 108094, sector_size = 2336, mode = 2 }
+ip_bin_sectors = 16
+md5_area_present = true          # bytes 0x900..0xC00 do IP.BIN não nulos (checksum distribuído)
+
+[boot]
+file = "1ST_READ.BIN"
+lba = 251545
+size = 1545024
+sha256 = "2d1ead048b28ee28ec3db2808fdd6fd04d6e9f50fd16d9f1203730b8dd578b0a"
+crc32 = "95a0740c"
+scrambled = false
+windows_ce = false               # IP.BIN peripherals 0799A10, bit0=0 (sem KATANA-CE)
+
+[disc_identity]
+volume = "HHS2_DCRES"
+id_file = "DISC/DISK2.ID"        # 108 bytes; easter egg textual por disco; differing per disc
+embedded_layout_value = 251635   # único dword divergente entre os dois 1ST_READ (off 0x00175E28)
+embedded_layout_relation = "iso_root_lba + 143"
+iso_root_lba = 251492
+
+[data_zones]
+low_density = { files = 89, bytes = 491214091, volume = "CDROM" }
+high_density = { files = 160, bytes = 712129640, volume = "HHS2_DCRES" }
+audio_tracks = 0
+
+[shared_driver]
+# AUDIO64.DRV idêntico nos dois discos
+sha256 = "9fcdbb82d761157f917a3a0568d2ce5efb185c12a1f5005c11a16c204dc7f947"

@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: MIT
+// hh-builder (HH06, Builder inicial): do CDI do usuario ao Preview HeadHunter.exe, na maquina
+// do usuario. Etapas (inspiradas no Builder do Blue Stinger, builder/builder_core.h, MIT):
+//   1. dados de execucao: prepara <saida>\.hh-build\data a partir do CDI e confere todos os
+//      setores de dados contra a imagem (exige a versao suportada);
+//   2. recompila o 1ST_READ.BIN dos dados em C++ (<saida>\.hh-build\generated);
+//   3. configura e compila o kit de fontes com CMake (<saida>\.hh-build\cmake);
+//   4. monta <saida>\HeadHunter\ (HeadHunter.exe + data\) numa pasta nova e so entao troca a
+//      instalacao anterior;
+//   5. verifica a instalacao montada: o proprio HeadHunter.exe copiado, --headless, ate um
+//      numero de VBlanks, com log de hashes. Pastas so sao removidas se tiverem o marcador do
+//      Builder; troca interrompida e restaurada na execucao seguinte; uma execucao por saida.
+// Uma falha em qualquer etapa deixa a instalacao anterior intacta. O jogo instalado nao le o CDI.
+//
+//   hh-builder --disc <imagem.cdi> --out <pasta> [--kit <fontes>] [--verify-vblanks N]
+#include "app/recomp.h"
+#include "hh_extract/cdi.hpp"
+#include "hh_extract/runtime_data.hpp"
+
+#include <cstdio>
+#include <fstream>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <system_error>
+
+namespace fs = std::filesystem;
+
+#ifndef HH_KIT_DIR
+#define HH_KIT_DIR "."
+#endif
+
+namespace {
+
+std::string text(const fs::path& p) {
+    const auto u = p.u8string();
+    return std::string(u.begin(), u.end());
+}
+
+std::string quote(const fs::path& p) { return "\"" + text(p) + "\""; }
+
+void step(int n, const char* what) { std::cout << "[" << n << "/5] " << what << std::endl; }
+
+// Executa um processo externo (CMake, verificacao) pela linha de comando; rc 0 = sucesso.
+int run(const std::string& cmd) {
+    std::cout << "  > " << cmd << std::endl;
+    // cmd.exe remove o primeiro e o ultimo aspas de /c "..."; o par externo protege os internos
+    return std::system(("\"" + cmd + "\"").c_str());
+}
+
+int usage() {
+    std::fprintf(stderr, "uso: hh-builder --disc <imagem.cdi> --out <pasta> [--kit <fontes>] [--verify-vblanks N]\n");
+    return 2;
+}
+
+// Pastas que o Builder cria e pode apagar levam este marcador; sem ele, nada e removido.
+constexpr const char* kMarker = ".hh-builder";
+
+bool owned(const fs::path& dir) { return fs::exists(dir / kMarker); }
+
+void mark(const fs::path& dir) {
+    std::ofstream(dir / kMarker) << "pasta criada pelo hh-builder\n";
+}
+
+// Remove so pastas do proprio Builder (revisao Codex HH06: nada de remove_all sem dono).
+void removeOwned(const fs::path& dir) {
+    if (!fs::exists(dir)) return;
+    if (!owned(dir)) throw std::runtime_error("a pasta " + text(dir) + " existe e nao foi criada pelo Builder; remova-a ou escolha outra saida");
+    fs::remove_all(dir);
+}
+
+// Caminhos vao para a linha de comando (cmd.exe): aspas e % mudariam o comando.
+void checkPath(const fs::path& p, const char* what) {
+    const std::string t = text(p);
+    if (t.find('"') != std::string::npos || t.find('%') != std::string::npos)
+        throw std::runtime_error(std::string(what) + " com caractere nao suportado (\" ou %): " + t);
+}
+
+// Uma execucao por saida: o diretorio de trava e criado de forma atomica.
+struct Lock {
+    fs::path dir;
+    explicit Lock(const fs::path& d) : dir(d) {
+        if (!fs::create_directory(dir))
+            throw std::runtime_error("outro Builder parece estar rodando nesta saida (" + text(dir) +
+                                     "); se nao estiver, apague essa pasta");
+    }
+    ~Lock() {
+        std::error_code ec;
+        fs::remove(dir, ec);
+    }
+};
+
+} // namespace
+
+int main(int argc, char** argv) {
+    fs::path disc, out, kit = HH_KIT_DIR;
+    unsigned verifyVblanks = 600;
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--disc" && i + 1 < argc) disc = argv[++i];
+        else if (a == "--out" && i + 1 < argc) out = argv[++i];
+        else if (a == "--kit" && i + 1 < argc) kit = argv[++i];
+        else if (a == "--verify-vblanks" && i + 1 < argc) verifyVblanks = unsigned(std::strtoul(argv[++i], nullptr, 10));
+        else return usage();
+    }
+    if (disc.empty() || out.empty()) return usage();
+    try {
+        out = fs::absolute(out).lexically_normal();
+        kit = fs::absolute(kit).lexically_normal();
+        if (out == out.root_path() || out == kit) throw std::runtime_error("pasta de saida invalida: " + text(out));
+        checkPath(out, "pasta de saida");
+        checkPath(kit, "pasta do kit");
+        fs::create_directories(out);
+        const fs::path work = out / ".hh-build", data = work / "data", gen = work / "generated", cmake = work / "cmake";
+        const fs::path staging = out / "HeadHunter.novo", install = out / "HeadHunter", backup = out / "HeadHunter.antigo";
+        if (fs::exists(work) && !owned(work)) throw std::runtime_error(text(work) + " nao foi criada pelo Builder");
+        fs::create_directories(work);
+        mark(work);
+        Lock lock(work / "trava");
+
+        // Troca interrompida numa execucao anterior: a instalacao ficou so na copia de seguranca.
+        if (!fs::exists(install) && fs::exists(backup) && owned(backup)) {
+            fs::rename(backup, install);
+            std::cout << "  instalacao anterior restaurada de uma troca interrompida" << std::endl;
+        }
+        if (fs::exists(install) && !owned(install) && !fs::exists(install / "HeadHunter.exe"))
+            throw std::runtime_error(text(install) + " existe e nao e uma instalacao do Head Hunter");
+        for (const fs::path& d : {staging, backup})  // falha cedo, antes de compilar
+            if (fs::exists(d) && !owned(d))
+                throw std::runtime_error("a pasta " + text(d) + " existe e nao foi criada pelo Builder; remova-a ou escolha outra saida");
+
+        step(1, "dados de execucao (CDI -> data, conferidos setor a setor)");
+        if (fs::exists(data)) fs::remove_all(data);  // dentro de .hh-build (marcada)
+        {
+            hh::CdiImage img(disc);
+            const auto   r = hh::disc::prepare_runtime_data(img, data);
+            std::cout << "  versao " << r.versionId << ", " << r.files << " arquivos" << std::endl;
+            if (const std::string d = hh::disc::verify_runtime_data(img, data); !d.empty())
+                throw std::runtime_error("dados de execucao diferem da imagem: " + d);
+        }
+
+        step(2, "recompilacao do executavel (SH-4 -> C++)");
+        hh::RecompOptions ro;
+        ro.config      = kit / "config" / "headhunter.toml";
+        ro.executable  = data / "disc" / "1ST_READ.BIN";
+        ro.out         = gen;
+        ro.analysisDir = work / "analysis";
+        if (fs::exists(gen)) fs::remove_all(gen);  // dentro de .hh-build (marcada)
+        hh::recomp_run(ro, std::cout);
+
+        step(3, "compilacao (CMake + compilador C++ desta maquina)");
+        if (run("cmake -S " + quote(kit) + " -B " + quote(cmake) + " -DHH_GENERATED_DIR=" + quote(gen) +
+                " -DBUILD_TESTS=OFF") != 0)
+            throw std::runtime_error("configuracao do CMake falhou");
+        if (run("cmake --build " + quote(cmake) + " --config Release --target HeadHunter -- -m") != 0)
+            throw std::runtime_error("compilacao falhou");
+        const fs::path built = cmake / "app" / "Release" / "HeadHunter.exe";
+        if (!fs::is_regular_file(built)) throw std::runtime_error("executavel nao encontrado: " + text(built));
+
+        step(4, "montagem da instalacao (pasta nova)");
+        removeOwned(staging);
+        fs::create_directories(staging);
+        mark(staging);
+        fs::copy_file(built, staging / "HeadHunter.exe");
+        fs::rename(data, staging / "data");  // os dados ficam com a instalacao, nao no trabalho
+
+        step(5, "verificacao (o HeadHunter.exe montado, headless, com os dados montados)");
+        const fs::path vlog = work / "verificacao.log";
+        std::error_code ec;
+        fs::remove(vlog, ec);
+        if (run(quote(staging / "HeadHunter.exe") + " --headless --data " + quote(staging / "data") + " --vblanks " +
+                std::to_string(verifyVblanks) + " --rtc 1700000000 --log " + quote(vlog) + " --hash-every 60") != 0 ||
+            !fs::exists(vlog) || fs::file_size(vlog) == 0)
+            throw std::runtime_error("a instalacao montada nao passou na verificacao");
+
+        // Troca: a instalacao atual vira copia de seguranca; se a promocao falhar, ela volta.
+        removeOwned(backup);
+        if (fs::exists(install)) {
+            if (!owned(install)) mark(install);  // instalacao valida de versao anterior do Builder
+            fs::rename(install, backup);
+        }
+        try {
+            fs::rename(staging, install);
+        } catch (...) {
+            if (fs::exists(backup) && !fs::exists(install)) fs::rename(backup, install);
+            throw;
+        }
+        removeOwned(backup);  // so depois da nova instalacao no lugar
+        std::cout << "pronto: " << text(install / "HeadHunter.exe") << std::endl;
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "erro: " << e.what() << " (a instalacao anterior, se havia, ficou intacta)" << std::endl;
+        return 1;
+    }
+}

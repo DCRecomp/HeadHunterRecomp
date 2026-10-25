@@ -1,0 +1,130 @@
+# Configuracao do tradutor: Head Hunter (Dreamcast), V1.006, discos 1 e 2.
+# Contem apenas metadados e enderecos (fatos), nunca bytes do jogo.
+# Esquema herdado do Blue Stinger (translator/app/config.cpp).
+
+[game]
+title      = "Head Hunter"
+product_id = "MK-5104150"
+version    = "V1.006"
+region     = "JUE"
+os         = "katana"   # bit 0 dos perifericos do IP.BIN = 0 (HH01)
+
+[input]
+executable = "1ST_READ.BIN"
+# Os dois discos tem o mesmo executavel, exceto o dword em 0x8C185E28 (arquivo
+# +0x175E28 = iso_root_lba + 143 do disco; HH01). Os dois hashes sao aceitos e a
+# analise precisa ser a mesma para ambos (o dword e dado, lido da RAM em execucao).
+sha256 = [
+  "aa5853253b49bc1b9a594ffb3e6ba0f49df687d3b2e00d6a1b14cfd4d4b640d7",  # disco 1 (hedhunter_v1006_a)
+  "2d1ead048b28ee28ec3db2808fdd6fd04d6e9f50fd16d9f1203730b8dd578b0a",  # disco 2 (hedhunter_v1006_b)
+]
+
+[load]
+base  = 0x8C010000
+entry = 0x8C010000
+
+[analysis]
+pointer_candidates = true
+data_pointers      = true
+prologue_scan      = false  # HH04: incluir todas as candidatas quebra as invariantes; ver HH04-RELATORIO.md
+
+[codegen]
+# false: o pool e lido da RAM em execucao. Necessario para o dword dependente do
+# disco e para pools que o jogo eventualmente grave (a confirmar no HH05).
+inline_pool_constants = false
+funcs_per_file        = 400
+
+# --- tabelas de salto com limite declarado (HH04.3, 2026-10-24) ---
+# Copias desenroladas da biblioteca do compilador (estilo Duff): `mov.l @(r0,r3),r3;
+# jmp @r3` sobre tabela de longwords no pool. O limite esta no proprio codigo de
+# 8C123EB8: `mov #64,r3; cmp/hs r0,r3; bf` (indice <= 64 bytes => 64/4 + 1 = 17
+# entradas), comparacao na ordem inversa que boundBefore nao reconhece. A entrada 17
+# de cada tabela ja e o codigo seguinte (prologo `mov.l r3,@-r15`).
+[[jump_tables]]
+insn  = 0x8C123E1C
+table = 0x8C123E74
+count = 17
+
+[[jump_tables]]
+insn  = 0x8C123E28
+table = 0x8C123E74
+count = 17
+
+[[jump_tables]]
+insn  = 0x8C123EC4
+table = 0x8C123F14
+count = 17
+
+# --- vetores de excecao/interrupcao copiados para o VBR (HH04.4, 2026-10-24) ---
+# O bootstrap do IP.BIN define VBR = r15 = 0x8C00F400 (IP.BIN 0x8C00E09E-0x8C00E0A4).
+# 8C1703A4 copia stubs do executavel para VBR+0x100/+0x400/+0x600 (copia longword ate
+# passar do fim inclusivo; analysis/hh04/vbr_blocks.py) e, antes, grava no pool dos
+# stubs (8C180BBC e 8C180C18) o tratador: 8C180C4C, ou 8C180DB4 quando r4 = 0x80000000
+# (8C1703C8-8C1703E0). O pool e lido da RAM (inline_pool_constants = false).
+# VBR+0x000 recebe 8C180C1C..8C180C4C (rte; depois chamada a 0xAC004000). Nenhum
+# vetor do hardware entra em VBR+0, mas o proprio jogo salta para la: na saida do
+# tratador, 8C180D96-8C180D98 `stc vbr,r0; jmp @r0` quando o codigo do evento
+# >= 0x200 (revisao Codex HH04, 2026-10-24, confirmada no disassembly).
+[[relocated]]
+dest   = 0x8C00F400   # VBR+0x000: alvo do jmp @VBR em 8C180D98
+source = 0x8C180C1C
+size   = 0x34
+
+[[relocated]]
+dest   = 0x8C00F500   # VBR+0x100: excecao geral (le EXPEVT 0xFF000024)
+source = 0x8C180B88
+size   = 0x3C
+
+[[relocated]]
+dest   = 0x8C00F800   # VBR+0x400: TLB miss (mesmo stub)
+source = 0x8C180B88
+size   = 0x3C
+
+[[relocated]]
+dest   = 0x8C00FA00   # VBR+0x600: interrupcao (le INTEVT 0xFF000028)
+source = 0x8C180BC0
+size   = 0x60
+
+# Destinos alcancados so por literal gravado em execucao ou tabela montada no VBR:
+[[functions]]
+address = 0x8C180DB4   # tratador alternativo gravado por 8C1703D4-8C1703E0 (r4 = 0x80000000)
+
+[[functions]]
+address = 0x8C17028C   # tratador padrao da tabela em VBR+0x200 (8C17053A-8C170550, literal 8C170560)
+
+[[functions]]
+address = 0x8C16AA00   # HH05 despacho em execucao: desvio indireto em 8C17C208; precedido de nop de alinhamento
+
+# --- biblioteca de threads cooperativa (HH05, 2026-10-24) ---
+# setjmp 8C131F3C grava em @r4: r15 (+0), r14 (+4), PR (+8), r13..r0 (+12..+64), MACH, MACL,
+# GBR, FPUL, FPSCR e FR0-FR15, e devolve 0. longjmp 8C131E9C le o mesmo leiaute (r15 em +0,
+# PR em +8, r4 em +48), grava r5 em [0x8C31172C] e faz rts com r0 = r5 (1 se 0).
+# Evidencias: leiaute simetrico do buffer + semantica; em execucao, o rts de 8C131F08
+# voltou para 8C1710B4 com outro R15 (troca de contexto).
+[threads]
+setjmp  = [0x8C131F3C]
+longjmp = [0x8C131E9C]
+
+# --- switch por braf em tabela de stubs (HH06, 2026-10-25) ---
+# 8C010AD8 `braf r0; nop` seguido de 8 entradas `bra caso; nop` (8C010ADC..8C010AF8). O
+# indice r0 parte de `mov #0,r0` (8C010A9A) e so recebe `or #16`, `or #8` e `or #4`
+# condicionais (8C010AAA, 8C010ABA, 8C010ACA): r0 em {0, 4, ..., 28} = 8 entradas. Achado
+# pelo despacho em execucao (roteiro NEW GAME -> SKIP); as 8 entradas sao rotulos da propria
+# funcao, nao funcoes.
+[[jump_tables]]
+insn  = 0x8C010AD8
+table = 0x8C010ADC
+count = 8
+
+# --- identificacao do codigo do jogo (HH07, hh-hwscan) ---
+# Mensagens que so o codigo do proprio jogo (motor da Amuze) referencia: nomes dos fontes do
+# jogo e os formatos de dados dele (analysis/hh07/<disco>/strings.tsv, funcao -> string).
+# Substring exata; sem elas o sdkid nao tem semente de jogo e a propagacao "chamado pelo SDK
+# e SDK" atravessa a partida (syStart -> main) e marca o executavel inteiro como SDK.
+[sdkid]
+jogo = [
+  "in 'Script.h'", "in Camera.c", "in CollisionTree.c", "in debug.c", "in enemy.c",
+  "in HaltPoint.c", "in Pedestrian.c", "in ScriptList.c", "in Scriptlist.c", "in TransformHero.c",
+  "Gamedata version mismatch", "Version mismatch of lookat format", "Version mismatch of camera format",
+  "Version mismatch of path format", "Script version mismatch",
+]
