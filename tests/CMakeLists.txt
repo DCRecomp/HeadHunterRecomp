@@ -226,6 +226,20 @@ target_include_directories(hh10_input_tests PRIVATE unit)
 target_link_libraries(hh10_input_tests PRIVATE hh_transitional)
 add_test(NAME hh10_input_tests COMMAND hh10_input_tests)
 
+# HH11.1: store nativo de saves (formato VMS, envelope, escrita atomica, recuperacao, falhas).
+add_executable(hh11_saves_tests unit/main.cpp unit/test_hh11_saves.cpp unit/test_hh11_bu_machine.cpp)
+target_include_directories(hh11_saves_tests PRIVATE unit)
+target_link_libraries(hh11_saves_tests PRIVATE hh_transitional)
+add_test(NAME hh11_saves_tests COMMAND hh11_saves_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# HH11: portoes dos saves nativos contra o oraculo do Flycast (HH_DATA_DIR, HH11_ORACULO).
+if(HH_GENERATED_DIR)
+  add_test(NAME hh11_saves
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh11_saves.py
+            $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR} ${HH_GENERATED_DIR})
+  set_tests_properties(hh11_saves PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600)
+endif()
+
 # HH10: portoes dos controles nativos (C1/C2/C3/C8 e negativos; HH_DATA_DIR).
 if(HH_GENERATED_DIR)
   add_test(NAME hh10_controles

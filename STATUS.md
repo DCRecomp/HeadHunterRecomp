@@ -17,8 +17,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; os dois discos numa instalação só, sem troca; falhas seguras) |
 | HH09 | CONCLUIDA | `docs/relatorios/HH09-RELATORIO.md` (tempo nativo estável padrão: ordem, quadros e relógios idênticos ao legado; 7 esperas declaradas; experimental opcional) |
 | HH10 | CONCLUIDA | `docs/relatorios/HH10-RELATORIO.md` (controles nativos padrão: pd 1.50 sem Maple; traço do PDS, info/name e quadros idênticos ao legado, inclusive desconexão; janela com teclado + SDL3 Gamepad e `controles.toml`) |
-| HH11 | EM_ANDAMENTO | — |
-| HH12 | PENDENTE | — |
+| HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
+| HH12 | EM_ANDAMENTO | — |
 | HH13 | PENDENTE | — |
 | HH14 | PENDENTE | — |
 | HH15 | PENDENTE | — |
@@ -267,6 +267,17 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   de depuração, 4 literais no executável) para 0x8C006000.
 - Revisão Codex: 11 achados, todos aceitos e corrigidos (relatório, seção 9).
 
+### HH11 (2026-10-25)
+
+- Contrato da `bu` 1.47 (14 entradas, duas evidencias cada) e oraculo do jogo original no Flycast com VMU
+  (c0-c4): protocolo, VMS do HH (0x48 = bytes cobertos pelo CRC), op 0x0B = leitura do arquivo inteiro,
+  `file_info` de 18 bytes, data = relogio do jogo.
+- Portados do N4 do BS: `native/platform/saves*`, `transitional/{bu_machine,bu_adapter}`, `tools/dev/hh11_vmu.py`.
+  `--saves legado|nativo`; nativo padrao na janela (`Documentos\DC-Recomp\Head Hunter\saves`); o `hh-run` e o
+  `--headless` ficam no legado (roteiro de referencia sem memory card).
+- Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
+- Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
+
 ### Formatos dos discos (investigação 2026-10-24)
 
 Relatório e scripts em `analysis/formatos/` (privado). Verificado em todos
@@ -300,7 +311,7 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir pelo **HH11** (saves nativos e continuidade entre discos) e as etapas seguintes. O teste da passagem real do
+Prosseguir pelo **HH12** (videos nativos e moddaveis; plano em `docs/planos/HH12-PLANO.md`) e as etapas seguintes. O teste da passagem real do
 disco 1 para o 2 fica para depois (HH11/HH16). Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando

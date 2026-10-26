@@ -58,6 +58,46 @@ o que indica versão próxima, não idêntica.
 | 0x8C160754, 0x8C160774 | montagem | 1 / 1 |
 | 0x8C160B30 | imagem VMS (rotina pura?) | 2 |
 
+### HH11.0 iniciado (2026-10-25): pareamento com a `bu` do BS
+
+Script local `bu_match.py` (scratchpad): multiconjunto de instruções mascaradas, com os imediatos
+mantidos, contra as funções da `bu` do BS (papéis do N4). Ordem livre, porque o compilador reordenou
+as instruções. HH 0x8C160614 confere instrução a instrução com o `load` do BS (op 14, mesma sequência
+de chamadas).
+
+| Papel (BS) | HH | Similaridade (1º / 2º) |
+|---|---|---|
+| init 8C08BDEC | 0x8C15FB44 | 0.56 / 0.24 |
+| exit 8C08BEBC | 0x8C15FC2A | 0.62 / 0.33 |
+| reg_done / reg_progress | 0x8C15FDCC / 0x8C15FDD2 | 1.00 |
+| status 8C08C696 | 0x8C1603DC | 1.00 |
+| op0B 8C08C7BE | 0x8C160500 (o HH o chama; no BS só por literal morto) | 0.98 / 0.67 |
+| save 8C08C818 | 0x8C160558 | 1.00 / 0.69 |
+| load 8C08C8D4 | 0x8C160614 | 1.00 / 0.67 |
+| mount 8C08CA34 | 0x8C160754 | 1.00 / 0.46 |
+| vms_build 8C08CA5C | 0x8C160774 | 0.59 / 0.10 |
+
+Resolvidos (segunda evidência: corpo do alvo e ABI do chamador do jogo):
+
+| HH | Papel | Evidência |
+|---|---|---|
+| 0x8C15FF54 | disk_info | o alvo do `jmp` (0x8C1721CA) bate com o do BS (0x8C09198A): 0.69 contra 0.14 |
+| 0x8C16037C | exists | o alvo 0x8C172EEE bate com o do BS (0x8C0926F6): 0.86 contra 0.14 |
+| 0x8C1603AA | informação do arquivo `(drive, nome, info*)` | o alvo 0x8C171CD8 é instrução a instrução o do wrapper BS 0x8C08C664 (0x8C091494): grava blocos e campos em `info`. O jogo (0x8C118296) passa 3 argumentos e devolve `r0 == 0`. O BS não usava essa entrada |
+| 0x8C160B30 | CRC-16-CCITT (polinômio 0x1021, máscara 0x8000) | mesma estrutura do CRC VMS do BS (0x8C08CDE2, 0.51). O jogo o chama direto (0x8C1180A6, 0x8C118108). Rotina pura: fica recompilada |
+| 0x8C160990 | tamanho da imagem VMS | 1.00 com o do BS (0x8C08CC58); o jogo não o chama direto |
+
+Diferenças do init/exit em relação ao BS (lado a lado no disassembly):
+- servidor periódico: **0x8C15FC9C** (o `bra` em 0x8C15FB40). Registrado por 0x8C16F7CA(`*0x8C186498` = 0x14, servidor): uma tabela de 32 callbacks da camada `per` em `*0x8C16F840`, não o agendador do jogo como no BS. O exit chama 0x8C16F7CA(0x14, 0) para desregistrar;
+- o init grava a máscara (r5) em 0x8C313674, r6 em 0x8C313670 e zera 0x8C313660–0x8C31366C;
+- o init chama 0x8C170F70 e 0x8C1715BA (inicialização interna); o callback do 4º argumento só é chamado se o resultado for 0, e sem argumentos;
+- flag de init 0x8C188D20 (= 1 no init, 0 no exit);
+- `last_error` (BS 0x8C08C112) não é chamado pelo jogo do HH; a entrada 0x8C160500 (op 0x0B no BS), sim.
+
+Falta para o adaptador: o significado da operação 0x0B no HH (0x8C160500, chamada de 0x8C117E30); os
+códigos de progresso e conclusão. No BS vieram de um oráculo com VMU no Flycast; no HH precisam de um
+oráculo próprio.
+
 ## Subetapas
 
 | ID | Entrega | Saída |

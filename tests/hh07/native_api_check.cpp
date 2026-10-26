@@ -138,8 +138,8 @@ int main() {
     pad.buttons = input::A | input::Start;
     pad.axis(input::Axis::StickY) = 1.0f;
     CHECK((pad.buttons & input::Start) && !(pad.buttons & input::B) && pad.axis(input::Axis::StickY) == 1.0f);
-    saves::SaveInfo si{"HEADHUNT.000", "HEAD HUNTER", 10, 0, 1};
-    CHECK(si.blocks == 10);
+    saves::SaveEntry si{"H_HUNTER.SYS", 10, 0};  // HH11: contrato do store do BS N4
+    CHECK(si.blocks == 10 && saves::kBlock == 512 && saves::kCardBlocks == 200);
     constexpr time::TimeBase tb;  // campo NTSC exato (HH09: base de tempo do N2a do BS)
     CHECK(tb.frame(tb.frame_start(120)) == 120);
     static_assert(tb.ns(tb.frame_start(60000)) == 1001000000000ull);

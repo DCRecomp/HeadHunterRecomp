@@ -19,7 +19,10 @@
 #include "hh_extract/cdi.hpp"
 #include "hh_extract/runtime_data.hpp"
 
+#include <algorithm>
 #include <cstdio>
+#include <iterator>
+#include <vector>
 #include <fstream>
 #include <cstdlib>
 #include <filesystem>
@@ -94,6 +97,65 @@ struct Lock {
     }
 };
 
+// HH11: dados do usuario dentro da instalacao (saves\ do modo portatil, controles.toml). Passa de `from` para `to`,
+// arquivo por arquivo, o que ainda nao existe em `to`; um arquivo igual nos dois sai de `from`; um diferente fica em
+// `from` (nunca sobrescrito: a decisao e do usuario). Devolve true se `from` ficou sem nenhum dado do usuario (so
+// entao pode ser apagada; revisao Codex HH11).
+bool sameFile(const fs::path& a, const fs::path& b) {
+    std::ifstream x(a, std::ios::binary), y(b, std::ios::binary);
+    return x && y && std::equal(std::istreambuf_iterator<char>(x), {}, std::istreambuf_iterator<char>(y), {});
+}
+
+bool carryOne(const fs::path& a, const fs::path& b) {  // um arquivo
+    std::error_code ec;
+    if (!fs::exists(b)) {
+        fs::create_directories(b.parent_path(), ec);
+        fs::rename(a, b, ec);
+    } else if (sameFile(a, b)) fs::remove(a, ec);
+    if (fs::exists(a)) {
+        std::cerr << "aviso: " << text(a) << " nao passou para " << text(b) << (ec ? ": " + ec.message() : " (ja existe diferente)")
+                  << std::endl;
+        return false;
+    }
+    std::cout << "dados do usuario mantidos: " << text(b) << std::endl;
+    return true;
+}
+
+bool carryUserData(const fs::path& from, const fs::path& to) {
+    bool clean = true;
+    for (const char* item : {"saves", "controles.toml"}) {
+        const fs::path a = from / item, b = to / item;
+        if (!fs::exists(a)) continue;
+        if (!fs::is_directory(a)) {
+            clean = carryOne(a, b) && clean;
+            continue;
+        }
+        std::vector<fs::path> files;
+        for (const auto& e : fs::recursive_directory_iterator(a))
+            if (e.is_regular_file()) files.push_back(e.path());
+        for (const fs::path& f : files) clean = carryOne(f, b / fs::relative(f, a)) && clean;
+        // pastas vazias que sobraram (de baixo para cima)
+        std::vector<fs::path> dirs;
+        for (const auto& e : fs::recursive_directory_iterator(a))
+            if (e.is_directory()) dirs.push_back(e.path());
+        std::error_code ec;
+        for (auto it = dirs.rbegin(); it != dirs.rend(); ++it) fs::remove(*it, ec);  // so remove pasta vazia
+        fs::remove(a, ec);
+        if (fs::exists(a)) clean = false;
+    }
+    if (!clean) std::cerr << "aviso: " << text(from) << " fica guardada com os dados que nao passaram" << std::endl;
+    return clean;
+}
+
+// Apaga uma copia de seguranca do Builder so sem dados do usuario dentro; com eles, para (nada e perdido).
+void removeBackup(const fs::path& backup) {
+    for (const char* item : {"saves", "controles.toml"})
+        if (fs::exists(backup / item))
+            throw std::runtime_error(text(backup) + " ainda guarda " + item + " de uma reinstalacao anterior que nao passou para "
+                                     "a instalacao; mova esses dados e rode o Builder de novo");
+    removeOwned(backup);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -128,6 +190,9 @@ int main(int argc, char** argv) {
             fs::rename(backup, install);
             std::cout << "  instalacao anterior restaurada de uma troca interrompida" << std::endl;
         }
+        // Copia de seguranca que ficou com dados do usuario (passagem anterior falhou): devolvidos a instalacao
+        // atual antes de qualquer coisa ser apagada
+        if (fs::exists(backup) && owned(backup) && fs::exists(install) && owned(install)) carryUserData(backup, install);
         // Sem o marcador do Builder a pasta nao e dele, mesmo com um HeadHunter.exe dentro: nunca e
         // adotada, trocada ou apagada (revisao Codex HH08)
         if (fs::exists(install) && !owned(install))
@@ -195,7 +260,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("a instalacao montada nao passou na verificacao");
 
         // Troca: a instalacao atual vira copia de seguranca; se a promocao falhar, ela volta.
-        removeOwned(backup);
+        removeBackup(backup);
         if (fs::exists(install)) {
             fs::rename(install, backup);
         }
@@ -205,7 +270,9 @@ int main(int argc, char** argv) {
             if (fs::exists(backup) && !fs::exists(install)) fs::rename(backup, install);
             throw;
         }
-        removeOwned(backup);  // so depois da nova instalacao no lugar
+        // HH11: dados do usuario da instalacao anterior passam para a nova; se algum nao passar, a anterior fica
+        // como copia de seguranca (nunca apagada com dados dentro; a proxima execucao tenta de novo).
+        if (carryUserData(backup, install)) removeOwned(backup);  // so depois da nova instalacao no lugar
         std::cout << "pronto: " << text(install / "HeadHunter.exe") << std::endl;
         return 0;
     } catch (const std::exception& e) {

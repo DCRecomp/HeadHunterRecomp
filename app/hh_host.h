@@ -35,6 +35,9 @@ enum class TimeProvider { Legacy, Native, Experimental };
 // recompilado decodifica. Nativo: InputSystem -> adaptador do pd (transitional/pad_adapter), Maple
 // sem controle.
 enum class ControlsProvider { Legacy, Native };
+// HH11: provedor dos saves. Legado: sem VMU (o jogo avisa que nao ha memory card). Nativo: API bu sobre
+// arquivos (transitional/bu_adapter + native/platform/saves), sem VMU nem Maple.
+enum class SavesProvider { Legacy, Native };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -46,6 +49,8 @@ struct HostOptions {
     TimeProvider          time  = TimeProvider::Native;  // --tempo legado|nativo|experimental (HH09: nativo estavel padrao, A1-A8)
     ControlsProvider      controls = ControlsProvider::Native;  // --controles legado|nativo (HH10: nativo padrao, C1-C8)
     native::input::InputSystem* input = nullptr;  // fonte das amostras no --controles nativo (dono: chamador)
+    SavesProvider         saves = SavesProvider::Legacy;  // --saves legado|nativo (HH11)
+    std::filesystem::path savesRoot;  // pasta dos saves nativos (card0\...); obrigatoria no --saves nativo
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;

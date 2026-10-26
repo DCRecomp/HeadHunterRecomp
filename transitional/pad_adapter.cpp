@@ -341,12 +341,18 @@ namespace {
 struct Closure {
     std::string path;
     bool        done = false;
-    // funcoes do SDK pd e da camada per: entradas no codigo gerado
     // funcoes do SDK pd 1.50 e da camada per: entradas no codigo gerado
-    std::array<std::pair<uint32_t, uint64_t>, 12> fns = {{{0x8C15DB3A, 0}, {0x8C15D900, 0}, {0x8C15DAB6, 0}, {0x8C15DB06, 0},
+    // HH11: e as da bu 1.47 (API publica, servidor e as rotinas internas que elas alcancam: verificacao da unidade
+    // 8C171448, ultimo erro 8C15FE66, disk_info 8C1721CA, exists 8C172EEE, file_info 8C171CD8)
+    std::array<std::pair<uint32_t, uint64_t>, 31> fns = {{{0x8C15DB3A, 0}, {0x8C15D900, 0}, {0x8C15DAB6, 0}, {0x8C15DB06, 0},
                                                           {0x8C15D8C2, 0}, {0x8C15DC40, 0}, {0x8C16F138, 0}, {0x8C16F14A, 0},
                                                           {0x8C17F470, 0}, {0x8C17F0AA, 0}, {0x8C16EF18, 0},
-                                                          {0x8C15D744, 0}}};  // 8C15D744 init do pd (original)
+                                                          {0x8C15D744, 0},  // 8C15D744 init do pd (original)
+                                                          {0x8C15FB44, 0}, {0x8C15FC9C, 0}, {0x8C15FDCC, 0}, {0x8C15FDD2, 0},
+                                                          {0x8C160754, 0}, {0x8C15FF54, 0}, {0x8C16037C, 0}, {0x8C1603AA, 0},
+                                                          {0x8C160614, 0}, {0x8C160558, 0}, {0x8C160500, 0}, {0x8C1603DC, 0},
+                                                          {0x8C15FC2A, 0}, {0x8C160774, 0}, {0x8C171448, 0}, {0x8C15FE66, 0},
+                                                          {0x8C1721CA, 0}, {0x8C172EEE, 0}, {0x8C171CD8, 0}}};
 };
 Closure& cl() {
     static Closure c;

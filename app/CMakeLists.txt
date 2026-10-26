@@ -46,7 +46,7 @@ if(HH_GENERATED_DIR)
       GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(SDL3)
     add_executable(HeadHunter WIN32 hh_window.cpp)
-    target_link_libraries(HeadHunter PRIVATE hh_host SDL3::SDL3-static)
+    target_link_libraries(HeadHunter PRIVATE hh_host SDL3::SDL3-static shell32 ole32)  # shell32/ole32: pasta Documentos (saves)
     if(MSVC)
       # mapa do linker (so no diretorio de build; o Builder copia apenas o .exe): o teste
       # hh07_produto_sem_cdi confere que a leitura de CDI nao entrou no produto

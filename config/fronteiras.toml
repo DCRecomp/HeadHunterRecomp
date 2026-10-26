@@ -2183,104 +2183,104 @@ chamadas = 1
 endereco = 0x8C15FB44
 tipo = "direta"
 familia = "cri"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C15FC2A
 tipo = "direta"
 familia = "cri"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C15FDCC
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C15FDD2
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C15FF54
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
 endereco = 0x8C16037C
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 3
 
 [[fronteira]]
 endereco = 0x8C1603AA
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C1603DC
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C160500
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C160558
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = ["sistema"]
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C160614
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C160754
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
 endereco = 0x8C160774
 tipo = "direta"
 familia = "desconhecida"
-subsistemas = []
-provedor = "legado"
+subsistemas = ["saves"]
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]

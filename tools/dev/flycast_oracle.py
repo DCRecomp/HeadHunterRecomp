@@ -514,38 +514,33 @@ def cmd_regs(a):
     finish(a, g)
 
 
-# ATENCAO (HH05): os enderecos de bu-trace/pd abaixo sao do Blue Stinger e NAO valem para o
-# Head Hunter; o subcomando bu-trace so pode ser usado depois de refeitos no HH10/HH11.
-# --- bu-trace: oraculo de SAVE/LOAD do N4 (docs/N4-PREPARACAO.md, "Investigacao do oraculo") ---
-# Entradas da API publica `bu` (inventario do N4). 8C08C696 (estado) e 8C08C112 (ultimo erro) nao
-# entram aqui: o servidor interno 8C08BF50 chama 8C08C696 8 vezes por passada; elas sao lidas nos
-# retornos dos pontos de chamada do jogo (BU_RETORNOS).
+# --- bu-trace: oraculo de SAVE/LOAD (HH11, docs/planos/HH11-PLANO.md; ferramenta do N4 do BS) ---
+# Entradas da API publica `bu` 1.47 do Head Hunter (pareadas com a bu do BS no HH11.0). O estado (8C1603DC) nao
+# entra aqui: e lido no retorno do ponto de chamada do jogo (BU_RETORNOS), porque o servidor interno o consulta.
 BU_ENTRADAS = {
-    0x8C08BDEC: "init", 0x8C08C074: "reg_conclusao", 0x8C08C07A: "reg_progresso", 0x8C08CA34: "mount",
-    0x8C08C1FC: "disk_info", 0x8C08C636: "exists", 0x8C08C8D4: "load", 0x8C08C818: "save",
-    0x8C08BEBC: "exit", 0x8C08CC58: "vms_blocos", 0x8C08CA5C: "vms_monta", 0x8C08C7BE: "c7be",
+    0x8C15FB44: "init", 0x8C15FDCC: "reg_conclusao", 0x8C15FDD2: "reg_progresso", 0x8C160754: "mount",
+    0x8C15FF54: "disk_info", 0x8C16037C: "exists", 0x8C1603AA: "file_info", 0x8C160614: "load",
+    0x8C160558: "save", 0x8C15FC2A: "exit", 0x8C160990: "vms_blocos", 0x8C160774: "last_error",
+    0x8C160500: "op_0b",
 }
-BU_RETORNOS = {  # endereco logo depois do jsr + slot no jogo
-    0x8C01C826: "status", 0x8C01CC48: "status", 0x8C01CD90: "status", 0x8C01CE7E: "status",
-    0x8C01C830: "ultimo_erro",
-}
-BU_CALLBACKS = {0x8C01C2D2: "cb_conclusao", 0x8C01C364: "cb_progresso"}
-BU_PAINEL = 0x8C01D200            # controlador de save/load do jogo (r4 0 no jogo, 1 no titulo: H1)
-BU_PAINEL_MODO = (0x8C01D240, 0x8C01D244)  # literais com os enderecos das palavras de modo
-BU_ESTADO = (0x8C1F3710, 2 * 92)  # bloco de 92 bytes por unidade (0 e 1)
-BU_PAYLOAD = (0x8C24F93C, 1200)
-BU_OPS_DE_CARTAO = (1, 2, 0x12)   # ops do callback que nao sao fim de LOAD/SAVE
-SAVE_POINT_RET = 0x8C0408EA     # volta de 8C04FB80(jogador, sp, 0) em 8C0407C0 (A no gameplay): r0 = tipo
-PD_RETORNO = 0x8C1730BE           # volta do servidor pd 8C15C4E6 (uma passada por passo de jogo)
-PDS_PORTA_A = 0x8C2D8970          # PDS_PERIPHERAL da porta A, unidade 0 (transitional/pad_contract.h)
-# bits de `on` (ordem de tools/dev/pad_roteiros.py); LT/RT como o decodificador do SDK (>= 128)
+BU_RETORNOS = {0x8C11837A: "status"}  # volta do jsr 8C1603DC em 8C118376 (o unico chamador do jogo)
+BU_CALLBACKS = {0x8C1175A0: "cb_conclusao", 0x8C1176A0: "cb_progresso"}  # registrados em 8C117572
+BU_PAINEL = None                  # (BS: painel de save/load do jogo, para o H1; sem equivalente medido no HH)
+BU_PAINEL_MODO = ()
+BU_ESTADO = None                  # (BS: bloco de estado das unidades; no HH ainda nao localizado)
+BU_PAYLOAD = None                 # (BS: payload do save na RAM; no HH ainda nao localizado)
+BU_OPS_DE_CARTAO = (1, 2, 0x12)   # ops do callback que nao sao fim de LOAD/SAVE (BS; conferir no HH11.0)
+SAVE_POINT_RET = None             # (BS: ponto de save forcado no gameplay)
+PD_RETORNO = 0x8C091606           # volta do servidor pd 8C15DB3A em 8C0915F8 (uma passada por passo de jogo)
+PDS_PORTA_A = 0x8C311DAC          # PDS_PERIPHERAL da porta A, unidade 0 (transitional/pad_contract.h)
+# bits de `on` (controle padrao do Dreamcast); LT/RT como o decodificador do SDK (>= limiar)
 PD_BITS = {"C": 0, "B": 1, "A": 2, "START": 3, "UP": 4, "DOWN": 5, "LEFT": 6, "RIGHT": 7,
            "Z": 8, "Y": 9, "X": 10, "D": 11, "RT": 16, "LT": 17,
            # direcional analogico (os roteiros do recompilado): bits so do oraculo, viram x1/y1 do PDS (+0x1C/+0x1E)
            # no extremo, como o decodificador do SDK (eixo - 128): esquerda/cima -128, direita/baixo 127
            "ANALOG_UP": 24, "ANALOG_DOWN": 25, "ANALOG_LEFT": 26, "ANALOG_RIGHT": 27}
 PD_ANALOG = 0x0F000000
-FLYCAST_VMU = "T13001N_vmu_save_A1.bin"  # VMU por jogo do Flycast (build/data)
+FLYCAST_VMU = "MK-5104150_vmu_save_A1.bin"  # VMU por jogo do Flycast (build/data): <id do produto no IP.BIN>_vmu_save_A1.bin
 
 
 def roteiro_bu(path):
@@ -720,22 +715,22 @@ def cmd_bu_trace(a):
     cfg = os.path.join(base, "emu.cfg")
     trocas = []  # (arquivo, guarda): restaurados no fim, inclusive se a preparacao falhar
     for f in ([vmu] if a.vmu else []) + ([cfg] if a.vmu or a.sem_vmu else []):
-        if os.path.exists(f + ".bs-original"):
-            raise SystemExit(f"{f}.bs-original existe (sessao anterior interrompida?): restaure-o antes")
+        if os.path.exists(f + ".hh-original"):
+            raise SystemExit(f"{f}.hh-original existe (sessao anterior interrompida?): restaure-o antes")
     entrada = EntradaBu(roteiro_bu(a.roteiro)) if a.roteiro else None
     g = None
     fechou = True
     try:
         if a.vmu:  # a VMU do oraculo (13/10) nunca e alterada: fica guardada e volta no fim
-            trocas.append((vmu, vmu + ".bs-original"))
+            trocas.append((vmu, vmu + ".hh-original"))
             if os.path.exists(vmu):
-                shutil.copyfile(vmu, vmu + ".bs-original")
+                shutil.copyfile(vmu, vmu + ".hh-original")
             shutil.copyfile(a.vmu, vmu)
         if a.vmu or a.sem_vmu:
             # slot A1 (device1.1) so nesta sessao: MDT_SegaVMU = 1 com a VMU, MDT_None = 10 sem
             # cartao (core/hw/maple/maple_cfg.h); o emu.cfg de 14/10 tem 10, ou seja, sem VMU
-            trocas.append((cfg, cfg + ".bs-original"))
-            shutil.copyfile(cfg, cfg + ".bs-original")
+            trocas.append((cfg, cfg + ".hh-original"))
+            shutil.copyfile(cfg, cfg + ".hh-original")
             txt = open(cfg, encoding="utf-8").read()
             if not re.search(r"(?m)^device1\.1 = \d+$", txt):
                 raise SystemExit(f"{cfg}: esperava uma linha 'device1.1 = <tipo>' (slot A1)")
@@ -745,7 +740,13 @@ def cmd_bu_trace(a):
             os.makedirs(a.dump, exist_ok=True)
         g = connect(a)
         enter_game(g)
-        fixos = set(BU_ENTRADAS) | set(BU_RETORNOS) | set(BU_CALLBACKS) | {BU_PAINEL}
+        if a.forcar_modo_save and not BU_PAINEL:
+            raise SystemExit("--forcar-modo-save: sem painel de save medido no Head Hunter (BU_PAINEL)")
+        if a.forcar_save_point and not SAVE_POINT_RET:
+            raise SystemExit("--forcar-save-point: sem ponto de save medido no Head Hunter (SAVE_POINT_RET)")
+        # HH11: o jogo consulta o estado num laco apertado (8C11836C); com parada em cada consulta o Flycast nao anda.
+        # So com --status.
+        fixos = set(BU_ENTRADAS) | (set(BU_RETORNOS) if a.status else set()) | set(BU_CALLBACKS) | ({BU_PAINEL} if BU_PAINEL else set())
         if entrada or a.passos:
             fixos.add(PD_RETORNO)
         if a.forcar_save_point:
@@ -761,6 +762,7 @@ def cmd_bu_trace(a):
         pend = {}   # retorno (sem espelho) -> [(rotulo, r15, seq)]
         modo_ant, seq, passo, fim, t0 = None, 0, 0, None, time.time()
         load_dst = None
+        info_ptr = 0
         modo_end = [struct.unpack("<I", g.read(x, 4))[0] for x in BU_PAINEL_MODO]
         out = open(a.out, "w", encoding="utf-8")
         out.write("seq\tpasso\tms\ttipo\trotulo\tpc\tpr\tr4\tr5\tr6\tr7\ts0\ts1\tr0\textra\n")
@@ -800,8 +802,10 @@ def cmd_bu_trace(a):
                 for rot, sp in pend[pc]:
                     if sp == r[15]:
                         extra = ""
-                        if rot == "cb_conclusao":
+                        if rot == "cb_conclusao" and BU_ESTADO:
                             extra = "estado=" + g.read(*BU_ESTADO).hex()
+                        elif rot == "file_info" and info_ptr:  # HH11: a estrutura que file_info preenche
+                            extra = "info=" + g.read(info_ptr, 32).hex()
                         linha("retorno", rot, r, f"{r[0]:08X}", extra)
                     else:
                         ficam.append((rot, sp))
@@ -816,9 +820,13 @@ def cmd_bu_trace(a):
                 rot = BU_ENTRADAS[key]
                 extra = ""
                 if rot == "save":
-                    extra = despejo("save_src", r[6], r[7] * 512) + " " + despejo("payload", *BU_PAYLOAD)
+                    extra = despejo("save_src", r[6], r[7] * 512) + (" " + despejo("payload", *BU_PAYLOAD) if BU_PAYLOAD else "")
+                elif rot == "file_info":
+                    info_ptr = r[6]
                 elif rot == "load":
-                    load_dst = r[6]
+                    load_dst = (r[6], max(1, min(200, struct.unpack("<I", g.read(r[15], 4))[0] or 3)))  # nblocos: 1o argumento de pilha (0 = ate o fim)
+                elif rot == "op_0b":  # HH11: leitura do arquivo inteiro (sem tamanho no pedido): 32 blocos cobrem os saves medidos
+                    load_dst = (r[6], 32)
                 linha("entrada", rot, r, "", extra.strip())
                 espera_retorno(rot, r)
             elif key in BU_RETORNOS:
@@ -828,7 +836,7 @@ def cmd_bu_trace(a):
                 extra = ""
                 if rot == "cb_conclusao" and r[5] not in BU_OPS_DE_CARTAO:
                     if load_dst is not None:
-                        extra = despejo("load_dst", load_dst, 3 * 512)
+                        extra = despejo("load_dst", load_dst[0], load_dst[1] * 512)
                         load_dst = None
                     if fim is None and a.fim_apos:
                         a.fim_apos -= 1
@@ -836,7 +844,7 @@ def cmd_bu_trace(a):
                             fim = passo + a.passos_extra
                 linha("callback", rot, r, "", extra)
                 espera_retorno(rot, r)
-            elif key == BU_PAINEL:
+            elif BU_PAINEL and key == BU_PAINEL:
                 modo = tuple(struct.unpack("<H", g.read(x, 2))[0] for x in modo_end)
                 atual = (r[4], r[5], r[R_PR], modo)
                 if a.forcar_modo_save and (r[R_PR] & 0x1FFFFFFF) == (a.forcar_modo_save + 4) & 0x1FFFFFFF and r[4] != 0:
@@ -939,6 +947,7 @@ def main():
     b.add_argument("--vmu", help="imagem de VMU (128 KB) usada nesta sessao; a do Flycast volta no fim")
     b.add_argument("--vmu-saida", help="copia da VMU depois da sessao (com --vmu)")
     b.add_argument("--sem-vmu", action="store_true", help="slot A1 vazio nesta sessao (emu.cfg restaurado no fim)")
+    b.add_argument("--status", action="store_true", help="tambem para em cada consulta de estado (lento: laco apertado no HH)")
     b.add_argument("--dump", help="pasta para os bytes de SAVE (origem, payload) e de LOAD (destino)")
     b.add_argument("--forcar-modo-save", type=lambda s: int(s, 0),
                    help="ponto de chamada do painel (jsr) cujo r4 vira 0 (H1: 0x8C0792C8, LOAD GAME do titulo)")

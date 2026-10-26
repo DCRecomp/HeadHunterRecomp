@@ -8,7 +8,7 @@ versão e justificativa (`LEGAL.md`).
 | Pacote | Origem | Licença | Versão | Uso |
 |---|---|---|---|---|
 | toml++ | https://github.com/marzer/tomlplusplus (FetchContent, não versionado) | MIT | v3.4.0 | Configuração do tradutor (HH04), como no Blue Stinger |
-| recomp-BStinger (código portado) | `C:\Source\recomp-BStinger` | MIT (`third_party/licenses/recomp-BStinger-LICENSE.txt`) | 2026-10-24 | `translator/{decoder,analysis,codegen,app}`, `runtime/{cpu,memory,pvr,gdrom,hle,maple,input,aica,boot,debug,mods}`, `tools/hh-extract/*/runtime_data.*`, `tools/hh-diff`, `tools/dcmap`, `tools/dev/flycast_oracle.py`, `native/{core,platform}` (HH07–HH10: arquivos, tempo, entrada), `transitional/{boundary_registry,gdfs_adapter,time_adapter,input_bridge,pad_contract,pad_adapter,pad_probe}` (HH07–HH10), `tests/{unit,codegen,fixtures}`; cada arquivo traz cabeçalho de origem |
+| recomp-BStinger (código portado) | `C:\Source\recomp-BStinger` | MIT (`third_party/licenses/recomp-BStinger-LICENSE.txt`) | 2026-10-24 | `translator/{decoder,analysis,codegen,app}`, `runtime/{cpu,memory,pvr,gdrom,hle,maple,input,aica,boot,debug,mods}`, `tools/hh-extract/*/runtime_data.*`, `tools/hh-diff`, `tools/dcmap`, `tools/dev/flycast_oracle.py`, `native/{core,platform}` (HH07–HH10: arquivos, tempo, entrada), `transitional/{boundary_registry,gdfs_adapter,time_adapter,input_bridge,pad_contract,pad_adapter,pad_probe,bu_machine,bu_adapter}` (HH07–HH11), `native/platform/saves*` e `tools/dev/hh11_vmu.py` (HH11), `tests/{unit,codegen,fixtures}`; cada arquivo traz cabeçalho de origem |
 
 ## Ferramentas externas (não versionadas, não ligadas ao produto)
 

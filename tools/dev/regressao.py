@@ -111,6 +111,8 @@ def private_inputs(names):
                       for f in ('boot_entry.bss', 'boot_entry.pvr', 'boot_flycast.tsv', 'fb_sega.vram', 'fb_sega.pvr')]
         elif n in ('HH_DISC1', 'HH_DISC2'):
             parts.append(file_hash(v, sample=True))
+        elif os.path.isdir(v):  # HH11_ORACULO: pasta de capturas (TSV, VMUs, despejos)
+            parts.append(dir_stat(v))
         else:
             parts.append(file_hash(v))
     return parts
@@ -236,6 +238,17 @@ def step_gates_hh10():
         raise RuntimeError('portoes do HH10 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh11():
+    # HH11: store e maquina da bu (unitarios) e S0-S5 com os negativos contra o oraculo do Flycast (c1/c2)
+    need('HH_DATA_DIR'), need('HH11_ORACULO')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh11_saves(_tests)?$', '--no-tests=error', '--output-on-failure',
+            '--timeout', '3600'], env={'HH_EXIGIR_DADOS': '1'}, timeout=7200)
+    passed = [n for n in ('hh11_saves_tests', 'hh11_saves')
+              if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 2:
+        raise RuntimeError('portoes do HH11 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -244,11 +257,38 @@ def step_area1():
 def step_builder():
     disc, disc2, want = need('HH_DISC1'), need('HH_DISC2'), reference()
     out = os.path.join(ROOT, 'dist', 'regressao')
-    if sh([EXE('builder', 'Release', 'hh-builder.exe'), '--disc', disc, '--disc2', disc2, '--out', out],
-          timeout=7200).returncode != 0:
-        raise RuntimeError('Builder falhou')
-    # roteiro no executavel INSTALADO (HeadHunter.exe --headless), com os dados que vieram do CDI
     inst = os.path.join(out, 'HeadHunter')
+    build = lambda: sh([EXE('builder', 'Release', 'hh-builder.exe'), '--disc', disc, '--disc2', disc2, '--out', out],
+                       timeout=7200).returncode == 0
+    # HH11 (S4): dados do usuario dentro da instalacao (saves\ do modo portatil, controles.toml) sobrevivem a
+    # reinstalacao. Conteudo sintetico; sem instalacao anterior, o Builder instala uma primeiro.
+    if not os.path.isdir(inst) and not build():
+        raise RuntimeError('Builder falhou (instalacao inicial)')
+    marca = {os.path.join('saves', 'card0', 'HHTESTE.REG.hhsv'): b'reinstalacao HH11\n',
+             'controles.toml': b'# controles do usuario (teste de reinstalacao HH11)\n'}
+    for rel, data in marca.items():
+        os.makedirs(os.path.dirname(os.path.join(inst, rel)) or inst, exist_ok=True)
+        with open(os.path.join(inst, rel), 'wb') as f:
+            f.write(data)
+    # copia de seguranca deixada por uma passagem que falhou (revisao Codex HH11): os dados dela voltam para a
+    # instalacao antes de qualquer remocao
+    antiga = os.path.join(out, 'HeadHunter.antigo')
+    sobra = os.path.join('saves', 'card0', 'HHTESTE.ANT.hhsv')
+    os.makedirs(os.path.join(antiga, 'saves', 'card0'), exist_ok=True)
+    with open(os.path.join(antiga, '.hh-builder'), 'w') as f:
+        f.write('pasta criada pelo hh-builder\n')
+    with open(os.path.join(antiga, sobra), 'wb') as f:
+        f.write(b'sobra de reinstalacao HH11\n')
+    marca[sobra] = b'sobra de reinstalacao HH11\n'
+    if not build():
+        raise RuntimeError('Builder falhou')
+    if os.path.exists(antiga):
+        raise RuntimeError('a copia de seguranca sem dados pendentes devia ter sido removida')
+    for rel, data in marca.items():
+        p = os.path.join(inst, rel)
+        if not os.path.isfile(p) or open(p, 'rb').read() != data:
+            raise RuntimeError('reinstalacao perdeu dados do usuario: ' + rel)
+    # roteiro no executavel INSTALADO (HeadHunter.exe --headless), com os dados que vieram do CDI
     if area1_hashes(os.path.join(inst, 'HeadHunter.exe'), os.path.join(inst, 'data')) != want:
         raise RuntimeError('roteiro no HeadHunter.exe instalado difere da referencia')
 
@@ -260,6 +300,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh08', step_gates_hh08, ['HH_DATA_DIR', 'HH_DATA_DIR2', 'HH_AREA1_HASHES']),
          ('portoes_hh09', step_gates_hh09, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('portoes_hh10', step_gates_hh10, ['HH_DATA_DIR', 'HH07_BIN', 'HH_AREA1_HASHES']),
+         ('portoes_hh11', step_gates_hh11, ['HH_DATA_DIR', 'HH11_ORACULO']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 

@@ -31,14 +31,14 @@
 "fechamento.violacoes.sdk" = 0
 "fronteira.direta" = 285
 "fronteira.indireta" = 1
-"fronteira.provedor.legado" = 274
-"fronteira.provedor.nativo" = 12
+"fronteira.provedor.legado" = 261
+"fronteira.provedor.nativo" = 25
 "fronteira.subsistema.arquivos" = 1
 "fronteira.subsistema.audio" = 29
 "fronteira.subsistema.controles" = 9
 "fronteira.subsistema.render" = 33
-"fronteira.subsistema.saves" = 3
-"fronteira.subsistema.sistema" = 72
+"fronteira.subsistema.saves" = 16
+"fronteira.subsistema.sistema" = 71
 "fronteira.subsistema.tempo" = 38
 "fronteira.total" = 286
 "funcoes.total" = 4699
@@ -69,7 +69,7 @@
 "legado.subsistema.controles" = 9
 "legado.subsistema.render" = 33
 "legado.subsistema.saves" = 3
-"legado.subsistema.sistema" = 71
+"legado.subsistema.sistema" = 70
 "legado.subsistema.tempo" = 38
 "pref.nao_resolvido.funcoes.desconhecida" = 13
 "pref.nao_resolvido.funcoes.jogo" = 2

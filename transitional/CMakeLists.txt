@@ -2,6 +2,6 @@
 # com geracao, adaptadores Sh4Context <-> native/, registro de fronteiras com provedor
 # legado/nativo. Some quando os chamadores forem elevados (HH15).
 add_library(hh_transitional STATIC boundary_registry.cpp gdfs_adapter.cpp time_adapter.cpp
-            input_bridge.cpp pad_contract.cpp pad_adapter.cpp pad_probe.cpp)
+            input_bridge.cpp pad_contract.cpp pad_adapter.cpp pad_probe.cpp bu_machine.cpp bu_adapter.cpp)
 target_include_directories(hh_transitional PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(hh_transitional PUBLIC hh_legacy hh_native_api hh_native_files hh_native_time hh_native_input hh_dcmap)
+target_link_libraries(hh_transitional PUBLIC hh_legacy hh_native_api hh_native_files hh_native_time hh_native_input hh_native_saves hh_dcmap)

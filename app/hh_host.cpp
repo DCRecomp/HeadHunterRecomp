@@ -11,6 +11,8 @@
 #include "time_adapter.h"
 #include "pad_probe.h"
 #include "pad_adapter.h"
+#include "bu_adapter.h"
+#include "platform/saves.h"
 #include "input_bridge.h"
 #include "hh_verified_files.h"
 #include "gdrom/data_source.h"
@@ -130,6 +132,7 @@ HostResult host_run(const HostOptions& opt) {
     transitional::BoundaryRegistry                   boundaries;
     std::unique_ptr<native::files::DataFileSystem> files;
     std::unique_ptr<VerifiedFileSystem>            verified;
+    std::unique_ptr<native::saves::ISaveStore>     saves;
     g_opt = &opt;
     g_res = &res;
     hhg::register_functions();
@@ -175,6 +178,16 @@ HostResult host_run(const HostOptions& opt) {
                 *files, opt.filesManifest.empty() ? opt.data / "disc.manifest" : opt.filesManifest);
             transitional::gdfs::install(boundaries, *verified);
         }
+        if (opt.saves == SavesProvider::Native) {
+            // HH11: saves pelo provedor nativo (API bu sobre arquivos; sem VMU nem Maple)
+            if (opt.savesRoot.empty()) throw std::runtime_error("--saves nativo sem pasta de saves");
+            native::saves::FileStoreOptions so;
+            so.log = [](const std::string& m) { std::fprintf(stderr, "[saves] %s\n", m.c_str()); };
+            saves  = native::saves::make_file_store(opt.savesRoot, so);
+            std::fprintf(stderr, "[saves] nativo: %s\n", opt.savesRoot.string().c_str());
+            const char* bm = std::getenv("HH_BU_MUTACAO");  // negativos do portao hh11_saves
+            transitional::bu::install(boundaries, *saves, transitional::bu::parse_mutations(bm ? bm : ""));
+        }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
         transitional::pad::probe_install();  // HH_PAD_CONTRATO=<tsv>: contrato do pd contra o legado (HH10.1)
         transitional::pad::closure_install();  // HH_PAD_FECHAMENTO=<tsv>: prova de fechamento (HH10.4)
@@ -219,6 +232,18 @@ HostResult host_run(const HostOptions& opt) {
     call_trace_flush();
     if (g_padTrace) std::fclose(g_padTrace), g_padTrace = nullptr;
     transitional::pad::closure_finish(transitional::pad::installed());
+    if (closurePath && *closurePath && transitional::bu::installed())  // HH11: contadores do provedor nativo dos saves
+        if (std::FILE* f = std::fopen(closurePath, "a")) {
+            const auto b = transitional::bu::stats();
+            std::fprintf(f, "bu_load_fnv\t%016llx\nbu_load_bytes\t%llu\n", (unsigned long long)b.lastLoadFnv,
+                         (unsigned long long)b.lastLoadBytes);
+            std::fprintf(f, "bu_init\t%llu\nbu_passadas\t%llu\nbu_save_ok\t%llu\nbu_save_falha\t%llu\nbu_load_ok\t%llu\n"
+                            "bu_load_falha\t%llu\nbu_sem_suporte\t%llu\n",
+                         (unsigned long long)b.inits, (unsigned long long)b.ticks, (unsigned long long)b.saveOk,
+                         (unsigned long long)b.saveFail, (unsigned long long)b.loadOk, (unsigned long long)b.loadFail,
+                         (unsigned long long)b.unsupported);
+            std::fclose(f);
+        }
     if (g_areaCheck && !transitional::pad::installed())
         if (std::FILE* f = std::fopen(closurePath, "a"))
             std::fprintf(f, "area_nativa_alterada\t%llu\n", static_cast<unsigned long long>(g_areaChanged)), std::fclose(f);
@@ -227,6 +252,10 @@ HostResult host_run(const HostOptions& opt) {
         transitional::pad::uninstall(boundaries);
         maple_set_controller_present(true);
         transitional::input_bridge::install(nullptr);
+    }
+    if (transitional::bu::installed()) {
+        std::fputs(transitional::bu::summary().c_str(), stderr);
+        transitional::bu::uninstall(boundaries);
     }
     if (transitional::time::installed()) {
         transitional::time::uninstall();

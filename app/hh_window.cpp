@@ -9,7 +9,15 @@
 //
 //   HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
 //              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
-//              [--mods <pasta>]
+//              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--mods <pasta>]
+// Saves (HH11, --saves nativo, padrao na janela): Documentos\DC-Recomp\Head Hunter\saves (pasta Documentos do
+// Windows, que segue o redirecionamento), --saves-pasta <pasta> ou --saves-portatil (saves\ ao lado do
+// executavel). --headless (verificacao da instalacao contra o roteiro de referencia, gravado sem memory card)
+// usa o legado, salvo --saves nativo (entao um cartao temporario, sem tocar nos saves do usuario).
+// Formato do Dreamcast (HH11.4; o arquivo do save e o arquivo da VMU, sem transformacao):
+//   --saves-exportar <pasta>                      cada save vira <pasta>\<NOME>.VMS
+//   --saves-importar <arquivo.vms> [--saves-nome <NOME>]  (padrao: o nome do arquivo, em maiusculas)
+// operam na pasta dos saves (as mesmas opcoes acima) e saem sem abrir o jogo.
 // Os dois discos estao juntos em data\ (HH08): nao ha troca de disco; o jogo continua do disco
 // 1 para o 2 sozinho.
 // --log grava "quadro N: LxA hash H" a cada K VBlanks (mesmo hash do hh-run): prova que a
@@ -24,11 +32,16 @@
 #include "input/input.h"
 #include "input_bridge.h"
 #include "platform/input.h"
+#include "platform/saves.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include <process.h>
+#include <shlobj.h>
+
 #include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -114,6 +127,29 @@ fs::path exeDir() {
     return base ? fs::path(reinterpret_cast<const char8_t*>(base)) : fs::current_path();
 }
 
+// Pasta padrao dos saves: Documentos\DC-Recomp\Head Hunter\saves (precedente do Blue Stinger); sem a pasta
+// Documentos, saves\ ao lado do executavel.
+fs::path defaultSavesRoot() {
+    PWSTR    docs = nullptr;
+    fs::path root;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_CREATE, nullptr, &docs)) && docs)
+        root = fs::path(docs) / L"DC-Recomp" / L"Head Hunter" / L"saves";
+    CoTaskMemFree(docs);
+    if (root.empty()) {
+        root = exeDir() / "saves";
+        std::fprintf(stderr, "[saves] pasta Documentos indisponivel: usando %s\n", root.string().c_str());
+    }
+    return root;
+}
+
+struct TempSaves {  // cartao temporario do --headless com --saves nativo (apagado no fim)
+    fs::path dir;
+    ~TempSaves() {
+        std::error_code ec;
+        if (!dir.empty()) fs::remove_all(dir, ec);
+    }
+};
+
 // controles.toml ao lado do executavel (criado com o texto padrao se faltar). Arquivo com erro:
 // valem os controles padrao, com aviso.
 ni::ActionMap loadActionMap() {
@@ -141,7 +177,11 @@ int main(int argc, char** argv) {
     std::string     logPath;
     uint64_t        hashEvery = 0;
     bool            headless  = false;
+    bool            savesSet = false, savesPortable = false;
+    fs::path        vmsExport, vmsImport;
+    std::string     vmsName;
     opt.realtime = true;
+    opt.saves    = hh::SavesProvider::Native;
     opt.data     = exeDir() / "data";
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -165,12 +205,55 @@ int main(int argc, char** argv) {
         else if (a == "--controles" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
             opt.controls = std::string(argv[++i]) == "nativo" ? hh::ControlsProvider::Native : hh::ControlsProvider::Legacy;
+        else if (a == "--saves" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
+            opt.saves = std::string(argv[++i]) == "nativo" ? hh::SavesProvider::Native : hh::SavesProvider::Legacy, savesSet = true;
+        else if (a == "--saves-pasta" && i + 1 < argc) opt.savesRoot = argv[++i];
+        else if (a == "--saves-portatil") savesPortable = true;
+        else if (a == "--saves-exportar" && i + 1 < argc) vmsExport = argv[++i];
+        else if (a == "--saves-importar" && i + 1 < argc) vmsImport = argv[++i];
+        else if (a == "--saves-nome" && i + 1 < argc) vmsName = argv[++i];
         else {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
                                  "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
-                                 "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--mods <pasta>]\n");
+                                 "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--saves legado|nativo] "
+                                 "[--saves-pasta <pasta> | --saves-portatil] [--mods <pasta>]\n"
+                                 "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-exportar <pasta>\n"
+                                 "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-importar <arquivo.vms> "
+                                 "[--saves-nome <NOME>]\n");
             return 2;
         }
+    }
+    if (!vmsExport.empty() || !vmsImport.empty()) {
+        namespace ns = hh::native::saves;
+        const fs::path root = !opt.savesRoot.empty() ? opt.savesRoot : savesPortable ? exeDir() / "saves" : defaultSavesRoot();
+        ns::FileStoreOptions so;
+        so.log     = [](const std::string& m) { std::fprintf(stderr, "[saves] %s\n", m.c_str()); };
+        auto store = ns::make_file_store(root, so);
+        if (!vmsImport.empty()) {
+            std::string n = vmsName.empty() ? vmsImport.filename().replace_extension().string() : vmsName;
+            for (char& ch : n) ch = char(std::toupper(static_cast<unsigned char>(ch)));
+            const ns::SaveError e = ns::valid_save_name(n) ? ns::import_vms(*store, 0, n, vmsImport) : ns::SaveError::BadName;
+            std::printf(e == ns::SaveError::None ? "importado: %s -> %s\n" : "PARADA: %s -> %s: ", vmsImport.string().c_str(),
+                        n.c_str());
+            if (e != ns::SaveError::None) std::printf("%s\n", ns::save_error_name(e));
+            return e == ns::SaveError::None ? 0 : 1;
+        }
+        std::vector<ns::SaveEntry> list;
+        if (const ns::SaveError e = store->list(0, list); e != ns::SaveError::None) {
+            std::printf("PARADA: %s: %s\n", root.string().c_str(), ns::save_error_name(e));
+            return 1;
+        }
+        std::error_code ec;
+        fs::create_directories(vmsExport, ec);
+        int failed = 0;
+        for (const auto& s : list) {
+            const fs::path      out = vmsExport / (s.name + ".VMS");
+            const ns::SaveError e   = ns::export_vms(*store, 0, s.name, out);
+            if (e == ns::SaveError::None) std::printf("exportado: %s -> %s\n", s.name.c_str(), out.string().c_str());
+            else std::printf("PARADA: %s: %s\n", s.name.c_str(), ns::save_error_name(e)), ++failed;
+        }
+        return failed ? 1 : 0;
     }
     try {
         const hh::InstallData inst = hh::resolve_install(opt.data);
@@ -192,6 +275,17 @@ int main(int argc, char** argv) {
     if (headless && !opt.vblankLimit) {
         std::fprintf(stderr, "--headless exige --vblanks\n");
         return 2;
+    }
+    TempSaves tempSaves;
+    if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
+    if (opt.saves == hh::SavesProvider::Native && opt.savesRoot.empty()) {
+        if (savesPortable) opt.savesRoot = exeDir() / "saves";
+        else if (headless) {
+            tempSaves.dir = fs::temp_directory_path() / ("hh-saves-headless-" + std::to_string(_getpid()));
+            std::error_code ec;
+            fs::remove_all(tempSaves.dir, ec);
+            opt.savesRoot = tempSaves.dir;
+        } else opt.savesRoot = defaultSavesRoot();
     }
     std::FILE* log = nullptr;
     if (!logPath.empty()) {

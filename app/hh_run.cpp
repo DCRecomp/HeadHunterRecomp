@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+#include <process.h>
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -47,10 +49,18 @@ void writePpm(const fs::path& p, const std::vector<uint32_t>& argb, uint32_t w, 
     }
 }
 
+struct TempSaves {
+    fs::path dir;
+    ~TempSaves() {
+        std::error_code ec;
+        if (!dir.empty()) fs::remove_all(dir, ec);
+    }
+};
+
 int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
                          " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental]"
-                         " [--controles legado|nativo] [--mods <pasta>]\n");
+                         " [--controles legado|nativo] [--saves legado|nativo [--saves-pasta <pasta>]] [--mods <pasta>]\n");
     return 2;
 }
 
@@ -81,9 +91,21 @@ int main(int argc, char** argv) {
         else if (a == "--mods" && (v = next())) opt.modsDir = v;
         else if (a == "--controles" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
             opt.controls = std::string(v) == "nativo" ? hh::ControlsProvider::Native : hh::ControlsProvider::Legacy;
+        else if (a == "--saves" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
+            opt.saves = std::string(v) == "nativo" ? hh::SavesProvider::Native : hh::SavesProvider::Legacy;
+        else if (a == "--saves-pasta" && (v = next())) opt.savesRoot = v;
         else return usage();
     }
     if (opt.data.empty()) return usage();
+    // HH11: sem --saves-pasta, um cartao vazio e temporario do processo (apagado no fim): nenhum teste le ou
+    // grava os saves do usuario
+    TempSaves tempSaves;
+    if (opt.saves == hh::SavesProvider::Native && opt.savesRoot.empty()) {
+        tempSaves.dir  = fs::temp_directory_path() / ("hh-saves-run-" + std::to_string(_getpid()));
+        std::error_code ec;
+        fs::remove_all(tempSaves.dir, ec);
+        opt.savesRoot = tempSaves.dir;
+    }
     try {
         const hh::InstallData inst = hh::resolve_install(opt.data);
         opt.filesManifest          = inst.manifest;

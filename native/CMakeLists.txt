@@ -22,3 +22,7 @@ target_link_libraries(hh_native_time PUBLIC hh_native_api)
 # HH10: entrada nativa (SDL3/XInput, mapa de acoes em TOML, perfis), portada do N3 do BS.
 add_library(hh_native_input STATIC platform/input_map.cpp platform/input_system.cpp)
 target_link_libraries(hh_native_input PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus xinput)
+
+# HH11: saves (formato VMS, envelope versionado e escrita atomica em disco; portados do N4 do BS).
+add_library(hh_native_saves STATIC platform/saves_format.cpp platform/saves_store.cpp)
+target_link_libraries(hh_native_saves PUBLIC hh_native_api)
