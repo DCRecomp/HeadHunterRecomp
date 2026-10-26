@@ -203,6 +203,11 @@ if(TARGET hh_builder_core)
   target_include_directories(hh18_builder_tests PRIVATE unit)
   target_link_libraries(hh18_builder_tests PRIVATE hh_builder_core)
   add_test(NAME hh18_builder_tests COMMAND hh18_builder_tests)
+  # HH12: catalogo dos filmes, cabecalho 4X, MP4 sintetico pelo Media Foundation, reproducao e Builder sem FFmpeg.
+  add_executable(hh12_video_tests unit/main.cpp unit/test_hh12_video.cpp)
+  target_include_directories(hh12_video_tests PRIVATE unit)
+  target_link_libraries(hh12_video_tests PRIVATE hh_builder_core hh_native_video)
+  add_test(NAME hh12_video_tests COMMAND hh12_video_tests)
 endif()
 
 # HH09: tempo e eventos nativos (relogio, filas, provedor nativo x legado, monitor de progresso).
@@ -245,6 +250,14 @@ if(HH_GENERATED_DIR)
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh11_saves.py
             $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR} ${HH_GENERATED_DIR})
   set_tests_properties(hh11_saves PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600)
+endif()
+
+# HH12: portoes dos filmes nativos (V0-V4; HH_DATA_DIR, FFmpeg no PATH ou HH_FFMPEG).
+if(HH_GENERATED_DIR AND TARGET hh-builder)
+  add_test(NAME hh12_video
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh12_video.py
+            $<TARGET_FILE:hh-run> $<TARGET_FILE:hh-builder> ${PROJECT_SOURCE_DIR} ${HH_GENERATED_DIR})
+  set_tests_properties(hh12_video PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600)
 endif()
 
 # HH10: portoes dos controles nativos (C1/C2/C3/C8 e negativos; HH_DATA_DIR).

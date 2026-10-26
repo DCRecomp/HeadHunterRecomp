@@ -9,7 +9,10 @@
 //
 //   HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
 //              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
-//              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--mods <pasta>]
+//              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo]
+//              [--mods <pasta>]
+// Filmes (HH12, --video nativo, padrao na janela): os MP4 que o Builder converteu dos 4X (data\video), com audio
+// pelo XAudio2 e mods em mods\video; o --headless fica no legado (roteiro de referencia), salvo --video nativo.
 // Saves (HH11, --saves nativo, padrao na janela): Documentos\DC-Recomp\Head Hunter\saves (pasta Documentos do
 // Windows, que segue o redirecionamento), --saves-pasta <pasta> ou --saves-portatil (saves\ ao lado do
 // executavel). --headless (verificacao da instalacao contra o roteiro de referencia, gravado sem memory card)
@@ -211,11 +214,12 @@ int main(int argc, char** argv) {
     std::string     logPath;
     uint64_t        hashEvery = 0;
     bool            headless  = false;
-    bool            savesSet = false, savesPortable = false;
+    bool            savesSet = false, savesPortable = false, videoSet = false;
     fs::path        vmsExport, vmsImport;
     std::string     vmsName;
     opt.realtime = true;
     opt.saves    = hh::SavesProvider::Native;
+    opt.video    = hh::VideoProvider::Native;  // HH12: filmes nativos padrao na janela (promovido; legado como reserva)
     opt.data     = exeDir() / "data";
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -243,6 +247,9 @@ int main(int argc, char** argv) {
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
             opt.saves = std::string(argv[++i]) == "nativo" ? hh::SavesProvider::Native : hh::SavesProvider::Legacy, savesSet = true;
         else if (a == "--saves-pasta" && i + 1 < argc) opt.savesRoot = argv[++i];
+        else if (a == "--video" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
+            opt.video = std::string(argv[++i]) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy, videoSet = true;
         else if (a == "--saves-portatil") savesPortable = true;
         else if (a == "--saves-exportar" && i + 1 < argc) vmsExport = argv[++i];
         else if (a == "--saves-importar" && i + 1 < argc) vmsImport = argv[++i];
@@ -251,7 +258,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
                                  "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
                                  "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--saves legado|nativo] "
-                                 "[--saves-pasta <pasta> | --saves-portatil] [--mods <pasta>]\n"
+                                 "[--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo] [--mods <pasta>]\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-exportar <pasta>\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-importar <arquivo.vms> "
                                  "[--saves-nome <NOME>]\n");
@@ -319,6 +326,9 @@ int main(int argc, char** argv) {
     }
     TempSaves tempSaves;
     if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
+    // o --headless (verificacao do Builder e roteiro de referencia, gravado com os filmes legados) fica no legado
+    if (headless && !videoSet) opt.video = hh::VideoProvider::Legacy;
+    opt.videoAudio = !headless;  // HH12: audio dos filmes nativos so com a janela (headless: saida nula)
     // modo portatil gravado pelo Recompiler (instalacao.toml ao lado do executavel; vale ao abrir o jogo direto)
     {
         std::string warn;

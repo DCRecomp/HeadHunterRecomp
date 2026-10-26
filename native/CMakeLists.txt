@@ -30,3 +30,10 @@ target_link_libraries(hh_native_install PUBLIC hh_native_api PRIVATE tomlplusplu
 # HH11: saves (formato VMS, envelope versionado e escrita atomica em disco; portados do N4 do BS).
 add_library(hh_native_saves STATIC platform/saves_format.cpp platform/saves_store.cpp)
 target_link_libraries(hh_native_saves PUBLIC hh_native_api)
+
+# HH12: filmes (catalogo, Media Foundation, reproducao pelo relogio logico; portados do N5 do BS) e a saida de audio
+# dos filmes (XAudio2 / nula).
+add_library(hh_native_video STATIC video/movie_catalog.cpp video/mf_movie.cpp video/movie_playback.cpp video/subtitles.cpp)
+target_link_libraries(hh_native_video PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus mfplat mfreadwrite mfuuid ole32 d2d1 dwrite windowscodecs)
+add_library(hh_native_audio STATIC audio/audio_output.cpp)
+target_link_libraries(hh_native_audio PUBLIC hh_native_api PRIVATE xaudio2 ole32)

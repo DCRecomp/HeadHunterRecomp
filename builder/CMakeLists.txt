@@ -5,9 +5,10 @@
 #   - HeadHunter-Recompiler.exe: janela do usuario final (os dois CDIs, pasta, idioma, modo portatil) -> jogo instalado;
 #   - HeadHunter-Developer.exe: exportar o projeto C++ editavel (sem compilador), compilar o projeto (mods) e
 #     inspecionar recursos, com o log tecnico.
-add_library(hh_builder_core STATIC builder_core.cpp toolchain.cpp child_process.cpp project_export.cpp resource_inspect.cpp)
+add_library(hh_builder_core STATIC builder_core.cpp toolchain.cpp child_process.cpp project_export.cpp resource_inspect.cpp
+            video/fourxm_header.cpp video/fourxm_convert.cpp video/movie_build.cpp)
 target_include_directories(hh_builder_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(hh_builder_core PUBLIC hh_recomp_lib hh_extract_core PRIVATE hh_native_install tomlplusplus::tomlplusplus)
+target_link_libraries(hh_builder_core PUBLIC hh_recomp_lib hh_extract_core hh_native_video PRIVATE hh_native_install tomlplusplus::tomlplusplus)
 target_compile_features(hh_builder_core PUBLIC cxx_std_20)
 target_compile_definitions(hh_builder_core PUBLIC UNICODE _UNICODE)
 

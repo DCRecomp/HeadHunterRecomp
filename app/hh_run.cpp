@@ -60,7 +60,8 @@ struct TempSaves {
 int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
                          " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental]"
-                         " [--controles legado|nativo] [--saves legado|nativo [--saves-pasta <pasta>]] [--mods <pasta>]\n");
+                         " [--controles legado|nativo] [--saves legado|nativo [--saves-pasta <pasta>]] [--video legado|nativo]"
+                         " [--mods <pasta>]\n");
     return 2;
 }
 
@@ -94,6 +95,8 @@ int main(int argc, char** argv) {
         else if (a == "--saves" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
             opt.saves = std::string(v) == "nativo" ? hh::SavesProvider::Native : hh::SavesProvider::Legacy;
         else if (a == "--saves-pasta" && (v = next())) opt.savesRoot = v;
+        else if (a == "--video" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
+            opt.video = std::string(v) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy;
         else return usage();
     }
     if (opt.data.empty()) return usage();

@@ -13,6 +13,7 @@
 #include "pad_probe.h"
 #include "pad_adapter.h"
 #include "bu_adapter.h"
+#include "video_adapter.h"
 #include "platform/saves.h"
 #include "input_bridge.h"
 #include "hh_verified_files.h"
@@ -82,6 +83,8 @@ void onVblank(void*) {
     HostResult& r = *g_res;
     ++r.vblanks;
     pvr_video_frame(g_frame.argb, g_frame.width, g_frame.height);
+    if (transitional::video::installed())  // HH12: o quadro do filme nativo no lugar do quadro do PVR (como no N5 do BS)
+        transitional::video::compose_frame(g_frame.argb, g_frame.width, g_frame.height);
     g_frame.vblank = r.vblanks;
     g_frame.reads  = maple_cond_seq(0);
     bool blank     = true;
@@ -212,6 +215,18 @@ HostResult host_run(const HostOptions& opt) {
             const char* bm = std::getenv("HH_BU_MUTACAO");  // negativos do portao hh11_saves
             transitional::bu::install(boundaries, *saves, transitional::bu::parse_mutations(bm ? bm : ""));
         }
+        if (opt.video == VideoProvider::Native) {
+            // HH12: filmes pelos MP4 do Builder (data\video) e pelos mods (mods\video); sem o decodificador 4X
+            transitional::video::Options vo;
+            vo.dataDir = opt.data / "video";
+            if (const char* vd = std::getenv("HH_VIDEO_DADOS"); vd && *vd) vo.dataDir = vd;  // portao hh12_video (ausente)
+            if (!opt.modsDir.empty()) vo.modsDir = opt.modsDir.parent_path() / "video";
+            vo.audio = opt.videoAudio;
+            std::vector<std::string> warn;
+            transitional::video::install(boundaries, vo, &warn);
+            for (const std::string& w : warn) std::fprintf(stderr, "[video] %s\n", w.c_str());
+            std::fprintf(stderr, "[video] nativo: %s\n", vo.dataDir.string().c_str());
+        }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
         transitional::pad::probe_install();  // HH_PAD_CONTRATO=<tsv>: contrato do pd contra o legado (HH10.1)
         transitional::pad::closure_install();  // HH_PAD_FECHAMENTO=<tsv>: prova de fechamento (HH10.4)
@@ -280,6 +295,10 @@ HostResult host_run(const HostOptions& opt) {
     if (transitional::bu::installed()) {
         std::fputs(transitional::bu::summary().c_str(), stderr);
         transitional::bu::uninstall(boundaries);
+    }
+    if (transitional::video::installed()) {
+        std::fputs(transitional::video::summary().c_str(), stderr);
+        transitional::video::uninstall(boundaries);
     }
     if (transitional::time::installed()) {
         transitional::time::uninstall();

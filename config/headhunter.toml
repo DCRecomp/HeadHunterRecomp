@@ -158,6 +158,9 @@ slots = [
   0x8C15FB44, 0x8C15FC9C, 0x8C15FDCC, 0x8C15FDD2, 0x8C160754, 0x8C15FF54, 0x8C16037C, 0x8C1603AA,
   0x8C160614, 0x8C160558, 0x8C160500, 0x8C1603DC, 0x8C15FC2A,
   0x8C160774,  # last_error (desvio para 8C15FE66; o jogo o chama pelo desvio)
+  # HH12: filmes 4X (transitional/video_adapter): open, trilha de audio, play e close do objeto do filme, chamados por
+  # PlayScene 0x8C09E904 (docs/planos/HH12-PLANO.md, "Contrato da API do filme")
+  0x8C11E9D2, 0x8C11EBE0, 0x8C11ECA4, 0x8C11EB32,
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

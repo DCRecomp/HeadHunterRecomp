@@ -11,6 +11,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
 #include <span>
 
 namespace hh::native::audio {
@@ -65,6 +68,46 @@ public:
     virtual size_t       writable_frames() const = 0;
     virtual Result<void> write(std::span<const int16_t> interleaved) = 0;
     virtual void         close() = 0;
+    // HH12 (politica de sincronia do N5 do BS): pausa da voz (pausa do host), descarte do que
+    // esta na fila (salto ou atraso alem do teto) e quadros ja tocados (medida do atraso).
+    virtual void     pause(bool paused) = 0;
+    virtual void     flush() = 0;
+    virtual uint64_t played_frames() const = 0;
+    // quadros escritos que ainda nao tocaram (a fila do dispositivo, com a resolucao de um bloco): o atraso entre o que foi
+    // misturado e o que se ouve agora. A saida nula nao tem fila.
+    virtual uint64_t queued_frames() const { return 0; }
+    // false depois de perder o dispositivo: quem toca troca para a saida nula (com log).
+    virtual bool healthy() const = 0;
+    // (N6-H do BS: tempo real sem estalos): blocos enviados, faltas de dados (um bloco chegou com a fila do dispositivo ja
+    // vazia: o dispositivo tocou silencio no meio) e o maior tamanho da fila. A saida nula nao tem faltas.
+    // Erros de escrita (a voz recusou o bloco) e perda do dispositivo tambem contam: depois dela nada mais toca.
+    struct Stats {
+        uint64_t blocks = 0, underruns = 0, maxQueuedFrames = 0, writeErrors = 0;
+        uint64_t dropped = 0, reopens = 0;  // modo "seguir a saida padrao": blocos descartados com a fila cheia, reaberturas
+        uint64_t cushions = 0;              // idem: reservas de silencio postas com a fila vazia (inicio e depois de faltas)
+        bool     lost = false;
+    };
+    virtual Stats stats() const { return {}; }
 };
+
+// Saida XAudio2 (como no BS; no HH12 so o audio dos filmes). `latency_ms` e o
+// teto da fila: writable_frames() nunca deixa passar disso.
+// `follow_default` (audio do jogo, HH14): segue a saida padrao do Windows (conferida a cada segundo; trocou ou o dispositivo
+// caiu: reabre na saida padrao atual, sem perder a contagem de tocados) e, com a fila do XAudio2 cheia (o jogo atrasou e
+// recupera varios campos de uma vez), descarta o bloco em vez de dar o dispositivo por perdido; com a fila vazia (inicio,
+// depois de uma falta), poe antes do bloco uma reserva de silencio de ~66 ms (4 campos), que absorve campos atrasados do
+// jogo (o adaptador manda um VBlank de audio por campo, sem folga). Nesse modo healthy() fica sempre true (a saida tenta
+// de novo a cada segundo). Desligado (filmes, HH12): o comportamento de sempre.
+std::unique_ptr<IAudioOutput> make_xaudio2_output(uint32_t latency_ms = 200, bool follow_default = false);
+// Testes do modo follow_default: a saida padrao, o relogio em ms e uma perda simulada (como o OnCriticalError) injetaveis;
+// vazios = os do Windows.
+struct XAudio2Hooks {
+    std::function<std::wstring()> device_id;
+    std::function<uint64_t()>     now_ms;
+    std::function<bool()>         force_lost;  // true = o dispositivo caiu agora
+};
+std::unique_ptr<IAudioOutput> make_xaudio2_output(uint32_t latency_ms, bool follow_default, XAudio2Hooks hooks);
+// Saida nula (headless e dispositivo ausente): aceita e descarta, conta os quadros como tocados.
+std::unique_ptr<IAudioOutput> make_null_output();
 
 } // namespace hh::native::audio

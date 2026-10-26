@@ -249,6 +249,17 @@ def step_gates_hh11():
         raise RuntimeError('portoes do HH11 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh12():
+    # HH12: unitarios dos filmes (com a conversao do SCENE0 do disco) e V0-V4 (hh-builder --filmes + hh-run --video)
+    need('HH_DATA_DIR')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh12_video(_tests)?$', '--no-tests=error', '--output-on-failure',
+            '--timeout', '3600'], env={'HH_EXIGIR_DADOS': '1'}, timeout=7200)
+    passed = [n for n in ('hh12_video_tests', 'hh12_video')
+              if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 2:
+        raise RuntimeError('portoes do HH12 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -293,6 +304,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh09', step_gates_hh09, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('portoes_hh10', step_gates_hh10, ['HH_DATA_DIR', 'HH07_BIN', 'HH_AREA1_HASHES']),
          ('portoes_hh11', step_gates_hh11, ['HH_DATA_DIR', 'HH11_ORACULO']),
+         ('portoes_hh12', step_gates_hh12, ['HH_DATA_DIR']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 

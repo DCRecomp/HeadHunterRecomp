@@ -279,6 +279,34 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
+### HH12 (2026-10-26, em andamento)
+
+- Contrato (HH12.0, `docs/planos/HH12-PLANO.md`): PlayScene 0x8C09E904 continua original; o provedor nativo
+  (`transitional/video_adapter`, `--video nativo`) atende open/áudio/play/close do objeto do filme 4X (slots
+  0x8C11E9D2, 0x8C11EBE0, 0x8C11ECA4, 0x8C11EB32). O play repete a ordem do laço original (quadro, efeitos por quadro
+  0x8C14A220/0x8C2388DC/0x8C016DF8, callback do jogo, espera do próximo instante no ponto declarado 0x8C11FC3A, fim ou
+  skip por obj+0x33C) e o host apresenta o quadro do filme no lugar do quadro do PVR, com as legendas do próprio jogo
+  (lista *0x8C151E10, opção *0x8C151E14) desenhadas por DirectWrite. Áudio pelo XAudio2 (saída nula no headless).
+- Builder: `builder/video` (FFmpeg só decodifica, como processo; Media Foundation codifica H.264 + AAC 48 kHz),
+  `data\video\manifest.toml`, reaproveitamento pelo SHA-256 real da fonte; `hh-builder --filmes <data>` e `--ffmpeg`.
+  Os 53 filmes: 5 min 52 s, quadros == vtrk[4] em todos, PSNR médio 36,6–56,2 dB contra o FFmpeg, áudio com atraso 0
+  e SNR ≥ 28,4 dB.
+- Portões `tests/diff/hh12_video.py` (ctest `hh12_video`, etapa `portoes_hh12` da regressão): V0 slot; V1 0 entradas
+  no stream e no decodificador 4X no nativo (o legado cria e abre o stream); V2 SCENE0 do VBlank 282 ao fim natural
+  (1 023 VBlanks), skip por START, SCENE01_06 depois, ausente, MP4 alterado recusado pelo SHA-256, mod pelo nome,
+  60 legendas do jogo no SCENE01_06; V3 os 25 + 28 filmes; V4 determinismo e tempo experimental. `hh12_video_tests`
+  7/7 (com a conversão do SCENE0 do disco).
+- V3 contra o decodificador do próprio jogo (Flycast rodando livre, `hh12_v3_livre.py`): quadros estáticos iguais à
+  quantização ARGB1555 (erro máximo 9); quadros com movimento com o mesmo conteúdo e diferença média de 3–5 níveis
+  (o 4xm do FFmpeg não é bit a bit o do jogo nos quadros P). Ver "Decisões pendentes".
+- Promoção: `--video nativo` padrão na janela; `--headless` e `hh-run` no legado (roteiro de referência). O legado não
+  toca os filmes (o laço sai no VBlank 312 sem o ARM7).
+- Revisão Codex (`reviews/codex-hh12.log`), 8 achados. Aceitos e corrigidos: legendas (agora as do jogo, e mods SRT/VTT),
+  SHA-256 do MP4 no open e erro do decodificador não conta como fim natural, SHA-256 real da fonte no reaproveitamento
+  (teste negativo), cancelamento do FFmpeg por thread vigia e espera limitada, mod por nome não sai da pasta por
+  link/junção, áudio com controle de fluxo e troca para a saída nula se o dispositivo cair, evidência do 0x8C142E78 no
+  plano, os dois discos no portão. A promoção (ALTA) depende da decisão do V3.
+
 ### Builder do HH18 antecipado e reorganização (2026-10-25/26, pedido do mantenedor)
 
 - Builder refeito com a arquitetura do Builder do Blue Stinger (MIT, portado com cabeçalho de origem):
@@ -321,7 +349,11 @@ dentro dos AHF.
 
 ## Decisões pendentes
 
-Nenhuma decisão humana está pendente. Descobertas que contradigam estas premissas podem exigir `BLOQUEADA_DECISAO`, mas somente depois de esgotar investigação e testes independentes:
+**HH12 — decodificador dos filmes** (ver o fim da etapa no relatório): o 4xm do FFmpeg (A11) reproduz o conteúdo, mas
+não é bit a bit o decodificador do jogo nos quadros com movimento (diferença média de 3–5 níveis); a alternativa
+prevista no plano é decodificar no Builder com o próprio decodificador do jogo recompilado.
+
+Fora isso, nenhuma decisão humana está pendente. Descobertas que contradigam estas premissas podem exigir `BLOQUEADA_DECISAO`, mas somente depois de esgotar investigação e testes independentes:
 
 - um middleware essencial exige incorporação incompatível com MIT;
 - a arquitetura observada exige código dinâmico/overlay não coberto pelo plano.

@@ -15,6 +15,11 @@ Exportar e importar no formato do Dreamcast (VMS):
   HeadHunter.exe --saves-exportar <pasta>
   HeadHunter.exe --saves-importar <arquivo.vms> [--saves-nome <NOME>]
 
+Filmes: os videos do jogo (4X Movie) foram convertidos pelo Builder para data\video (MP4) e tocam com audio;
+START pula o filme, como no original. Um filme pode ser trocado sem recompilar: mods\video\<NOME>.mp4 (p.ex.
+SCENE0.mp4; SCENE0.D2.mp4 so para a versao do disco 2). Sem o FFmpeg na hora da compilacao os filmes nao sao
+convertidos e o jogo os pula. HeadHunter.exe --video legado usa o caminho antigo (reserva).
+
 Recompilar de novo na mesma pasta preserva saves, controles e mods. A versao anterior fica em
 HeadHunter.anterior.
 

@@ -84,6 +84,38 @@ quadro do PVR (como no BS).
   evidência parcial: o FFmpeg decodifica o SCENE0 com o número de quadros do `vtrk` e o logotipo do quadro 300
   coerente; a composição do jogo (640 x 480, escala da área exibida) vem do objeto do filme (oráculo no play).
 
+### Referência do V3: Flycast rodando livre (2026-10-26)
+
+- A captura por breakpoint deixa o quadro preto; com o Flycast **rodando livre** (`flycast_oracle.py snap-free <base>
+  --seconds S`) o framebuffer emulado é o exibido (logotipo SEGA aos 12 s, SCENE0 dos 16 aos 26 s).
+- `tools/dev/hh12_v3_livre.py`: o quadro do jogo amostrado no centro de cada pixel do filme (área exibida 480 × 360,
+  escala 4/3, centralizado) contra os 512 quadros do FFmpeg. O quadro escolhido anda exatamente 30 por segundo
+  (57, 87, 117, 147, 177, 207, 237, 267, 327 para 17…26 s): alinhamento e geometria confirmados.
+- Quadros estáticos (logotipo, 207/237/267/327): PSNR 47,9–53,8 dB, erro máximo 9 por canal (a textura do jogo é
+  ARGB1555, 5 bits por canal).
+- Quadros com movimento (57–177): PSNR 31–40 dB, erro máximo 62–153. Por bloco 8 × 8 (`hh12_v3_blocos.py`, 18 s):
+  40% dos blocos batem com o quadro 87 e 54% não batem com nenhum quadro de 84 a 90 (não é mistura de quadros);
+  `hh12_v3_bilinear.py` (textura ARGB1555 reamostrada): erro médio 3,4–5,0 níveis, mediana 3, p90 8–11. A olho, o
+  conteúdo é o mesmo (os mesmos blocos e bordas) com um padrão fino diferente: **o decodificador 4xm do FFmpeg não é
+  bit a bit o do jogo nos quadros P com movimento** (hipótese da causa: arredondamento na compensação de movimento,
+  acumulado entre as atualizações intra; há um só `ifrm` por filme). É o risco previsto abaixo (decisão).
+
+### Legendas do jogo e efeitos por quadro do laço (2026-10-26)
+
+- O executável tem `"%s%sSubTitle\%s.txt"` (0x8C13F9D0, literal só em 0x8C0E3964, função 0x8C0E38A4) e os AHF trazem
+  `HEADHUNTER/LOCALE/<idioma>/SUBTITLE/<filme>.TXT` (84 nomes, os dos filmes: SCENE01_06, SCENE09_12…), no formato
+  `;mm:ss;texto`. O laço original chama 0x8C0E4006 por quadro (0x8C11F18E, entre o upload do quadro e o render), que
+  usa *0x8C151E10 (lista carregada) e *0x8C151E14 (opção ligada). RAM do jogo no SCENE01_06 (`HH_RAM_DUMP`, VBlanks
+  1600/2000): *0x8C151E14 = 1 e a lista com uma linha por nó {+0x00 texto, +0x0C próximo, +0x10 segundos; 0 =
+  continuação}: 60 legendas. O provedor nativo lê essa lista e desenha (DirectWrite) sobre o quadro composto; a
+  fonte e a posição exatas do jogo não são reproduzidas (aproximação documentada).
+- Também por quadro, o laço original incrementa 0x8C14A220 (restaurado por PlayScene) e 0x8C2388DC (contador de
+  quadros desenhados; lido por 0x8C073F28, zerado por 0x8C073EF4, também incrementado pelo laço principal em
+  0x8C04F1A0) e chama 0x8C016DF8 (tempos derivados): o play nativo faz o mesmo.
+- `0x8C142E78` (texto `"\MOVIES"`, revisão Codex): literal do pool do open 0x8C11E9D2, passado como r4 a 0x8C15C7A0
+  (gdFsChangeDir, slot do HH08) nas até 10 tentativas do open; o texto conferido no executável (hh02/disc1, base
+  0x8C010000).
+
 ## Subetapas
 
 | ID | Entrega | Saída |

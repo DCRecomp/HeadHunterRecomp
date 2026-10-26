@@ -10,10 +10,12 @@
 //   hh-builder --de-projeto <pasta> --out <pasta> [--disc <cdi> --disc2 <cdi>]   compila um projeto editado
 //   hh-builder --disc <cdi> --disc2 <cdi> --out <recursos> --projeto <pasta> --somente-exportar
 //              so exporta (sem compilador, compilacao nem instalacao); [--tipo Release|Debug] no build
+//   hh-builder --filmes <pasta data> [--ffmpeg <ffmpeg.exe>]   so converte os filmes 4X (HH12) em data\video
 // Codigo de saida: 0 = HeadHunter.exe instalado e verificado; 1 = falha; 2 = uso;
 // 3 = cancelado (Ctrl+C).
 #include "builder_core.h"
 #include "child_process.h"
+#include "video/movie_build.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -78,6 +80,7 @@ int main() {
 
     Request req;
     defaultKit(req);
+    std::filesystem::path moviesOnly;  // --filmes <data>: so converte os filmes de uma pasta data\ ja preparada
     for (size_t i = 1; i < args.size(); ++i) {
         const std::wstring& a    = args[i];
         const bool          more = i + 1 < args.size();
@@ -88,6 +91,8 @@ int main() {
         else if (a == L"--out" && more) req.outDir = args[++i];
         else if (a == L"--kit" && more) req.kitDir = args[++i];
         else if (a == L"--sdl3" && more) req.sdl3Dir = args[++i];
+        else if (a == L"--ffmpeg" && more) req.ffmpeg = args[++i];
+        else if (a == L"--filmes" && more) moviesOnly = args[++i];
         else if (a == L"--vcvars" && more) req.vcvars = args[++i];
         else if (a == L"--vswhere" && more) req.vswhere = args[++i];
         else if (a == L"--verify-vblanks" && more) req.verifyVblanks = unsigned(std::stoul(args[++i]));
@@ -102,14 +107,31 @@ int main() {
             std::fprintf(stderr,
                          "uso: hh-builder --disc <disco 1.cdi> --disc2 <disco 2.cdi> --out <pasta> [--kit <pasta>] [--sdl3 <pasta>]\n"
                          "                [--vcvars <vcvars64.bat> | --vswhere <vswhere.exe>] [--clean] [--name <subpasta>]\n"
+                         "                [--ffmpeg <ffmpeg.exe>]  decodificador dos filmes 4X (padrao: ffmpeg no PATH)\n"
                          "                [--projeto <pasta>]      exporta o projeto C++ editavel\n"
                          "                [--portatil | --documentos]  local dos saves (instalacao.toml)\n"
                          "  hh-builder --de-projeto <pasta> --out <pasta> [--disc <cdi> --disc2 <cdi>]   compila o projeto (mods)\n"
                          "                [--verify-vblanks N] [--tipo Release|Debug]\n"
                          "  hh-builder --disc <cdi> --disc2 <cdi> --out <recursos> --projeto <pasta> --somente-exportar\n"
-                         "                (valida, prepara os dados em <recursos>, gera o C++ e exporta; sem compilador)\n");
+                         "                (valida, prepara os dados em <recursos>, gera o C++ e exporta; sem compilador)\n"
+                         "  hh-builder --filmes <pasta data> [--ffmpeg <ffmpeg.exe>]\n"
+                         "                (so converte os filmes 4X de uma pasta data\\ ja preparada em data\\video)\n");
             return 2;
         }
+    }
+    if (!moviesOnly.empty()) {  // HH12: so os filmes (testes e regressao; o Builder completo faz isto no passo dos dados)
+        video::MovieBuildOptions mo;
+        if (!req.ffmpeg.empty()) mo.conv.ffmpeg = req.ffmpeg;
+        mo.log = [](const std::string& l) { std::printf("%s\n", l.c_str()); };
+        video::MovieBuildResult mr;
+        std::string             err;
+        if (!video::build_movies(moviesOnly, mo, mr, &err)) {
+            std::fprintf(stderr, "ERRO: %s\n", err.c_str());
+            return 1;
+        }
+        std::printf("filmes: %d convertidos, %d reaproveitados%s%s\n", mr.converted, mr.reused,
+                    mr.unavailable.empty() ? "" : "; NAO convertidos: ", mr.unavailable.c_str());
+        return mr.unavailable.empty() ? 0 : 1;
     }
     if (req.disc.empty() != req.disc2.empty()) {
         std::fprintf(stderr, "informe os dois discos (--disc e --disc2)\n");

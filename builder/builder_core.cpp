@@ -11,6 +11,7 @@
 #include "platform/install_config.h"
 #include "project_export.h"
 #include "toolchain.h"
+#include "video/movie_build.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -790,6 +791,22 @@ Result build(const Request& req, const Callbacks& cb) {
             }
         } else {
             log("dados ja preparados e conferidos: reaproveitados");
+        }
+        // HH12: filmes 4X -> data\video\*.mp4 + manifest.toml (reaproveitados pela fonte, pelo conversor e pelo MP4)
+        {
+            video::MovieBuildOptions mo;
+            if (!req.ffmpeg.empty()) mo.conv.ffmpeg = req.ffmpeg;
+            mo.cancel   = cb.cancel;
+            mo.log      = log;
+            mo.progress = [&](double f, const std::string& w) { progress(0.95 + 0.05 * f, "filmes: " + w); };
+            video::MovieBuildResult mr;
+            std::string             merr;
+            if (!video::build_movies(dataDir, mo, mr, &merr)) {
+                if (cb.cancel && cb.cancel->load()) throw Cancelled{};
+                throw StepError(ErrorKind::Data, "falha ao converter os filmes: " + merr);
+            }
+            log("filmes: " + std::to_string(mr.converted) + " convertidos, " + std::to_string(mr.reused) + " reaproveitados" +
+                (mr.unavailable.empty() ? std::string() : " (NAO convertidos: " + mr.unavailable + ")"));
         }
 
         // 4. analise + C++ (so os arquivos que mudaram sao regravados)

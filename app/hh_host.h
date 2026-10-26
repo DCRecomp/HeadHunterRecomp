@@ -38,6 +38,9 @@ enum class ControlsProvider { Legacy, Native };
 // HH11: provedor dos saves. Legado: sem VMU (o jogo avisa que nao ha memory card). Nativo: API bu sobre
 // arquivos (transitional/bu_adapter + native/platform/saves), sem VMU nem Maple.
 enum class SavesProvider { Legacy, Native };
+// HH12: provedor dos filmes. Legado: o objeto do filme 4X recompilado (decodificador, stream do arquivo, AICA). Nativo:
+// open/play/close atendidos pelos MP4 do Builder (transitional/video_adapter + native/video), sem o 4X.
+enum class VideoProvider { Legacy, Native };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -51,6 +54,8 @@ struct HostOptions {
     native::input::InputSystem* input = nullptr;  // fonte das amostras no --controles nativo (dono: chamador)
     SavesProvider         saves = SavesProvider::Legacy;  // --saves legado|nativo (HH11)
     std::filesystem::path savesRoot;  // pasta dos saves nativos (card0\...); obrigatoria no --saves nativo
+    VideoProvider         video = VideoProvider::Legacy;  // --video legado|nativo (HH12)
+    bool                  videoAudio = false;  // audio dos filmes nativos no dispositivo (false: saida nula, headless)
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;

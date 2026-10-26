@@ -57,6 +57,9 @@ struct Request {
     // Local dos saves gravado em <instalacao>\instalacao.toml (native/platform/install_config.h).
     // Vazio: o arquivo da instalacao anterior fica como esta (arquivo do usuario, preservado).
     std::optional<bool>   portableSaves;
+    // HH12: FFmpeg que decodifica os filmes 4X (A11: processo externo). Vazio = "ffmpeg" no PATH. Sem FFmpeg os filmes
+    // ficam "nao convertidos" (o jogo os pula) e o resto segue.
+    std::filesystem::path ffmpeg;
 };
 
 struct Callbacks {
