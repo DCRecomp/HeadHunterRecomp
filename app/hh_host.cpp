@@ -7,6 +7,7 @@
 #include "cpu/sh4_runtime.h"
 #include "cpu/sh4_threads.h"
 #include "debug/call_trace.h"
+#include "mods/mod_api.h"
 #include "gdfs_adapter.h"
 #include "time_adapter.h"
 #include "pad_probe.h"
@@ -21,6 +22,7 @@
 #include "input/input.h"
 #include "maple/maple.h"
 #include "pvr/pvr_video.h"
+#include "pvr/vram.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -90,6 +92,23 @@ void onVblank(void*) {
         }
     if (!blank && !r.nonBlank++) r.firstNonBlank = r.vblanks;
     if (g_opt->onFrame) g_opt->onFrame(g_frame);
+    // Diagnostico (HH12.0, so desenvolvimento): HH_RAM_DUMP=<vblank>,...;<pasta> grava ram_<v>.bin (16 MiB) e
+    // vram_<v>.bin (8 MiB, layout de 32 bits) nesses VBlanks. Saida privada (pasta ignorada).
+    static const std::string dumpSpec = [] { const char* v = std::getenv("HH_RAM_DUMP"); return std::string(v ? v : ""); }();
+    if (!dumpSpec.empty()) {
+        const size_t semi = dumpSpec.find(';');
+        const std::string list = dumpSpec.substr(0, semi), dir = semi == std::string::npos ? "." : dumpSpec.substr(semi + 1);
+        for (size_t i = 0; i < list.size();) {
+            const size_t j = list.find(',', i);
+            if (std::strtoull(list.c_str() + i, nullptr, 10) == r.vblanks) {
+                const std::string n = std::to_string(r.vblanks);
+                if (std::FILE* f = std::fopen((dir + "/ram_" + n + ".bin").c_str(), "wb")) std::fwrite(g_ram, 1, 16u << 20, f), std::fclose(f);
+                if (std::FILE* f = std::fopen((dir + "/vram_" + n + ".bin").c_str(), "wb")) std::fwrite(vram_data(), 1, 8u << 20, f), std::fclose(f);
+            }
+            if (j == std::string::npos) break;
+            i = j + 1;
+        }
+    }
     if (g_areaCheck && !transitional::pad::installed())
         for (uint32_t i = 0; i < kHleNativeAreaSize; ++i)
             if (g_ram[(kHleNativeAreaBase & 0xFFFFFF) + i] != 0xFF) {
@@ -136,6 +155,11 @@ HostResult host_run(const HostOptions& opt) {
     g_opt = &opt;
     g_res = &res;
     hhg::register_functions();
+    // HH18: mods em C++ do projeto exportado (HH_MOD, compilados com HH_MODS e HH_MODS_DIR): ativados depois do
+    // registro das funcoes geradas, antes do boot (sem mods compilados, nada muda)
+    hh::mods::reset();
+    hh::mods::init_all();
+    for (const std::string& m : hh::mods::registered()) std::fprintf(stderr, "[mods] ativo: %s\n", m.c_str());
     std::vector<uint8_t> ram(16u << 20);
     Sh4Context           c{};
     c.ram = ram.data();

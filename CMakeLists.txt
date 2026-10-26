@@ -35,10 +35,15 @@ FetchContent_MakeAvailable(tomlplusplus)
 set(HH_GENERATED_DIR "" CACHE PATH "C++ gerado pelo hh-recomp (vazio = nao compilar)")
 
 option(BUILD_TESTS "Compilar testes" ON)
+# HH18: o Builder (Recompiler/Developer/hh-builder) compila so o jogo a partir do kit ou do projeto exportado:
+# HH_BUILD_TOOLS=OFF deixa de fora o proprio Builder e a documentacao (o resto e preciso para o HeadHunter.exe).
+option(HH_BUILD_TOOLS "Compilar o Builder e a documentacao" ON)
 add_subdirectory(app)
-add_subdirectory(builder)
+if(HH_BUILD_TOOLS)
+  add_subdirectory(builder)
+  add_subdirectory(docs)
+endif()
 add_subdirectory(config)
-add_subdirectory(docs)
 add_subdirectory(legacy)
 add_subdirectory(native)
 add_subdirectory(runtime)

@@ -13,18 +13,18 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH04 | CONCLUIDA | `docs/relatorios/HH04-RELATORIO.md` (4.698 funções, 0 fins mortos/órfãs; C++ idêntico nos dois discos, compila e linka) |
 | HH05 | CONCLUIDA | `docs/relatorios/HH05-RELATORIO.md` (boot até a tela-título sem CDI; trace e 1º quadro conferidos com o Flycast) |
 | HH06 | CONCLUIDA | `docs/relatorios/HH06-RELATORIO.md` (roteiro até a 1ª área controlável em janela e headless; Builder do CDI ao Preview) |
-| HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH14; catraca; native/legacy/transitional; produto sem CDI) |
+| HH07 | CONCLUIDA | `docs/relatorios/HH07-RELATORIO.md` (fronteira de 286 entradas, 0 violações, 2 dependências de hardware com dono HH13 (render); catraca; native/legacy/transitional; produto sem CDI) |
 | HH08 | CONCLUIDA | `docs/relatorios/HH08-RELATORIO.md` (provedor nativo de arquivos padrão; P1 4 838 blocos idênticos, P2 0 setores; os dois discos numa instalação só, sem troca; falhas seguras) |
 | HH09 | CONCLUIDA | `docs/relatorios/HH09-RELATORIO.md` (tempo nativo estável padrão: ordem, quadros e relógios idênticos ao legado; 7 esperas declaradas; experimental opcional) |
 | HH10 | CONCLUIDA | `docs/relatorios/HH10-RELATORIO.md` (controles nativos padrão: pd 1.50 sem Maple; traço do PDS, info/name e quadros idênticos ao legado, inclusive desconexão; janela com teclado + SDL3 Gamepad e `controles.toml`) |
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
 | HH12 | EM_ANDAMENTO | — |
-| HH13 | PENDENTE | — |
-| HH14 | PENDENTE | — |
+| HH13 | PENDENTE | — (renderização nativa Vulkan; ordem trocada com o áudio pelo mantenedor em 2026-10-25) |
+| HH14 | PENDENTE | — (áudio nativo) |
 | HH15 | PENDENTE | — |
 | HH16 | PENDENTE | — |
 | HH17 | PENDENTE | — |
-| HH18 | PENDENTE | — |
+| HH18 | PENDENTE | — (Builder com Recompiler/Developer antecipado em 2026-10-25; distribuição final pendente) |
 
 ## Fatos já verificados
 
@@ -180,10 +180,11 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   com caso negativo.
 - `GETSCD` conferido no oráculo (14 bytes: estado 0x15 e canal Q com a posição
   da cabeça de leitura) e implementado com teste.
-- Divergência conhecida (→ HH13/HH12): os vídeos 4X são abandonados. Mecanismo
+- Divergência conhecida (→ HH14/HH12): os vídeos 4X são abandonados. Mecanismo
   comprovado: a fila de comandos de som (32 slots na RAM da AICA) não é
   consumida sem o driver ARM7 e todo comando falha a partir do VBlank 56; no
-  Flycast os slots são zerados. A correção é a reconstrução nativa no HH13,
+  Flycast os slots são zerados. A correção é a reconstrução nativa do áudio no HH14 (o provedor nativo
+  de vídeo do HH12 substitui a reprodução inteira e não depende dessa fila),
   nunca emular o ARM7 (regra "recompilar, nunca emular" em `AGENTS.md`).
 - Revisão Codex: 8 achados, todos aceitos e corrigidos (portões endurecidos,
   comparadores com 16 casos sintéticos, integridade por hash na abertura,
@@ -213,7 +214,7 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   jogo 3 032, SDK 1 515, desconhecida 151, conflito 1.
 - Fronteira `config/fronteiras.toml` (286 entradas) e fechamento com a sonda do roteiro
   `newgame_area1`: 0 violações. O jogo acessa store queues/QACR diretamente em 0x8C090974 e
-  0x8C0C4CE0: `[[dependencia_hw]]` com regiões, dono HH14 e evidência; confirmação só pela
+  0x8C0C4CE0: `[[dependencia_hw]]` com regiões, dono HH13 e evidência; confirmação só pela
   sonda; catraca em `config/metricas_base.toml` (96 chaves).
 - Alvos `hh_native_api` (interfaces, sem Dreamcast, conferido também no CMake),
   `hh_legacy`, `hh_transitional`; opção `HH_MODS` (slots, custo dentro do ruído, hashes
@@ -277,6 +278,31 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   `--headless` ficam no legado (roteiro de referencia sem memory card).
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
+
+### Builder do HH18 antecipado e reorganização (2026-10-25/26, pedido do mantenedor)
+
+- Builder refeito com a arquitetura do Builder do Blue Stinger (MIT, portado com cabeçalho de origem):
+  `builder/builder_core` + `HeadHunter-Recompiler.exe` (os dois CDIs -> C++ -> HeadHunter.exe instalado),
+  `HeadHunter-Developer.exe` (exportar o projeto C++, compilar projeto com mods, inspecionar recursos) e
+  `hh-builder` (linha de comando). Troca segura de instalação (`install_swap`, diário `.<nome>.troca`, a `.anterior`
+  antiga nunca apagada), `data.ok` com SHA-256 dos manifestos, `instalacao.toml` (saves portáteis/Documentos),
+  `HeadHunter.exe --version` e `--verify-data`. Revisão Codex (`reviews/codex-builder.log`): 7 achados, todos aceitos e
+  corrigidos. Testes: CLI ponta a ponta igual à referência HH06 (94 hashes), exportar e compilar o projeto exportado
+  sem CDI com o mod de exemplo, Recompiler `--auto`, ctest 37/37.
+- Ordem HH13/HH14 trocada pelo mantenedor (render Vulkan antes do áudio, por desempenho, como no BS).
+- `dist/` no leiaute do BS: `tools/dist/make_builder.ps1` -> `dist/HeadHunter-Builder` (compilado em `build/dist-builder`
+  com `HH_BUILDER_DEV_KIT=OFF`: sem caminhos da máquina; confere ausência de conteúdo do jogo e dependências);
+  `tools/dist/make_preview.ps1` -> `dist/HeadHunter-Preview`; cópia por etapa `HeadHunter-Preview.hh11-e26d1cf`.
+  A regressão instala em `build/regressao`. O `hh-builder` da distribuição, só com o próprio kit, compilou e instalou o
+  jogo dos dois CDIs (`--version` 0.11.0).
+- Correção: `.gitignore` tinha `dist/` e `analysis/` sem âncora, que escondiam `tools/dist/` e o código-fonte
+  `translator/analysis/` (nunca versionados; um clone novo não compilaria). Agora `/dist/` e `/analysis/`; os dois
+  entram no repositório. Encontrado pelo teste ponta a ponta do kit da distribuição.
+- Correção (regressão de 2026-10-26): a troca a partir de uma instalação do Builder antigo (marca `.hh-builder`, sem
+  `.hh-package`) levava a marca antiga e o `data\` velho como se fossem do usuário. `is_package_file` agora os trata
+  como do pacote; teste `hh18_builder_tests` (falha sem a correção: 4 falhas; passa com ela).
+- Regressão integral (`python -I tools/dev/regressao.py`, `analysis/hh18/regressao2.log`): build, ctest (38/38),
+  portões HH05/HH07–HH11, roteiro da área 1 e Builder (reinstalação com `.anterior` e dados do usuário) — todas ok.
 
 ### Formatos dos discos (investigação 2026-10-24)
 

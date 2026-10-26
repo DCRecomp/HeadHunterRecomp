@@ -1,0 +1,21 @@
+Head Hunter Recompiled
+======================
+
+Este jogo foi recompilado nesta maquina a partir da SUA copia de Head Hunter (Dreamcast, discos 1 e 2)
+pelo HeadHunter-Recompiler. Ele contem codigo e dados derivados da sua copia: use-o so no seu computador
+e nao o publique.
+
+Jogar: abra HeadHunter.exe. Os dois discos estao juntos na pasta data: o jogo nao pede troca de disco.
+
+Controles: teclado e controles (Xbox, PlayStation, Switch e outros pelo SDL3). O mapa fica em controles.toml,
+criado ao lado do executavel na primeira execucao. ESC fecha o jogo.
+
+Saves: Documentos\DC-Recomp\Head Hunter\saves (ou a pasta saves desta instalacao no modo portatil).
+Exportar e importar no formato do Dreamcast (VMS):
+  HeadHunter.exe --saves-exportar <pasta>
+  HeadHunter.exe --saves-importar <arquivo.vms> [--saves-nome <NOME>]
+
+Recompilar de novo na mesma pasta preserva saves, controles e mods. A versao anterior fica em
+HeadHunter.anterior.
+
+Licencas: pasta licencas (codigo do recompilador MIT, SDL3 zlib, toml++ MIT).

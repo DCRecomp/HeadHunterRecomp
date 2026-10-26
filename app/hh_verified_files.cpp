@@ -73,4 +73,15 @@ native::Result<nf::FileHandle> VerifiedFileSystem::open(std::string_view path) {
     return h;
 }
 
+std::string VerifiedFileSystem::verify_all() {
+    std::vector<std::string> names;
+    for (const auto& [n, e] : expected_) names.push_back(n);
+    for (const std::string& n : names) {
+        const auto h = open(n);
+        if (!h) return problem_.empty() ? n + ": nao abre" : problem_;
+        inner_.close(h.value());
+    }
+    return {};
+}
+
 } // namespace hh

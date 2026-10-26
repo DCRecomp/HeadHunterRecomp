@@ -1,0 +1,22 @@
+# HH06: NEW GAME ate a primeira area jogavel (disco 1) e movimento basico.
+# Indice = n-esima leitura do controle (porta 0); com --rtc 1700000000, leitura ~= VBlank - 56.
+# Caminho observado: logos -> titulo -> START -> "memory card de 30 blocos; desativar save?"
+# (sem VMU no runtime hibrido) -> OK -> menu (NEW GAME) -> TRAINING MISSION (PLAY/SKIP) -> SKIP
+# -> primeira area (corredor com gas, Jack Wade, HUD) por volta do VBlank 3500.
+1000 START
+1030 -
+1300 A
+1330 -
+2200 A
+2230 -
+2700 DOWN
+2715 -
+2800 A
+2830 -
+# movimento (analogico; o direcional so serve nos menus): frente, esquerda, frente
+3700 ANALOG_UP
+4000 -
+4050 ANALOG_LEFT
+4150 -
+4200 ANALOG_UP
+4500 -

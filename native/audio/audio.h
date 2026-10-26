@@ -2,7 +2,7 @@
 // Derivado de recomp-BStinger native/audio/audio.h (MIT, Copyright (c) 2026 Blue Stinger
 // Recompiled contributors; ver third_party/licenses/recomp-BStinger-LICENSE.txt).
 #pragma once
-// Audio (HH13). Motor nativo que reconstroi o que o driver de som (AUDIO64.DRV no ARM7)
+// Audio (HH14). Motor nativo que reconstroi o que o driver de som (AUDIO64.DRV no ARM7)
 // fazia: bancos, vozes PCM/ADPCM, volume/pan/pitch e streams ADX. A saida e um backend
 // (XAudio2 no Windows, ARCHITECTURE.md) atras de IAudioOutput. O ARM7 nunca e executado: o
 // driver e documentacao de comportamento (analise estatica); recompilar, nunca emular.

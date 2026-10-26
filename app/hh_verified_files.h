@@ -36,6 +36,10 @@ public:
         return inner_.list(directory);
     }
 
+    // HH18 (--verify-data): confere todos os arquivos do manifesto (os de mod sao pulados). Vazio = ok; senao o primeiro
+    // problema.
+    std::string verify_all();
+
     size_t      verified() const { return ok_.size(); }
     std::string last_problem() const { return problem_; }  // ultimo arquivo recusado e o motivo
 

@@ -2,7 +2,7 @@
 // Derivado de recomp-BStinger native/render/render.h (MIT, Copyright (c) 2026 Blue Stinger
 // Recompiled contributors; ver third_party/licenses/recomp-BStinger-LICENSE.txt).
 #pragma once
-// Renderizacao (HH14). A IR de comandos captura o que hoje chega ao TA (store queues,
+// Renderizacao (HH13). A IR de comandos captura o que hoje chega ao TA (store queues,
 // DMA, escrita direta) como listas de desenho nativas; o dispositivo (Vulkan, A3 do
 // ARCHITECTURE.md) as executa. Os conceitos do PowerVR que importam para a imagem (listas
 // opaca/translucida/punch-through, volumes modificadores, cor de deslocamento, fog por

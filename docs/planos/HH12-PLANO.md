@@ -38,6 +38,52 @@ Todos os vídeos dos dois discos cobertos e comparados; o caminho legado não é
   - Candidata a fronteira do HH12: a função de vídeo do jogo, como a 8C08B544 do BS.
 - `"Movies\"` (0x8C13C4D0) está no pool de 0x8C09E868, a montagem do caminho.
 
+### Contrato da API do filme (HH12.0, 2026-10-26)
+
+Comando: `python -I tools/dev/hh_dis.py generated/disc1 game-data/hh02/disc1/1ST_READ.BIN <endereco>` (desmontagem
+do C++ gerado com os literais resolvidos) e um varredor de chamadores sobre `generated/disc1/funcs_*.cpp`.
+
+**PlayScene 0x8C09E904** (chamadores: 0x8C0F0AF4 e 0x8C028332, únicos) é o único usuário do objeto do filme:
+
+| Passo | Endereço | Evidência (disassembly) | Papel |
+|---|---|---|---|
+| guarda estado, pausa | 0x8C073980, 0x8C073870(4), 0x8C15B000(1), 0x8C08ED34/0x8C08ED16 | salva 0x8C149F5C/0x8C14A220 na pilha e restaura no fim | sai do jogo para o filme; espera de N quadros (HH09) |
+| nome | 0x8C124748 = sprintf(0x8C24D514, "Scene%s.4xm", nome) | literal 0x8C13C4DC | caminho do filme |
+| preparação | 0x8C09BAEC, 0x8C02E084, 0x8C09FFD4, 0x8C016960(0), 0x8C0ED0FC(0x200000), 0x8C0E3DD8 | — | modo de vídeo, memória (hipótese) |
+| parâmetros | 0x8C24D7A8..B8 = {0, 0.0f, 0, 1, mov.w} | escritas antes da criação | estrutura passada ao open (r6) |
+| **create** | 0x8C11E30C(r4=0x8C20CD20, r5=0x8C149F64) -> obj em 0x8C24D7C0 | 0x8C016A18 = alocação; obj+4=r4, obj+0=r5, +8/+28/2 campos = 0 | objeto do filme |
+| **open** | 0x8C11E9D2(obj, caminho, 0x8C24D7A8) | obj+8 = 0x8C11FFA0() (objeto de stream); até 10 x 0x8C15C7A0("\MOVIES") (troca de pasta do gdFs) com 0x8C04E754 e atraso; 0x8C11FCC6(stream, caminho, ...) != 0 -> retorna 1; senão 0x8C11E580(obj) (cabeçalho) | abre o .4XM pelo stream |
+| áudio | 0x8C11EBAC(obj) = obj+28; se != 0: 0x8C11EBE0(obj, 0) -> 0x8C11FE5A(obj+8, 0, 2) e obj[32+16*0+12] = 0 | 6 e 21 instruções | trilha de áudio 0 |
+| **play** | *0x8C189340 = 1; 0x8C11ECA4(obj, cb = 0x8C09E896); *0x8C189340 = 0 | 1 705 instruções; escala min(640/w, 480/h), centraliza (0x8C30F724/0x8C30F728); decodificador 0x8C120610..0x8C123D5C; Kamui 0x8C159820..0x8C15A7E0; espera 0x8C11FC3A (HH09) | laço do filme |
+| callback | 0x8C09E896(obj) | lê o controle (0x8C08D770 sobre *0x8C20CD44), 0x8C08D890(pad, 6) != 0 -> grava 0 num campo do obj (mov.w) | **skip** pelo controle |
+| **close** | 0x8C11EB32(obj, 0x8C24D774) | free(*0x8C30F720); 0x8C11FCF6/0x8C11FF4C/0x8C11FFA6 sobre obj+8; 0x8C11E482; 0x8C15AD60 (Kamui: libera 2 texturas do obj); obj+8 = 0 | fecha |
+| **destroy** | 0x8C11E360(obj) | 3 x 0x8C016B4A (free) de dois campos e do obj | libera |
+| volta | 0x8C0169C8, 0x8C0ED1D0, 0x8C0A007A, 0x8C09BBFC, 0x8C15B000(2), 0x8C073870(estado salvo), 0x8C016DF8 | — | volta ao jogo |
+
+Fronteira escolhida (como o N5 do BS, que manteve a função de vídeo do jogo e trocou só as entradas do middleware):
+**PlayScene continua original**; o provedor nativo atende **open, áudio (0x8C11EBE0), play e close** do objeto do filme
+(create e destroy continuam originais: só alocam e liberam; o open nativo deixa os campos liberados no destroy em 0).
+O open nativo continua trocando a pasta do gdFs para `\MOVIES` pelo jogo (efeito observável preservado). O play nativo
+chama o callback do jogo a cada quadro e termina no fim natural ou quando o callback zera o campo de continuar; o
+tempo anda pela espera de N quadros do jogo (0x8C08ED16, HH09). O quadro do filme é apresentado pelo host no lugar do
+quadro do PVR (como no BS).
+
+### Referência do V3 no Flycast (2026-10-26, em aberto)
+
+- `flycast_oracle.py snap 0x8C11E482 <base> --hit k --vram --pvr` (a função vazia que o laço chama uma vez por
+  quadro, depois de desenhar), k = 31, 121, 301, 501 (e 301 com `--no-mask-irq`); `tools/dev/hh12_v3.py` compara
+  com o quadro do FFmpeg composto como o provedor nativo.
+- O quadro exibido (`FB_R_SOF1` = 0x16A000, 640 x 476 entrelaçado) está **preto** em todas as capturas, embora o
+  `emu.cfg` do oráculo tenha `rend.EmulateFramebuffer = yes` (que no HH05 deu quadros idênticos ao runtime).
+- As texturas do filme estão no objeto: duas superfícies Kamui em obj+0x124 e obj+0x144 (1024 x 512, TCW
+  0x0600003E: não twiddled, stride, **ARGB1555**; endereços 0x514B00 e 0x614B00). Nesses endereços a VRAM capturada
+  não tem imagem; nenhum trecho de 4 pixels do quadro do FFmpeg (RGB565 nem ARGB1555, linear nem twiddled) aparece
+  na RAM ou na VRAM, só coincidências em pixels escuros.
+- Conclusão provisória: a captura por breakpoint não mostra o quadro do filme do Flycast (hipótese: o quadro só vai
+  para a VRAM fora da janela do breakpoint, ou o Flycast atrasa o filme como no N5 do BS). O V3 continua em aberto;
+  evidência parcial: o FFmpeg decodifica o SCENE0 com o número de quadros do `vtrk` e o logotipo do quadro 300
+  coerente; a composição do jogo (640 x 480, escala da área exibida) vem do objeto do filme (oráculo no play).
+
 ## Subetapas
 
 | ID | Entrega | Saída |

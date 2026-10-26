@@ -16,7 +16,7 @@
 //   funcao      = 0x8C0C4CE0
 //   subsistema  = "render"
 //   regioes     = ["store_queue"]      # regioes (dcmap) que a funcao pode acessar; outra = violacao
-//   dono        = "HH14"               # etapa que o substitui pelo subsistema nativo
+//   dono        = "HH13"               # etapa que o substitui pelo subsistema nativo
 //   evidencia   = "..."                # comando/endereco que prova o acesso
 #include "closure.h"
 

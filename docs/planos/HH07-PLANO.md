@@ -81,6 +81,6 @@ Resultados e evidências em `docs/relatorios/HH07-RELATORIO.md`. Desvios em rela
   de nomeação passou a exigir duas evidências, e a reclassificação foi conferida por strings.
   Os números da "Primeira medição" acima estão superados.
 - HH07.3: o Head Hunter acessa store queues e QACR a partir do próprio código. Esses acessos
-  são declarados em `[[dependencia_hw]]` (dono HH14) em vez de "0 acessos do jogo".
+  são declarados em `[[dependencia_hw]]` (dono HH13, o render nativo) em vez de "0 acessos do jogo".
 - HH07.8: o teste do mapa do linker achou `cdi.obj` no produto. A leitura de CDI foi separada
   em `runtime_data_cdi.cpp`.

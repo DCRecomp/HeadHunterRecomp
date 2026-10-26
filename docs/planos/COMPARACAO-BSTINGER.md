@@ -34,8 +34,8 @@ independente, presets CMake e lições de ordem/tempo do port nativo.
 | HH10 | N3 | Controles |
 | HH11 | N4 | Saves |
 | HH12 | N5 | Vídeo |
-| HH13 | N6 | Áudio |
-| HH14 | N7a + N7b | IR de render + Vulkan |
+| HH13 | N7a + N7b | IR de render + Vulkan (antes do áudio: decisão do mantenedor 2026-10-25) |
+| HH14 | N6 | Áudio |
 | HH15 | N2c + N8 | Fim do tempo guest e remoção do legado |
 | HH16 | (dentro do N8/N10) | Campanha completa; o HH a torna etapa explícita |
 | HH17 | N10 | Gameplay elevado, mods |

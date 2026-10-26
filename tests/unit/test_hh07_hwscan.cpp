@@ -470,9 +470,9 @@ HH_TEST(hh07_declared_hw_dependency_needs_probe) {
 
 HH_TEST(hh07_declared_hw_dependency_toml) {
     std::map<uint32_t, HwDependency> deps;
-    deps[0x8C100000] = {0x8C100000, "render", "HH14", "sonda: teste", {Region::StoreQueue, Region::Ccn}};
+    deps[0x8C100000] = {0x8C100000, "render", "HH13", "sonda: teste", {Region::StoreQueue, Region::Ccn}};
     const auto d = parse_boundary(boundary_toml({}, {}, deps));
-    HH_CHECK(d.hwDeps.size() == 1 && d.hwDeps.at(0x8C100000).owner == "HH14");
+    HH_CHECK(d.hwDeps.size() == 1 && d.hwDeps.at(0x8C100000).owner == "HH13");
     HH_CHECK(d.hwDeps.at(0x8C100000).regions == std::set<Region>({Region::StoreQueue, Region::Ccn}));
     HH_CHECK(declared_hw(d).at(0x8C100000).size() == 2);
     HH_CHECK(d.hwDeps.at(0x8C100000).subsystem == "render" && d.hwDeps.at(0x8C100000).evidence == "sonda: teste");
@@ -484,14 +484,14 @@ HH_TEST(hh07_declared_hw_dependency_toml) {
         }
         return false;
     };
-    const std::string ok = "funcao = 1\nsubsistema = \"render\"\ndono = \"HH14\"\nregioes = [\"ccn\"]\nevidencia = \"e\"\n";
+    const std::string ok = "funcao = 1\nsubsistema = \"render\"\ndono = \"HH13\"\nregioes = [\"ccn\"]\nevidencia = \"e\"\n";
     HH_CHECK(!throws("[[dependencia_hw]]\n" + ok));
-    const std::string semRegioes = "funcao = 1\nsubsistema = \"render\"\ndono = \"HH14\"\nevidencia = \"e\"\n";
+    const std::string semRegioes = "funcao = 1\nsubsistema = \"render\"\ndono = \"HH13\"\nevidencia = \"e\"\n";
     HH_CHECK(throws("[[dependencia_hw]]\n" + semRegioes));
     HH_CHECK(throws("[[dependencia_hw]]\nregioes = []\n" + semRegioes));
     HH_CHECK(throws("[[dependencia_hw]]\nregioes = [\"nada\"]\n" + semRegioes));
     HH_CHECK(throws("[[dependencia_hw]]\nfuncao = 1\nsubsistema = \"render\"\nevidencia = \"e\"\n"));  // sem dono
-    HH_CHECK(throws("[[dependencia_hw]]\nfuncao = 1\nsubsistema = \"render\"\ndono = \"HH14\"\n"));    // sem evidencia
+    HH_CHECK(throws("[[dependencia_hw]]\nfuncao = 1\nsubsistema = \"render\"\ndono = \"HH13\"\n"));    // sem evidencia
     HH_CHECK(throws("[[dependencia_hw]]\nfuncao = 1\nsubsistema = \"render\"\ndono = \"depois\"\nevidencia = \"e\"\n"));
     HH_CHECK(throws("[[dependencia_hw]]\n" + ok + "[[dependencia_hw]]\n" + ok));  // repetida
 }

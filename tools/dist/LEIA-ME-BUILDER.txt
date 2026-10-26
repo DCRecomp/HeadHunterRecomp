@@ -1,0 +1,24 @@
+Head Hunter Recompiled - Builder
+================================
+
+Transforma a SUA copia de Head Hunter (Sega Dreamcast, MK-5104150 V1.006, discos 1 e 2 em .cdi) num
+HeadHunter.exe nativo para Windows x64. O codigo do jogo e recompilado do SH-4 para C++ e compilado nesta
+maquina: nada e emulado. Esta pasta NAO contem nada do jogo.
+
+Requisitos: Windows 10/11 x64 e o Visual Studio 2022 ou 2026 (ou as Build Tools) com "Desenvolvimento para
+desktop com C++". Os dois discos de Head Hunter em .cdi.
+
+Aplicacoes
+----------
+HeadHunter-Recompiler.exe   escolha os dois discos e a pasta: extrai e confere os dados, gera o C++, compila,
+                            verifica e instala o jogo (HeadHunter.exe + data). Depois disso o jogo nao precisa
+                            mais dos discos.
+HeadHunter-Developer.exe    exporta o projeto C++ editavel (sem compilador), compila um projeto exportado
+                            (mods em C++) e inspeciona os recursos dos discos, com o log tecnico.
+hh-builder.exe              a mesma coisa pela linha de comando (hh-builder sem argumentos mostra o uso).
+
+A pasta kit contem as fontes do recompilador e do runtime (MIT), do SDL3 (zlib) e do toml++ (MIT) que o
+Builder compila. O jogo gerado contem codigo e dados derivados da sua copia: use-o so no seu computador e
+nao o publique.
+
+Licencas: pasta licencas.

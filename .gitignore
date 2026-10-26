@@ -1,11 +1,11 @@
 # Ignore CI/CD and build outputs
 build/
 build-*/
-dist/
+/dist/
 # Ignore sensitive data
 ISO/
 dream-recomp/
-analysis/
+/analysis/
 game-data/
 generated/
 reviews/

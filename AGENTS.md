@@ -41,7 +41,7 @@ O estado autoritativo está em `STATUS.md`.
   gerado do SH-4. É proibido introduzir interpretador ou emulador de CPU (SH-4 ou ARM7) no
   executável do jogo, inclusive no runtime híbrido, e proibido resolver uma divergência
   emulando hardware a mais quando o caminho do roadmap é substituir por sistema nativo (ex.:
-  o driver `AUDIO64.DRV` do ARM7 é reconstruído no HH13, não executado). O executor de passo
+  o driver `AUDIO64.DRV` do ARM7 é reconstruído no HH14, não executado). O executor de passo
   único do HH03 é só oráculo de testes (`HH_TOOL_ONLY`). A simulação temporária de
   registradores em `runtime/` existe apenas na fase híbrida, não ganha escopo novo e é
   removida no HH15; o Flycast é só processo externo de comparação.

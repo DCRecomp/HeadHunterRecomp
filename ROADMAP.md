@@ -30,8 +30,8 @@ Uma etapa só termina quando:
 | HH10 | Controles nativos | V2 |
 | HH11 | Saves nativos e continuidade entre discos | V2 |
 | HH12 | Vídeos nativos e moddáveis | V2 |
-| HH13 | Áudio nativo e moddável | V2 |
-| HH14 | Renderização nativa Vulkan (IR + backend + SDK gráfico) | V2 |
+| HH13 | Renderização nativa Vulkan (IR + backend + SDK gráfico) | V2 |
+| HH14 | Áudio nativo e moddável | V2 |
 | HH15 | Fim do tempo guest e remoção completa do legado | V3 |
 | HH16 | Campanha completa determinística nos dois discos | V3 |
 | HH17 | Gameplay nomeado, projeto editável e mods | V3 |
@@ -193,7 +193,21 @@ Entregáveis:
 
 Critério de saída: todos os vídeos dos dois discos cobertos e comparados; caminho legado não é usado no modo nativo.
 
-## HH13 — Áudio
+## HH13 — Vulkan nativo
+
+Ordem trocada com o áudio por decisão do mantenedor (2026-10-25): como no Blue Stinger, o jogo precisa
+ganhar desempenho (render nativo) antes de o áudio nativo poder ser testado em tempo real.
+
+Entregáveis:
+
+- IR de comandos cobrindo geometria (pode ser antecipado: no Blue Stinger, adiar o IR manteve o render em software, ~17 quadros/s, até o N7), texturas, paletas, clipping, transparência, punch-through, modificadores e framebuffer direto;
+- replay offline e backend Vulkan;
+- provedores nativos das APIs gráficas/middleware observados, assets convertidos pelo Builder;
+- comparação de cenas estáticas, dinâmicas, efeitos, HUD, loading e vídeo.
+
+Critério de saída: matriz visual atende às tolerâncias documentadas e o desempenho mínimo está comprovado; nenhum PVR2/Holly/VRAM guest no caminho nativo.
+
+## HH14 — Áudio
 
 Entregáveis:
 
@@ -204,17 +218,6 @@ Entregáveis:
 - mods de áudio/dublagem e diagnóstico por evento.
 
 Critério de saída: matriz de cenas dos dois discos dentro das tolerâncias; nenhum acesso AICA alcançável no modo nativo.
-
-## HH14 — Vulkan nativo
-
-Entregáveis:
-
-- IR de comandos cobrindo geometria (pode ser antecipado: no Blue Stinger, adiar o IR manteve o render em software, ~17 quadros/s, até o N7), texturas, paletas, clipping, transparência, punch-through, modificadores e framebuffer direto;
-- replay offline e backend Vulkan;
-- provedores nativos das APIs gráficas/middleware observados, assets convertidos pelo Builder;
-- comparação de cenas estáticas, dinâmicas, efeitos, HUD, loading e vídeo.
-
-Critério de saída: matriz visual atende às tolerâncias documentadas e o desempenho mínimo está comprovado; nenhum PVR2/Holly/VRAM guest no caminho nativo.
 
 ## HH15 — Remoção do legado
 
@@ -276,8 +279,8 @@ Planos detalhados ficam em `docs/planos/HHxx-PLANO.md`.
 | HH07 | `transitional/`, `legacy/`, `config/fronteiras_us.toml`, `config/metricas_base_us.toml`, `docs/PLANO-PORT-NATIVO.md` | — |
 | HH08 | `native/` (arquivos) | troca de disco por `DISC/DISK{N}.ID` + dword embutido |
 | HH12 | `docs/MODS-VIDEO.md` | vídeos `MOVIES/*.4XM` (4X Movie); `SCENE0.4XM` difere por disco |
-| HH13 | `runtime/aica` (apenas referência de comportamento) | driver `AUDIO64.DRV` idêntico nos dois discos |
-| HH14 | `docs/DECISAO-VULKAN-LINUX.md`, `docs/MODS-SHADERS.md` | — |
+| HH13 | `docs/DECISAO-VULKAN-LINUX.md`, `docs/MODS-SHADERS.md` | — |
+| HH14 | `runtime/aica` (apenas referência de comportamento) | driver `AUDIO64.DRV` idêntico nos dois discos |
 | HH18 | `docs/DISTRIBUICAO-COMPILADOR.md`, `docs/RECOMPILER-UI.md` | — |
 
 ## Política de decisões e revisão

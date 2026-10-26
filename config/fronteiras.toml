@@ -2294,13 +2294,13 @@ chamadas = 2
 [[dependencia_hw]]
 funcao = 0x8C090974
 subsistema = "render"
-dono = "HH14"
+dono = "HH13"
 regioes = ["store_queue", "ccn"]
 evidencia = "estatica: escreve QACR0/QACR1 (0xFF000038/0xFF00003C, pcs 0x8C0909A4/0x8C0909A8/0x8C0909FC/0x8C090A00) e grava em 0x8C240048 o ponteiro (end & 0x03FFFFFF) | 0xE0000000 do buffer escolhido na tabela 0x8C20CD20; pref @r3 em 0x8C090A20. Sonda newgame_area1: 668344 escritas em cada QACR e flushes de store queue para a RAM 0x0C400000-0x0C610000. Par de 0x8C0C4CE0 (mesmo ponteiro); docs/relatorios/HH07-RELATORIO.md"
 
 [[dependencia_hw]]
 funcao = 0x8C0C4CE0
 subsistema = "render"
-dono = "HH14"
+dono = "HH13"
 regioes = ["store_queue"]
 evidencia = "sonda newgame_area1: flush das store queues para a RAM 0x0C5C0000/0x0C5D0000 atribuidos a 0x8C0C4CE0; pref @rN em 0x8C0C4EBC/0x8C0C4ED4/0x8C0C4F34/0x8C0C4F4C sobre o ponteiro global 0x8C240048 (o mesmo do SDK em 0x8C090974); docs/relatorios/HH07-RELATORIO.md"

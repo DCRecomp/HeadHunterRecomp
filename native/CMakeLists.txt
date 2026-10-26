@@ -23,6 +23,10 @@ target_link_libraries(hh_native_time PUBLIC hh_native_api)
 add_library(hh_native_input STATIC platform/input_map.cpp platform/input_system.cpp)
 target_link_libraries(hh_native_input PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus xinput)
 
+# HH18: instalacao.toml (local dos saves gravado pelo Recompiler; portado do BS).
+add_library(hh_native_install STATIC platform/install_config.cpp)
+target_link_libraries(hh_native_install PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus)
+
 # HH11: saves (formato VMS, envelope versionado e escrita atomica em disco; portados do N4 do BS).
 add_library(hh_native_saves STATIC platform/saves_format.cpp platform/saves_store.cpp)
 target_link_libraries(hh_native_saves PUBLIC hh_native_api)

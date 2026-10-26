@@ -32,7 +32,9 @@
 #include "input/input.h"
 #include "input_bridge.h"
 #include "platform/input.h"
+#include "platform/install_config.h"
 #include "platform/saves.h"
+#include "hh_verified_files.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -172,7 +174,39 @@ ni::ActionMap loadActionMap() {
 
 } // namespace
 
+#ifndef HH_VERSION_TEXT
+#define HH_VERSION_TEXT "dev"
+#endif
+
 int main(int argc, char** argv) {
+    // HH18 (verificacao do Builder): --version imprime a identificacao; --verify-data confere todos os arquivos de data\
+    // contra o manifesto do Builder (sem abrir o jogo). Os dois saem na hora.
+    if (argc >= 2 && std::string(argv[1]) == "--version") {
+        std::printf("Head Hunter Recompiled %s\n", HH_VERSION_TEXT);
+        return 0;
+    }
+    if (argc >= 2 && std::string(argv[1]) == "--verify-data") {
+        try {
+            const fs::path            data = argc >= 4 && std::string(argv[2]) == "--data" ? fs::path(argv[3]) : exeDir() / "data";
+            const hh::InstallData     inst = hh::resolve_install(data);
+            if (!inst.merged) {  // revisao Codex: a verificacao da instalacao completa exige o disco 2 junto
+                std::printf("PARADA: dados so do disco 1 em %s (falta arquivos.manifest)\n", data.string().c_str());
+                return 1;
+            }
+            hh::native::files::DataFileSystem files(data / "disc", {});
+            hh::VerifiedFileSystem    verified(files, inst.manifest);
+            const std::string         bad = verified.verify_all();
+            if (!bad.empty()) {
+                std::printf("PARADA: dados diferentes do manifesto: %s\n", bad.c_str());
+                return 1;
+            }
+            std::printf("ok: %zu arquivos conferidos (%s)\n", verified.verified(), inst.merged ? "discos 1 e 2" : "disco 1");
+            return 0;
+        } catch (const std::exception& e) {
+            std::printf("PARADA: %s\n", e.what());
+            return 1;
+        }
+    }
     hh::HostOptions opt;
     std::string     logPath;
     uint64_t        hashEvery = 0;
@@ -226,6 +260,13 @@ int main(int argc, char** argv) {
     }
     if (!vmsExport.empty() || !vmsImport.empty()) {
         namespace ns = hh::native::saves;
+        // precedencia: --saves-pasta > --saves-portatil > instalacao.toml > Documentos (revisao Codex HH18)
+        if (opt.savesRoot.empty() && !savesPortable) {
+            std::string warn;
+            if (hh::native::install::read_config(exeDir(), &warn).saves == hh::native::install::SavesLocation::Portable)
+                savesPortable = true;
+            if (!warn.empty()) std::fprintf(stderr, "[saves] %s\n", warn.c_str());
+        }
         const fs::path root = !opt.savesRoot.empty() ? opt.savesRoot : savesPortable ? exeDir() / "saves" : defaultSavesRoot();
         ns::FileStoreOptions so;
         so.log     = [](const std::string& m) { std::fprintf(stderr, "[saves] %s\n", m.c_str()); };
@@ -278,6 +319,13 @@ int main(int argc, char** argv) {
     }
     TempSaves tempSaves;
     if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
+    // modo portatil gravado pelo Recompiler (instalacao.toml ao lado do executavel; vale ao abrir o jogo direto)
+    {
+        std::string warn;
+        const auto  ic = hh::native::install::read_config(exeDir(), &warn);
+        if (!warn.empty()) std::fprintf(stderr, "[saves] %s\n", warn.c_str());
+        if (ic.saves == hh::native::install::SavesLocation::Portable) savesPortable = true;
+    }
     if (opt.saves == hh::SavesProvider::Native && opt.savesRoot.empty()) {
         if (savesPortable) opt.savesRoot = exeDir() / "saves";
         else if (headless) {

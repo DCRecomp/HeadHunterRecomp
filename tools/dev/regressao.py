@@ -256,7 +256,7 @@ def step_area1():
 
 def step_builder():
     disc, disc2, want = need('HH_DISC1'), need('HH_DISC2'), reference()
-    out = os.path.join(ROOT, 'dist', 'regressao')
+    out = os.path.join(ROOT, 'build', 'regressao')  # fora de dist/ (so Builder e Preview, como no BS)
     inst = os.path.join(out, 'HeadHunter')
     build = lambda: sh([EXE('builder', 'Release', 'hh-builder.exe'), '--disc', disc, '--disc2', disc2, '--out', out],
                        timeout=7200).returncode == 0
@@ -270,20 +270,12 @@ def step_builder():
         os.makedirs(os.path.dirname(os.path.join(inst, rel)) or inst, exist_ok=True)
         with open(os.path.join(inst, rel), 'wb') as f:
             f.write(data)
-    # copia de seguranca deixada por uma passagem que falhou (revisao Codex HH11): os dados dela voltam para a
-    # instalacao antes de qualquer remocao
-    antiga = os.path.join(out, 'HeadHunter.antigo')
-    sobra = os.path.join('saves', 'card0', 'HHTESTE.ANT.hhsv')
-    os.makedirs(os.path.join(antiga, 'saves', 'card0'), exist_ok=True)
-    with open(os.path.join(antiga, '.hh-builder'), 'w') as f:
-        f.write('pasta criada pelo hh-builder\n')
-    with open(os.path.join(antiga, sobra), 'wb') as f:
-        f.write(b'sobra de reinstalacao HH11\n')
-    marca[sobra] = b'sobra de reinstalacao HH11\n'
+    # HH18: o Builder com o nucleo do BS (builder_core.install_swap): o que nao esta na lista do pacote anterior e do
+    # usuario e passa para a nova instalacao; a anterior fica em HeadHunter.anterior (com a marca de instalacao)
     if not build():
         raise RuntimeError('Builder falhou')
-    if os.path.exists(antiga):
-        raise RuntimeError('a copia de seguranca sem dados pendentes devia ter sido removida')
+    if not os.path.isfile(os.path.join(out, 'HeadHunter.anterior', '.hh-install')):
+        raise RuntimeError('a versao anterior nao ficou guardada em HeadHunter.anterior')
     for rel, data in marca.items():
         p = os.path.join(inst, rel)
         if not os.path.isfile(p) or open(p, 'rb').read() != data:

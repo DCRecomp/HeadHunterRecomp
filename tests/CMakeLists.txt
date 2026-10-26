@@ -197,6 +197,13 @@ if(TARGET hh-builder)
     COMMAND ${CMAKE_COMMAND} -DBUILDER=$<TARGET_FILE:hh-builder> -DWORK=${CMAKE_CURRENT_BINARY_DIR}/hh08_builder_sem_marcador
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh08/check_builder_unmarked.cmake)
 endif()
+# HH18: troca da instalacao a partir do Builder antigo (marca .hh-builder e data\ nao passam como do usuario).
+if(TARGET hh_builder_core)
+  add_executable(hh18_builder_tests unit/main.cpp unit/test_hh18_builder.cpp)
+  target_include_directories(hh18_builder_tests PRIVATE unit)
+  target_link_libraries(hh18_builder_tests PRIVATE hh_builder_core)
+  add_test(NAME hh18_builder_tests COMMAND hh18_builder_tests)
+endif()
 
 # HH09: tempo e eventos nativos (relogio, filas, provedor nativo x legado, monitor de progresso).
 add_executable(hh09_tempo_tests unit/main.cpp unit/test_hh09_tempo.cpp)

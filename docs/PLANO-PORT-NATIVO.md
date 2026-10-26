@@ -31,8 +31,8 @@ native/         sistemas definitivos (interfaces no HH07; implementações HH08-
   core/         Handle<Tag>, Result<T>
   platform/     arquivos (HH08), tempo e eventos (HH09), controles (HH10), saves (HH11)
   video/        filmes nativos (HH12)
-  audio/        motor de som que substitui o AUDIO64.DRV (HH13)
-  render/       IR de comandos e dispositivo Vulkan (HH14)
+  audio/        motor de som que substitui o AUDIO64.DRV (HH14)
+  render/       IR de comandos e dispositivo Vulkan (HH13)
 transitional/   handles com geração, ABI guest, registro de fronteiras (some no HH15)
 legacy/         nome do runtime híbrido (runtime/): sai subsistema a subsistema
 generated/      (privado) funções ainda não elevadas
@@ -117,14 +117,14 @@ não tem chamador direto: é chamada por ponteiro.
 É uma escrita direta pelas store queues no buffer preparado por `0x8C090974`, que usa o mesmo
 global. No roteiro, a sonda viu os flushes irem para a
 RAM, em 0x0C5C0000/0x0C5D0000: é um buffer em RAM, não o TA. A hipótese é um buffer de
-vértices do Kamui2 enviado depois ao TA, a confirmar no HH14. Dono: **HH14**, que captura
+vértices do Kamui2 enviado depois ao TA, a confirmar no HH13. Dono: **HH13**, que captura
 esse caminho na IR de render.
 
 Outras 8 funções do jogo têm o mesmo ponteiro no pool de literais (`0x8C03F256`,
 `0x8C048178`, `0x8C095BA8`, `0x8C0C3FA4`, `0x8C0C503C`, `0x8C0C57EC`, `0x8C0C5D5A`,
 `0x8C0D0C12`), e há 30 funções do jogo com a base das store queues em literal
 (`sq.literal.funcoes.jogo`). A sonda não as viu acessar hardware no roteiro atual. Elas entram na matriz de
-cobertura do HH14 e são confirmadas ou descartadas lá.
+cobertura do HH13 e são confirmadas ou descartadas lá.
 
 ## 4. Threads, reentradas e eventos (protocolo antes do HH09)
 
@@ -153,8 +153,8 @@ mantendo essa ordem, e o trace aceito serve de referência.
 | HH10 | controles | pd* (Shinobi), Maple | — |
 | HH11 | saves | bu* (Shinobi), VMU | continuidade entre discos |
 | HH12 | vídeo | 4X Movie | FFmpeg só como processo externo (A11) |
-| HH13 | áudio | Audio64 (fila de comandos, AUDIO64.DRV) | o ARM7 nunca é executado |
-| HH14 | render | Kamui2, store queues, `0x8C090974`/`0x8C0C4CE0` | IR + Vulkan |
+| HH13 | render | Kamui2, store queues, `0x8C090974`/`0x8C0C4CE0` | IR + Vulkan (antes do áudio: desempenho, decisão do mantenedor 2026-10-25) |
+| HH14 | áudio | Audio64 (fila de comandos, AUDIO64.DRV) | o ARM7 nunca é executado |
 | HH15 | fim do tempo guest e do legado | — | `legacy/` e `transitional/` saem |
 
 Cada etapa: provedor nativo atrás de slot; equivalência por contrato contra o legado; casos
@@ -170,4 +170,4 @@ negativos; a catraca não piora. O nativo só vira padrão depois de provado.
   funções de evidência forte. É uma evidência só. Uma classificação errada muda a fronteira,
   então cada etapa confirma, com duas evidências, as funções que tocar.
 - O custo dos slots foi medido com o render por software do runtime híbrido, que domina o
-  tempo. A medida é refeita depois do HH14 (como no Blue Stinger).
+  tempo. A medida é refeita depois do HH13 (como no Blue Stinger).

@@ -131,7 +131,7 @@ expect('[[dependencia_hw]] 0x8C090974 sem a regiao ccn', rc, 3, log,
        ['acesso_hw', '0x8C090974'] in [r[:2] for r in closure_rows()])
 
 # 4. dependencia extra numa funcao do jogo sem acesso a hardware (0x8C0C3C54, chamadora de 0x8C0C4CE0)
-extra = base + ('\n[[dependencia_hw]]\nfuncao = 0x8C0C3C54\nsubsistema = "render"\ndono = "HH14"\n'
+extra = base + ('\n[[dependencia_hw]]\nfuncao = 0x8C0C3C54\nsubsistema = "render"\ndono = "HH13"\n'
                 'regioes = ["store_queue"]\nevidencia = "caso negativo do teste"\n')
 rc, log = scan(write('dep_extra.toml', extra))
 expect('[[dependencia_hw]] obsoleta', rc, 3, log, 'DEPENDENCIA_HW OBSOLETA: 0x8C0C3C54' in log)

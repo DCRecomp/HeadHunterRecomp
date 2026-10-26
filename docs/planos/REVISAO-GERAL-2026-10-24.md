@@ -55,7 +55,7 @@ Já provados em HH01/HH02 e relevantes para o planejamento:
   dword em `0x00175E28` (`iso_root_lba + 143`). **Uma única geração de código
   serve aos dois discos**; esse dword é dado dependente do disco.
 - Nenhum overlay fora da árvore ISO. `AUDIO64.DRV` (driver ARM7, 18.608
-  bytes) é idêntico nos dois discos → HH13.
+  bytes) é idêntico nos dois discos → HH14 (áudio).
 - Vídeos em `MOVIES/*.4XM` (formato 4X Movie); `SCENE0.4XM` difere por disco → HH12.
 - Contrato de troca de disco: `DISC/DISK{N}.ID` + o dword acima → HH08/HH11.
 
