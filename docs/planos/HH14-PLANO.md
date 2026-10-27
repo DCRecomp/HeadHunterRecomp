@@ -97,6 +97,23 @@ Sem comando ao driver: `acDigiSetLoopPoints` e `acDigiGetCurrentReadPosition` (m
 ainda 0x30–0x32, 0x35, 0x36, 0x3E, 0x80, 0x82–0x85, 0x89, 0x8F, 0x9E, 0x9F, 0xAE, 0xAF (MIDI e outros, sem uso visto
 no roteiro: a confirmar nos dois discos).
 
+**O que o driver faz** (handlers lidos no código ARM7): **porta = canal da AICA** (0–63). O driver mantém uma sombra
+de 18 palavras por porta (0x117C + porta × 0x48, iniciada de um modelo em 0x1134) no formato dos registradores do
+canal, e os comandos só a alteram e a copiam para o canal (base `*(0xAA8)` + 0x80 × porta):
+- 0x90 Open: SA (endereço na RAM de som, bits altos em +0 bits 6–0, baixos em +4), PCMS (formato em +0 bits 8–7:
+  16 bits, 8 bits, ADPCM, ADPCM longo), LSA = 0, LEA = tamanho − 1 ajustado pelo formato, OCT/FNS (+0x18) já
+  calculado no SH-4 (0x8C120FBC a partir da taxa);
+- 0x91 Close: a sombra volta ao modelo;
+- 0x92 RequestEvent: guarda um valor por porta (0xD34 + porta × 4) e liga o bit da porta numa máscara de 64;
+- 0x93 Play: LPCTL (laço, +0 bit 9) e, opcionalmente, LSA/LEA do pacote; marca a porta ativa, copia a sombra para o
+  canal e faz o key-on.
+Os demais (stop, volume = TL/DISDL, pan = DIPAN, pitch, taxa, DSP) seguem o mesmo padrão e são lidos na fase C/D, junto
+com o que cada um faz em cada registrador.
+
+**Componentes do BS a portar** (`C:\Source\recomp-BStinger\native\audio`, MIT): `aica_adpcm` (decodificador),
+`envelope.h` (envelope da AICA, fase G do N6), `mixer`, `voice_player`, `sound_file`, `sound_catalog` e `aica_dsp`
+(programas `SFPB`/`SFOB`, o formato do `HHREV`). O que é do Manatee (`manatee*`, `sosb`, `sd_adapter`) não se aplica.
+
 **Estado atual (legado):** o ARM7 nunca roda, então a fila enche no VBlank 56 e todo comando seguinte é descartado:
 `_acG2SetHostCommand - can't send driver command` 740 vezes no roteiro, mais 2 240 avisos de `acDigiMultiStop` e os
 de `acDigiStop`/`SetVolume`/`Open`/`SetPan`/`PlayWithParameters` (3 701 avisos no total). O jogo hoje roda com o som
