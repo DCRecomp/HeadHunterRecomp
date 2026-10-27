@@ -145,6 +145,38 @@ HH09.
 - Roteiro da área 1 (`analysis/hh13/kamui/sombra_area1.log`): 2 250 renders; 350 401 escritas de registrador, 8 864 155
   parâmetros e 562 000 blocos de memória conferidos com o runtime antes de cada STARTRENDER, **0 divergências**.
 
+### Passos 2–5 — modo nativo (2026-10-27)
+
+`HH_KAMUI=nativo` (e o padrão de `--render nativo`; o software continua no caminho legado, `HH_KAMUI=legado|sombra|nativo`
+escolhe explicitamente). Os funis viram slots nativos:
+
+- registradores no banco nativo (2 048 palavras, iniciado do runtime na instalação), com a semântica de comando do
+  runtime (TA_LIST_INIT reinicia os parâmetros e copia NEXT_OPB_INIT/ISP_BASE, TA_LIST_CONT, STARTRENDER, SOFTRESET e os
+  somente leitura); só os de tempo do vídeo (SPG, 0x0C8–0x0E0) seguem para o runtime e SPG_STATUS é lido dele (HH15);
+- o DMA original continua programando o DMAC e o SB do Holly (HH15), mas os 32 bytes que chegam à área 4 vão ao destino
+  nativo (`ta_set_sink`): parâmetros divididos como o TA divide, com as interrupções de fim de lista (o mesmo bit de
+  ISTNRM que o TA levantava), e o caminho de textura na memória nativa; YUV é erro fatal (o jogo não usa);
+- cópia e zeragem na VRAM só na memória nativa;
+- STARTRENDER chama `pvr_start_render` (decodificação, IR, Vulkan ou software, agendamento do fim do render) com o
+  estado nativo emprestado (`pvr_regs_set_override`, `vram_set_override`, `ta_set_override`); o host lê o quadro exibido
+  do estado nativo (`kamui::video_frame`). Tirar esse código de `runtime/pvr` é do HH15.
+
+Tempo guest: o slot nativo gasta os ciclos que o código gerado do original gastaria (escrita de registrador 5, leitura 3,
+cópia e zeragem por bytes e alinhamento — fórmulas dos `HH_CYCLES` de `generated/`, conferidas com a medição
+`HH_KAMUI_CUSTO` no roteiro: 2 098 360 cópias, 2 zeragens, 350 401 escritas, 202 335 leituras). Cópia e zeragem
+escrevem na mesma unidade do laco original (8/4/2/1 bytes, o mesmo valor literal na zeragem), com os mesmos ciclos por
+volta e o atendimento dos eventos no back-edge com o pc de retomada do laço (como `HH_POLL`): uma interrupção ou troca de
+thread no meio de uma carga vê o mesmo progresso. A leitura gasta os 3 ciclos antes de ler (SPG_STATUS) e a escrita
+devolve `r0 = 1` como o original (revisão Codex). Prova negativa: sem esse gasto o jogo anda mais depressa (2 260 renders contra
+2 250) e os hashes divergem a partir do VBlank 150; com ele, os 94 hashes são iguais aos do legado e à referência do HH06.
+
+Portão `tests/diff/hh13_kamui.py` (ctest `hh13_kamui`): K1 sombra sem divergências; K2 nativo com os 94 hashes iguais ao
+legado e ao HH06, renders nativos = renders do tempo; K3 sonda `HH_TA_FONTES` sem bytes no TA nem na VRAM do runtime e,
+do PVR, só os registradores de tempo do vídeo (0x0C8–0x0E0 escritos uma vez por 0x8C169FE0; SPG_STATUS e 0x0DC lidos
+pelo tempo e pelo Maple); K4 `HH_RENDER_IR=conferir` com o provedor nativo (IR do estado nativo igual ao rasterizador,
+render a render). A referência do HH06 é obrigatória na regressão. Unitário `hh13_kamui_tests`: ciclos medidos e dos
+caminhos do código gerado.
+
 Divisão entre o HH13 e o HH15 (do tratador de interrupções 0x8C168160: lê ISTERR/ISTNRM, reconhece o bit e, no evento 18
 — fim do DMA —, o CHCR2 do DMAC do SH-4): o HH13.6 tira do caminho nativo o TA, os registradores **de render** do PVR e
 a VRAM guest; a entrega das interrupções (INTC do Holly), os registradores do SB do Holly, o DMAC e os registradores de

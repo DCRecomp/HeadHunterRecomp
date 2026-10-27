@@ -26,6 +26,12 @@ uint32_t                     ta_bytes();          // bytes recebidos pela FIFO d
 // Destino das store queues/DMA na area 4: FIFO de poligonos (0x10000000), caminho direto
 // de textura (0x11000000, escreve na VRAM pelo caminho de 64 bits). 32 bytes por vez.
 bool ta_fifo_write(Sh4Context* c, uint32_t target, const uint32_t* data);
+// HH13.6: com destino nativo, os 32 bytes que chegam a area 4 (FIFO de poligonos, caminho de textura) vao para ele e o TA e
+// a VRAM do runtime nao os veem; nullptr desliga. Parametros emprestados: ta_params()/ta_bytes() devolvem os do provedor
+// nativo do Kamui durante o render dele.
+using TaSink = bool (*)(Sh4Context* c, uint32_t target, const uint32_t* data);
+void ta_set_sink(TaSink sink);
+void ta_set_override(const std::vector<TaParam>* params, const uint32_t* bytes);
 // Diagnostico HH_TA_FONTES (HH13.6): caminho da proxima escrita ("sq", "dma", "cpu") e contagem por destino.
 void ta_note_via(const char* via);
 void ta_note_bytes(Sh4Context* c, const char* dest, uint32_t n);

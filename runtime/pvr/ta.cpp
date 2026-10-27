@@ -40,6 +40,9 @@ struct State {
 } g;
 
 std::vector<TaParam> g_params;
+const std::vector<TaParam>* g_paramsOverride = nullptr;  // HH13.6: parametros do provedor nativo do Kamui
+const uint32_t*             g_bytesOverride  = nullptr;
+TaSink                      g_sink           = nullptr;
 uint32_t             g_bytes = 0;  // bytes recebidos pela FIFO de poligonos desde o init
 
 constexpr uint32_t kListEndBit[5] = {1u << 7, 1u << 8, 1u << 9, 1u << 10, 1u << 21};
@@ -131,11 +134,16 @@ void ta_list_init() {
     g_bytes = 0;
 }
 
-uint32_t ta_bytes() { return g_bytes; }
+uint32_t ta_bytes() { return g_bytesOverride ? *g_bytesOverride : g_bytes; }
 
 void ta_list_continue() { g.list = -1; }
 
-const std::vector<TaParam>& ta_params() { return g_params; }
+const std::vector<TaParam>& ta_params() { return g_paramsOverride ? *g_paramsOverride : g_params; }
+void ta_set_override(const std::vector<TaParam>* params, const uint32_t* bytes) {
+    g_paramsOverride = params;
+    g_bytesOverride  = bytes;
+}
+void ta_set_sink(TaSink sink) { g_sink = sink; }
 
 // Diagnostico (HH13.6, so desenvolvimento): HH_TA_FONTES=<arquivo.tsv> conta os bytes que chegam ao TA e a VRAM por
 // destino, caminho (store queue, DMA, CPU) e funcao guest em execucao (cur_fn); gravado no fim do processo.
@@ -175,6 +183,10 @@ bool ta_fifo_write(Sh4Context* c, uint32_t target, const uint32_t* data) {
     const uint32_t p = target & 0x1FFFFFFF;
     if ((p >> 26) != 4) return false;  // area 4: 0x10000000-0x13FFFFFF
     const uint32_t region = p & 0x01800000;  // 0x00 poligonos, 0x00800000 YUV, 0x01000000+ textura
+    if (g_sink) {  // HH13.6: o provedor nativo do Kamui recebe (nada no TA nem na VRAM)
+        ta_note_bytes(c, region == 0 ? "kamui_poligonos" : (p & 0x01000000) ? "kamui_textura" : "kamui_yuv", 32);
+        return g_sink(c, target, data);
+    }
     ta_note_bytes(c, region == 0 ? "ta_poligonos" : (p & 0x01000000) ? "ta_textura" : "ta_yuv", 32);
     if (region == 0) {
         g_bytes += 32;

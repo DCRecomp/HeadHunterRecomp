@@ -19,8 +19,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH10 | CONCLUIDA | `docs/relatorios/HH10-RELATORIO.md` (controles nativos padrão: pd 1.50 sem Maple; traço do PDS, info/name e quadros idênticos ao legado, inclusive desconexão; janela com teclado + SDL3 Gamepad e `controles.toml`) |
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
-| HH13 | EM_ANDAMENTO | — (Vulkan sobre a IR do TA pronto; em curso: provedores nativos do Kamui, decisão B do mantenedor) |
-| HH14 | PENDENTE | — (áudio nativo) |
+| HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
+| HH14 | EM_ANDAMENTO | — (áudio nativo) |
 | HH15 | PENDENTE | — |
 | HH16 | PENDENTE | — |
 | HH17 | PENDENTE | — |
@@ -279,7 +279,7 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
-### HH13 (2026-10-26, em andamento)
+### HH13 (2026-10-26 a 2026-10-27, concluída)
 
 - Renderizador nativo (`docs/planos/HH13-PLANO.md`, N7 do BS): `native/render` + `native/render/vulkan` (SPIR-V
   versionado, Vulkan-Headers Apache-2.0) e `transitional/render_capture` (IR a partir do decodificador do TA);
@@ -294,8 +294,19 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   sem underflow, testes determinísticos do alcance (sem depender de comportamento indefinido), SKIP só com o Vulkan
   indisponível e R5 exigindo Vulkan em todos os renders, resumo sempre que instalado, atribuição do código portado.
 - Regressão integral ok (`analysis/hh13/regressao.log`).
-- Aberto: a parte do critério de saída "nenhum PVR2/Holly/VRAM guest no caminho nativo" (o caminho nativo ainda lê as
-  listas do TA e as texturas da VRAM guest; fronteira Kamui de 33 entradas e 102 pontos de chamada).
+- HH13.6 (decisão B): provedor nativo da camada Kamui (`transitional/kamui_device`) sobre os cinco funis do SDK
+  (0x8C1793E0, 0x8C1793EA, 0x8C17C600, 0x8C159820, 0x8C159874). Sombra: 0 divergências em 2 250 renders. Nativo
+  (padrão de `--render nativo`; `HH_KAMUI=legado|sombra|nativo`): registradores no banco nativo, dados da área 4 no
+  destino nativo (`ta_set_sink`), cópia/zeragem na memória nativa, render e quadro com o estado nativo emprestado; o
+  slot reproduz o tempo do código gerado substituído (ciclos e pontos de atendimento). Portão `tests/diff/hh13_kamui.py`:
+  K1 sombra 0 divergências, K2 94 hashes iguais ao legado e ao HH06, K3 sonda sem TA/VRAM e do PVR só SPG (HH15), K4
+  IR conferida com o estado nativo. Prova negativa: sem o gasto de ciclos, hashes divergem no VBlank 150.
+- Revisão Codex do HH13.6 (`reviews/codex-hh13_6.log`), 4 achados, todos aceitos e corrigidos: laços de cópia/zeragem
+  com os pontos de atendimento e o `pc` de retomada do original (e `pc` preservado com `redirect`); leitura gasta os 3
+  ciclos antes de ler; escrita devolve `r0 = 1`; referência do HH06 obrigatória na regressão e K4 com o nativo.
+- Fica para o HH15: INTC do Holly, SB, DMAC, SPG, store queues para a RAM, o código de `runtime/pvr` usado com estado
+  emprestado e o custo em ciclos dos slots.
+- Regressão integral ok após o HH13.6 (`analysis/hh13/regressao.log`, `portoes_hh13` 5/5).
 
 ### HH12 (2026-10-26)
 
@@ -390,7 +401,7 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir pelo **HH13** (renderização nativa Vulkan: IR de comandos + backend + SDK gráfico) e as etapas seguintes. O teste da passagem real do
+Prosseguir pelo **HH14** (áudio nativo: motor próprio no lugar do `AUDIO64.DRV`, sem ARM7) e as etapas seguintes. O teste da passagem real do
 disco 1 para o 2 fica para depois (HH11/HH16). Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando

@@ -103,7 +103,10 @@ void onService(Sh4Context*) {
 void onVblank(void*) {
     HostResult& r = *g_res;
     ++r.vblanks;
-    pvr_video_frame(g_frame.argb, g_frame.width, g_frame.height);
+    if (transitional::kamui::mode() == transitional::kamui::Mode::Native)  // HH13.6: quadro a partir do estado nativo
+        transitional::kamui::video_frame(g_frame.argb, g_frame.width, g_frame.height);
+    else
+        pvr_video_frame(g_frame.argb, g_frame.width, g_frame.height);
     if (transitional::video::installed())  // HH12: o quadro do filme nativo no lugar do quadro do PVR (como no N5 do BS)
         transitional::video::compose_frame(g_frame.argb, g_frame.width, g_frame.height);
     g_frame.vblank = r.vblanks;
@@ -248,10 +251,16 @@ HostResult host_run(const HostOptions& opt) {
             for (const std::string& w : warn) std::fprintf(stderr, "[video] %s\n", w.c_str());
             std::fprintf(stderr, "[video] nativo: %s\n", vo.dataDir.string().c_str());
         }
-        // HH13.6: funis do SDK grafico (HH_KAMUI=sombra: os originais continuam e um estado nativo e conferido com o do
-        // runtime em cada STARTRENDER)
-        if (const char* k = std::getenv("HH_KAMUI"); k && std::string(k) == "sombra")
-            transitional::kamui::install(boundaries, transitional::kamui::Mode::Shadow);
+        // HH13.6: funis do SDK grafico. --render nativo usa o provedor nativo (os funis deixam de tocar o PVR e o render le
+        // o estado nativo); o software continua no caminho legado. HH_KAMUI=legado|sombra|nativo escolhe explicitamente
+        // (sombra: os originais continuam e um estado nativo e conferido com o do runtime em cada STARTRENDER).
+        {
+            const char*       k    = std::getenv("HH_KAMUI");
+            const std::string kv   = k ? k : "";
+            const bool        kNat = kv == "nativo" || (kv.empty() && opt.render == RenderProvider::Native);
+            if (kv == "sombra") transitional::kamui::install(boundaries, transitional::kamui::Mode::Shadow);
+            else if (kNat) transitional::kamui::install(boundaries, transitional::kamui::Mode::Native);
+        }
         // HH13: IR de render capturada do decodificador do TA (HH_RENDER_IR=capturar|conferir|comparar; HH_RENDER_IR_CADA=N
         // confere 1 render a cada N); o rasterizador em software continua a referencia. --render nativo desenha a IR no
         // Vulkan; comparar mantem o software e mede o Vulkan (HH_RENDER_IR_BMP=<pasta>, 1 a cada HH_RENDER_IR_BMP_CADA).

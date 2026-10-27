@@ -13,21 +13,30 @@
 // antes do render, o estado nativo e conferido com o do runtime: registradores escritos, parametros desde o
 // TA_LIST_INIT e os blocos de memoria escritos pelos funis desde a ultima conferencia. Prova que os funis cobrem tudo o
 // que o render le, antes de o modo nativo deixar de passar pelo hardware.
+// Modo nativo (HH_KAMUI=nativo): os funis deixam de tocar o hardware do PVR. Registradores no banco nativo (com a mesma
+// semantica de comando do runtime: TA_LIST_INIT, TA_LIST_CONT, STARTRENDER, SOFTRESET); so os de tempo do video (SPG,
+// 0x0C8-0x0E0) continuam indo ao runtime, e SPG_STATUS e lido dele (tempo: HH15). O DMA original continua programando o
+// DMAC e o SB do Holly (HH15), mas os bytes que chegam a area 4 vao para o destino nativo (ta_set_sink): parametros
+// divididos como o TA divide, com as interrupcoes de fim de lista, e o caminho de textura na memoria nativa. Copia e
+// zeragem na VRAM so na memoria nativa. O render de STARTRENDER (decodificacao, IR, Vulkan ou software) e o quadro
+// exibido leem o estado nativo emprestado (pvr_regs_set_override, vram_set_override, ta_set_override).
 #include "boundary_registry.h"
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace hh::transitional::kamui {
 
 constexpr uint32_t kRegWrite = 0x8C1793E0, kRegRead = 0x8C1793EA, kDma = 0x8C17C600, kCopy = 0x8C159820,
                    kZero = 0x8C159874;
 
-enum class Mode : uint8_t { Off, Shadow };
+enum class Mode : uint8_t { Off, Shadow, Native };
 
 struct Stats {
     uint64_t regWrites = 0, regReads = 0, dmaTa = 0, dmaTexture = 0, dmaOther = 0, copies = 0, zeros = 0;
     uint64_t taBytes = 0, textureBytes = 0, copyBytes = 0, zeroBytes = 0;
+    uint64_t nativeRenders = 0, listEnds = 0;  // modo nativo
     uint64_t renders = 0, regMismatch = 0, paramMismatch = 0, memMismatch = 0, memBlocksChecked = 0, paramsChecked = 0;
     std::string first;  // primeira divergencia (o que e onde)
 };
@@ -37,5 +46,14 @@ void        uninstall(BoundaryRegistry& registry);
 bool        installed();
 Stats       stats();
 std::string summary();  // linha "[kamui] ..." para o log
+Mode        mode();
+
+// Modo nativo: ciclos guest que o codigo gerado de 0x8C159820 (copia) e 0x8C159874 (zeragem) gastaria; o slot nativo os
+// gasta para o jogo andar no mesmo tempo da fase hibrida (o modelo de tempo proprio sai no HH15).
+uint64_t copy_cycles(uint32_t dst, uint32_t src, uint32_t n);
+uint64_t zero_cycles(uint32_t dst, uint32_t n);
+
+// Modo nativo: o quadro exibido (FB_R_*) a partir dos registradores e da memoria nativos, como pvr_video_frame.
+void video_frame(std::vector<uint32_t>& argb, uint32_t& width, uint32_t& height);
 
 } // namespace hh::transitional::kamui

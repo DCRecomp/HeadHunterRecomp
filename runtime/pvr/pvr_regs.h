@@ -42,6 +42,12 @@ void pvr_regs_load(const uint32_t* words);
 uint64_t pvr_render_done_due();
 void     pvr_render_done_take();
 
+// HH13.6: STARTRENDER (render das listas atuais + agendamento do fim do render), para o provedor nativo do Kamui.
+void pvr_start_render(Sh4Context* c);
+// HH13.6: banco de registradores emprestado (0x005F8000-0x005F9FFF, 2048 palavras) que o render, a paleta e o video leem no
+// lugar do banco do runtime; nullptr devolve o do runtime. So o provedor nativo do Kamui (o guest nao o ve).
+void pvr_regs_set_override(const uint32_t* words);
+
 using PvrStartRenderHook = void (*)(Sh4Context* c, int n);
 void pvr_set_startrender_hook(PvrStartRenderHook hook);
 

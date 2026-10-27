@@ -12,6 +12,9 @@ namespace hh {
 constexpr uint32_t kVramSize = 8u << 20;
 
 uint8_t* vram_data();  // layout do caminho de 32 bits
+// HH13.6: memoria emprestada (8 MB, o mesmo layout) que vram_data() devolve (render, texturas, video); nullptr volta a do
+// runtime. Os acessos do guest pela area 1 (vram_read/vram_write) nunca a veem.
+void vram_set_override(uint8_t* data);
 void     vram_reset();
 
 // Offset no layout de 32 bits para um offset do caminho de 64 bits.

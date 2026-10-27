@@ -33,7 +33,9 @@ int64_t locate(uint32_t a) {
 
 } // namespace
 
-uint8_t* vram_data() { return g_vram.data(); }
+uint8_t* g_vramOverride = nullptr;  // HH13.6: memoria do provedor nativo do Kamui (render e video)
+uint8_t* vram_data() { return g_vramOverride ? g_vramOverride : g_vram.data(); }
+void     vram_set_override(uint8_t* data) { g_vramOverride = data; }
 void     vram_reset() { std::fill(g_vram.begin(), g_vram.end(), uint8_t(0)); }
 
 bool vram_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
