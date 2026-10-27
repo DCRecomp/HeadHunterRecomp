@@ -116,6 +116,9 @@ quadro do PVR (como no BS).
   (gdFsChangeDir, slot do HH08) nas até 10 tentativas do open; o texto conferido no executável (hh02/disc1, base
   0x8C010000).
 
+**Decisão do mantenedor (2026-10-26): opção A**, os filmes continuam decodificados pelo FFmpeg (a diferença nos
+quadros com movimento fica documentada; o decodificador do jogo no Builder não será feito).
+
 ## Subetapas
 
 | ID | Entrega | Saída |

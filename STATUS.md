@@ -18,8 +18,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH09 | CONCLUIDA | `docs/relatorios/HH09-RELATORIO.md` (tempo nativo estável padrão: ordem, quadros e relógios idênticos ao legado; 7 esperas declaradas; experimental opcional) |
 | HH10 | CONCLUIDA | `docs/relatorios/HH10-RELATORIO.md` (controles nativos padrão: pd 1.50 sem Maple; traço do PDS, info/name e quadros idênticos ao legado, inclusive desconexão; janela com teclado + SDL3 Gamepad e `controles.toml`) |
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
-| HH12 | EM_ANDAMENTO | — |
-| HH13 | PENDENTE | — (renderização nativa Vulkan; ordem trocada com o áudio pelo mantenedor em 2026-10-25) |
+| HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
+| HH13 | EM_ANDAMENTO | — (renderização nativa Vulkan; ordem trocada com o áudio pelo mantenedor em 2026-10-25) |
 | HH14 | PENDENTE | — (áudio nativo) |
 | HH15 | PENDENTE | — |
 | HH16 | PENDENTE | — |
@@ -279,7 +279,7 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
-### HH12 (2026-10-26, em andamento)
+### HH12 (2026-10-26)
 
 - Contrato (HH12.0, `docs/planos/HH12-PLANO.md`): PlayScene 0x8C09E904 continua original; o provedor nativo
   (`transitional/video_adapter`, `--video nativo`) atende open/áudio/play/close do objeto do filme 4X (slots
@@ -298,14 +298,14 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   7/7 (com a conversão do SCENE0 do disco).
 - V3 contra o decodificador do próprio jogo (Flycast rodando livre, `hh12_v3_livre.py`): quadros estáticos iguais à
   quantização ARGB1555 (erro máximo 9); quadros com movimento com o mesmo conteúdo e diferença média de 3–5 níveis
-  (o 4xm do FFmpeg não é bit a bit o do jogo nos quadros P). Ver "Decisões pendentes".
+  (o 4xm do FFmpeg não é bit a bit o do jogo nos quadros P). Decisão do mantenedor: manter o FFmpeg (opção A).
 - Promoção: `--video nativo` padrão na janela; `--headless` e `hh-run` no legado (roteiro de referência). O legado não
   toca os filmes (o laço sai no VBlank 312 sem o ARM7).
 - Revisão Codex (`reviews/codex-hh12.log`), 8 achados. Aceitos e corrigidos: legendas (agora as do jogo, e mods SRT/VTT),
   SHA-256 do MP4 no open e erro do decodificador não conta como fim natural, SHA-256 real da fonte no reaproveitamento
   (teste negativo), cancelamento do FFmpeg por thread vigia e espera limitada, mod por nome não sai da pasta por
   link/junção, áudio com controle de fluxo e troca para a saída nula se o dispositivo cair, evidência do 0x8C142E78 no
-  plano, os dois discos no portão. A promoção (ALTA) depende da decisão do V3.
+  plano, os dois discos no portão. A promoção (ALTA) foi resolvida pela decisão do mantenedor (opção A).
 
 ### Builder do HH18 antecipado e reorganização (2026-10-25/26, pedido do mantenedor)
 
@@ -349,14 +349,14 @@ dentro dos AHF.
 
 ## Decisões pendentes
 
-**HH12 — decodificador dos filmes** (ver o fim da etapa no relatório): o 4xm do FFmpeg (A11) reproduz o conteúdo, mas
-não é bit a bit o decodificador do jogo nos quadros com movimento (diferença média de 3–5 níveis); a alternativa
-prevista no plano é decodificar no Builder com o próprio decodificador do jogo recompilado.
-
-Fora isso, nenhuma decisão humana está pendente. Descobertas que contradigam estas premissas podem exigir `BLOQUEADA_DECISAO`, mas somente depois de esgotar investigação e testes independentes:
+Nenhuma decisão humana está pendente. Descobertas que contradigam estas premissas podem exigir `BLOQUEADA_DECISAO`, mas somente depois de esgotar investigação e testes independentes:
 
 - um middleware essencial exige incorporação incompatível com MIT;
 - a arquitetura observada exige código dinâmico/overlay não coberto pelo plano.
+
+Decisão do mantenedor (2026-10-26, HH12): os filmes continuam decodificados pelo FFmpeg (opção A). O 4xm do FFmpeg
+reproduz o conteúdo do decodificador do jogo (estáticos iguais à quantização ARGB1555; com movimento, diferença média
+de 3–5 níveis); a alternativa do decodificador do próprio jogo no Builder foi recusada pelo custo.
 
 Decisão do mantenedor (2026-10-24): o FFmpeg (LGPL) pode ser usado como
 ferramenta externa de conversão dos vídeos 4X Movie no Builder (ARCHITECTURE.md
@@ -369,7 +369,7 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir pelo **HH12** (videos nativos e moddaveis; plano em `docs/planos/HH12-PLANO.md`) e as etapas seguintes. O teste da passagem real do
+Prosseguir pelo **HH13** (renderização nativa Vulkan: IR de comandos + backend + SDK gráfico) e as etapas seguintes. O teste da passagem real do
 disco 1 para o 2 fica para depois (HH11/HH16). Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando
