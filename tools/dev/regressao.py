@@ -260,6 +260,17 @@ def step_gates_hh12():
         raise RuntimeError('portoes do HH12 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh13():
+    # HH13: renderer nativo (unitarios com GPU, captura da IR) e R1/R2/R4/R5 no roteiro (hh-run --render nativo)
+    need('HH_DATA_DIR')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh13_(render|capture)(_tests)?$', '--no-tests=error',
+            '--output-on-failure', '--timeout', '7200'], env={'HH_EXIGIR_DADOS': '1'}, timeout=14400)
+    passed = [n for n in ('hh13_render_tests', 'hh13_capture_tests', 'hh13_render')
+              if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 3:
+        raise RuntimeError('portoes do HH13 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -305,6 +316,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh10', step_gates_hh10, ['HH_DATA_DIR', 'HH07_BIN', 'HH_AREA1_HASHES']),
          ('portoes_hh11', step_gates_hh11, ['HH_DATA_DIR', 'HH11_ORACULO']),
          ('portoes_hh12', step_gates_hh12, ['HH_DATA_DIR']),
+         ('portoes_hh13', step_gates_hh13, ['HH_DATA_DIR']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 

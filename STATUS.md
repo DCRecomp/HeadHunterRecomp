@@ -279,6 +279,24 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
+### HH13 (2026-10-26, em andamento)
+
+- Renderizador nativo (`docs/planos/HH13-PLANO.md`, N7 do BS): `native/render` + `native/render/vulkan` (SPIR-V
+  versionado, Vulkan-Headers Apache-2.0) e `transitional/render_capture` (IR a partir do decodificador do TA);
+  `--render software|nativo`, nativo padrão na janela, headless e `hh-run` no software.
+- Portões no roteiro da área 1 (`tests/diff/hh13_render.py`, etapa `portoes_hh13`): R1 2 250 renders conferidos, 0
+  divergências (triângulos, imagens, texturas, quadros, volumes); R2 Vulkan × software com maior diferença de 1 nível;
+  R4 duas execuções nativas iguais e iguais ao software nos 94 pontos; R5 Vulkan 72,9 s contra 200,3 s do software
+  (headless sem pacing) e tempo real na janela. `hh13_render_tests` 36/36 (GPU), `hh13_capture_tests` 16/16.
+- Correção própria (herdada do BS): textura linear com stride menor que a largura lia além do buffer; teste com mutação.
+- Revisão Codex (`reviews/codex-hh13.log`), 7 achados, todos aceitos e corrigidos: regra linear do `texture_source` só
+  nos formatos de 16 bits sem mipmap (paleta), R4 com duas execuções nativas e R2 com `comparados == renders`, `h == 0`
+  sem underflow, testes determinísticos do alcance (sem depender de comportamento indefinido), SKIP só com o Vulkan
+  indisponível e R5 exigindo Vulkan em todos os renders, resumo sempre que instalado, atribuição do código portado.
+- Regressão integral ok (`analysis/hh13/regressao.log`).
+- Aberto: a parte do critério de saída "nenhum PVR2/Holly/VRAM guest no caminho nativo" (o caminho nativo ainda lê as
+  listas do TA e as texturas da VRAM guest; fronteira Kamui de 33 entradas e 102 pontos de chamada).
+
 ### HH12 (2026-10-26)
 
 - Contrato (HH12.0, `docs/planos/HH12-PLANO.md`): PlayScene 0x8C09E904 continua original; o provedor nativo

@@ -61,6 +61,7 @@ int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
                          " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental]"
                          " [--controles legado|nativo] [--saves legado|nativo [--saves-pasta <pasta>]] [--video legado|nativo]"
+                         " [--render software|nativo]"
                          " [--mods <pasta>]\n");
     return 2;
 }
@@ -97,6 +98,8 @@ int main(int argc, char** argv) {
         else if (a == "--saves-pasta" && (v = next())) opt.savesRoot = v;
         else if (a == "--video" && (v = next()) && (std::string(v) == "legado" || std::string(v) == "nativo"))
             opt.video = std::string(v) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy;
+        else if (a == "--render" && (v = next()) && (std::string(v) == "software" || std::string(v) == "nativo"))
+            opt.render = std::string(v) == "nativo" ? hh::RenderProvider::Native : hh::RenderProvider::Software;
         else return usage();
     }
     if (opt.data.empty()) return usage();

@@ -41,6 +41,10 @@ enum class SavesProvider { Legacy, Native };
 // HH12: provedor dos filmes. Legado: o objeto do filme 4X recompilado (decodificador, stream do arquivo, AICA). Nativo:
 // open/play/close atendidos pelos MP4 do Builder (transitional/video_adapter + native/video), sem o 4X.
 enum class VideoProvider { Legacy, Native };
+// HH13: renderizador. Software: o rasterizador de referencia do PVR (runtime/pvr/pvr_render). Nativo: a IR que o
+// decodificador do TA produz, desenhada no Vulkan (transitional/render_capture + native/render/vulkan), com recuo para o
+// software (motivo no resumo) sem Vulkan ou se o dispositivo cair.
+enum class RenderProvider { Software, Native };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -56,6 +60,7 @@ struct HostOptions {
     std::filesystem::path savesRoot;  // pasta dos saves nativos (card0\...); obrigatoria no --saves nativo
     VideoProvider         video = VideoProvider::Legacy;  // --video legado|nativo (HH12)
     bool                  videoAudio = false;  // audio dos filmes nativos no dispositivo (false: saida nula, headless)
+    RenderProvider        render = RenderProvider::Software;  // --render software|nativo (HH13)
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;

@@ -11,6 +11,8 @@
 //              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
 //              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo]
 //              [--mods <pasta>]
+// Render (HH13, --render nativo, padrao na janela): a IR do TA desenhada no Vulkan, igual ao software na rota de
+// referencia; sem Vulkan ou se o dispositivo cair, o software (o --headless fica no software, salvo --render nativo).
 // Filmes (HH12, --video nativo, padrao na janela): os MP4 que o Builder converteu dos 4X (data\video), com audio
 // pelo XAudio2 e mods em mods\video; o --headless fica no legado (roteiro de referencia), salvo --video nativo.
 // Saves (HH11, --saves nativo, padrao na janela): Documentos\DC-Recomp\Head Hunter\saves (pasta Documentos do
@@ -214,12 +216,13 @@ int main(int argc, char** argv) {
     std::string     logPath;
     uint64_t        hashEvery = 0;
     bool            headless  = false;
-    bool            savesSet = false, savesPortable = false, videoSet = false;
+    bool            savesSet = false, savesPortable = false, videoSet = false, renderSet = false;
     fs::path        vmsExport, vmsImport;
     std::string     vmsName;
     opt.realtime = true;
     opt.saves    = hh::SavesProvider::Native;
     opt.video    = hh::VideoProvider::Native;  // HH12: filmes nativos padrao na janela (promovido; legado como reserva)
+    opt.render   = hh::RenderProvider::Native;  // HH13: Vulkan padrao na janela (recuo automatico para o software)
     opt.data     = exeDir() / "data";
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -250,6 +253,9 @@ int main(int argc, char** argv) {
         else if (a == "--video" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
             opt.video = std::string(argv[++i]) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy, videoSet = true;
+        else if (a == "--render" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "software" || std::string(argv[i + 1]) == "nativo"))
+            opt.render = std::string(argv[++i]) == "nativo" ? hh::RenderProvider::Native : hh::RenderProvider::Software, renderSet = true;
         else if (a == "--saves-portatil") savesPortable = true;
         else if (a == "--saves-exportar" && i + 1 < argc) vmsExport = argv[++i];
         else if (a == "--saves-importar" && i + 1 < argc) vmsImport = argv[++i];
@@ -258,7 +264,8 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
                                  "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
                                  "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--saves legado|nativo] "
-                                 "[--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo] [--mods <pasta>]\n"
+                                 "[--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo] [--render software|nativo] "
+                                 "[--mods <pasta>]\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-exportar <pasta>\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-importar <arquivo.vms> "
                                  "[--saves-nome <NOME>]\n");
@@ -328,6 +335,7 @@ int main(int argc, char** argv) {
     if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
     // o --headless (verificacao do Builder e roteiro de referencia, gravado com os filmes legados) fica no legado
     if (headless && !videoSet) opt.video = hh::VideoProvider::Legacy;
+    if (headless && !renderSet) opt.render = hh::RenderProvider::Software;  // HH13: verificacao sem depender da GPU
     opt.videoAudio = !headless;  // HH12: audio dos filmes nativos so com a janela (headless: saida nula)
     // modo portatil gravado pelo Recompiler (instalacao.toml ao lado do executavel; vale ao abrir o jogo direto)
     {

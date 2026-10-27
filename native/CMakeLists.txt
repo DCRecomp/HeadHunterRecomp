@@ -37,3 +37,16 @@ add_library(hh_native_video STATIC video/movie_catalog.cpp video/mf_movie.cpp vi
 target_link_libraries(hh_native_video PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus mfplat mfreadwrite mfuuid ole32 d2d1 dwrite windowscodecs)
 add_library(hh_native_audio STATIC audio/audio_output.cpp)
 target_link_libraries(hh_native_audio PUBLIC hh_native_api PRIVATE xaudio2 ole32)
+
+# HH13: regras portaveis do renderer nativo (IR de render, texturas do PVR para RGBA8, preparo dos triangulos para a
+# GPU, contrato das texturas HD e dos shaders de pos-processamento), portadas do N7 do BS; sem API grafica
+add_library(hh_native_render STATIC render/texture_convert.cpp render/render_ir.cpp render/fidelity_scenes.cpp
+            render/texture_replacement.cpp render/frame_prep.cpp render/post_shader.cpp)
+target_link_libraries(hh_native_render PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus)
+
+# HH13: backend Vulkan (offscreen; o Vulkan e carregado em tempo de execucao, sem SDK; cabecalhos Khronos em
+# third_party/vulkan, Apache-2.0; SPIR-V versionado em render/vulkan/spirv, gerado dos shaders do BS)
+add_library(hh_native_render_vk STATIC render/vulkan/vk_device.cpp render/vulkan/vk_present.cpp
+            render/vulkan/vk_post.cpp)
+target_include_directories(hh_native_render_vk PRIVATE ${PROJECT_SOURCE_DIR}/third_party/vulkan)
+target_link_libraries(hh_native_render_vk PUBLIC hh_native_render PRIVATE ${CMAKE_DL_LIBS})

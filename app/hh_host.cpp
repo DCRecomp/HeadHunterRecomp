@@ -14,6 +14,7 @@
 #include "pad_adapter.h"
 #include "bu_adapter.h"
 #include "video_adapter.h"
+#include "render_capture.h"
 #include "platform/saves.h"
 #include "input_bridge.h"
 #include "hh_verified_files.h"
@@ -227,6 +228,23 @@ HostResult host_run(const HostOptions& opt) {
             for (const std::string& w : warn) std::fprintf(stderr, "[video] %s\n", w.c_str());
             std::fprintf(stderr, "[video] nativo: %s\n", vo.dataDir.string().c_str());
         }
+        // HH13: IR de render capturada do decodificador do TA (HH_RENDER_IR=capturar|conferir|comparar; HH_RENDER_IR_CADA=N
+        // confere 1 render a cada N); o rasterizador em software continua a referencia. --render nativo desenha a IR no
+        // Vulkan; comparar mantem o software e mede o Vulkan (HH_RENDER_IR_BMP=<pasta>, 1 a cada HH_RENDER_IR_BMP_CADA).
+        if (const char* dir = std::getenv("HH_RENDER_IR_BMP"); dir && *dir) {
+            const char* cada = std::getenv("HH_RENDER_IR_BMP_CADA");
+            transitional::render_capture::set_compare_dump(dir, cada ? uint32_t(std::strtoul(cada, nullptr, 10)) : 300u);
+        }
+        if (const char* ir = std::getenv("HH_RENDER_IR"); ir && *ir) {
+            const char*       cada  = std::getenv("HH_RENDER_IR_CADA");
+            const uint32_t    every = cada ? uint32_t(std::strtoul(cada, nullptr, 10)) : 1u;
+            const std::string m     = ir;
+            using RM                = transitional::render_capture::Mode;
+            transitional::render_capture::install(m == "conferir" ? RM::Check : (m == "comparar" ? RM::Compare : RM::Capture),
+                                                  every);
+        } else if (opt.render == RenderProvider::Native) {
+            transitional::render_capture::install(transitional::render_capture::Mode::Native);
+        }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
         transitional::pad::probe_install();  // HH_PAD_CONTRATO=<tsv>: contrato do pd contra o legado (HH10.1)
         transitional::pad::closure_install();  // HH_PAD_FECHAMENTO=<tsv>: prova de fechamento (HH10.4)
@@ -300,6 +318,11 @@ HostResult host_run(const HostOptions& opt) {
         std::fputs(transitional::video::summary().c_str(), stderr);
         transitional::video::uninstall(boundaries);
     }
+    // HH13: o resumo sai sempre que a captura foi instalada (HH_RENDER_IR / --render nativo), mesmo sem render (revisao Codex)
+    if (const char* ir = std::getenv("HH_RENDER_IR"); (ir && *ir) || opt.render == RenderProvider::Native ||
+                                                       transitional::render_capture::stats().renders)
+        std::fputs(transitional::render_capture::summary().c_str(), stderr);
+    transitional::render_capture::install(transitional::render_capture::Mode::Off);  // sempre (revisao Codex do BS)
     if (transitional::time::installed()) {
         transitional::time::uninstall();
         std::fputs(transitional::time::progress_summary().c_str(), stderr);

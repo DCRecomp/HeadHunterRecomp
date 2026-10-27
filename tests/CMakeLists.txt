@@ -267,3 +267,24 @@ if(HH_GENERATED_DIR)
             $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR} ${HH_GENERATED_DIR})
   set_tests_properties(hh10_controles PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3000)
 endif()
+
+# HH13: renderer nativo (IR, conversao de texturas, cenas de fidelidade, preparo dos triangulos, Vulkan e
+# pos-processamento), portados do N7 do BS; os casos com GPU pulam sem Vulkan.
+add_executable(hh13_render_tests unit/main.cpp unit/test_hh13_render_native.cpp unit/test_hh13_render_textures.cpp
+               unit/test_hh13_render_fidelity.cpp unit/test_hh13_render_replacement.cpp unit/test_hh13_render_frame_prep.cpp
+               unit/test_hh13_render_vulkan.cpp unit/test_hh13_render_post.cpp)
+target_include_directories(hh13_render_tests PRIVATE unit)
+target_link_libraries(hh13_render_tests PRIVATE hh_native_render hh_native_render_vk)
+add_test(NAME hh13_render_tests COMMAND hh13_render_tests)
+# HH13: captura da IR (texturas nativas contra o legado, VRAM sintetica)
+add_executable(hh13_capture_tests unit/main.cpp unit/test_hh13_capture.cpp unit/test_hh13_render_capture.cpp)
+target_include_directories(hh13_capture_tests PRIVATE unit)
+target_link_libraries(hh13_capture_tests PRIVATE hh_transitional)
+add_test(NAME hh13_capture_tests COMMAND hh13_capture_tests)
+# HH13: portoes do renderizador nativo (R1 conferir, R2 Vulkan x software, R4 quadros iguais, R5 desempenho;
+# HH_DATA_DIR e Vulkan, senao SKIP).
+if(HH_GENERATED_DIR)
+  add_test(NAME hh13_render
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh13_render.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh13_render PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
+endif()

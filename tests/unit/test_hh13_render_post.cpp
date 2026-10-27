@@ -1,0 +1,386 @@
+// SPDX-License-Identifier: MIT
+// Derivado de recomp-BStinger tests/unit/test_render_post.cpp (MIT, Copyright (c) 2026 Blue Stinger
+// Recompiled contributors; ver third_party/licenses/recomp-BStinger-LICENSE.txt).
+// N7c (docs/N7-PLANO.md secao 21): validacao dos shaders de pos-processamento (render/post_shader). O passe interno e
+// o exemplo de mod passam; SPIR-V corrompido, estagio errado, buffer de armazenamento e push constants grandes demais
+// sao recusados com o motivo; o manifesto e conferido (parametros, caminho do shader dentro do pacote).
+#include "test.h"
+
+#include "render/post_shader.h"
+#include "render/vulkan/vk_device.h"
+#include "render/vulkan/spirv/post_color_frag.h"
+#include "render/vulkan/spirv/post_exemplo_frag.h"
+#include "render/vulkan/spirv/post_teste_buffer_frag.h"
+#include "render/vulkan/spirv/post_teste_push_frag.h"
+#include "render/vulkan/spirv/post_teste_laco_frag.h"
+#include "render/vulkan/spirv/post_teste_3d_frag.h"
+#include "render/vulkan/spirv/present_vert.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+namespace nr = hh::native::render;
+namespace fs = std::filesystem;
+
+namespace {
+template <size_t N> std::vector<uint32_t> words(const uint32_t (&a)[N]) { return std::vector<uint32_t>(a, a + N); }
+
+void write(const fs::path& p, const std::string& text) {
+    std::ofstream(p, std::ios::binary) << text;
+}
+void write_spv(const fs::path& p, const std::vector<uint32_t>& w) {
+    std::ofstream(p, std::ios::binary).write(reinterpret_cast<const char*>(w.data()), std::streamsize(w.size() * 4));
+}
+const char* kManifest = "formato = 1\nnome = \"teste\"\nshader = \"shader.spv\"\n"
+                        "[[parametros]]\nnome = \"a\"\nminimo = 0.0\nmaximo = 1.0\npadrao = 0.5\npasso = 0.1\n";
+} // namespace
+
+HH_TEST(post_shader_validator) {
+    std::string e;
+    HH_CHECK(nr::validate_post_spirv(words(kPostColorFrag), &e));
+    HH_CHECK(nr::validate_post_spirv(words(kPostExemploFrag), &e));
+    // regressao 2026-10-25 (N8.0, ctest Debug): o modulo termina numa instrucao sem operandos (OpFunctionEnd, 56)
+    // e o validador formava &w[size]; o span do Debug abortava. Tem de validar, e um modulo minimo tambem
+    HH_CHECK((words(kPostColorFrag).back() & 0xFFFFu) == 56u && (words(kPostColorFrag).back() >> 16) == 1u);
+    auto fim = words(kPostColorFrag);
+    fim.push_back((1u << 16) | 56u);  // outra instrucao sem operandos no fim: o resultado nao importa, so nao ler fora
+    (void)nr::validate_post_spirv(fim, &e);
+    // corrompido e truncado
+    auto bad = words(kPostColorFrag);
+    bad[0] ^= 1;
+    HH_CHECK(!nr::validate_post_spirv(bad, &e) && e.find("magico") != std::string::npos);
+    auto cut = words(kPostColorFrag);
+    cut.resize(cut.size() / 2);
+    HH_CHECK(!nr::validate_post_spirv(cut, &e));
+    // um shader de vertice nao e um passe
+    HH_CHECK(!nr::validate_post_spirv(words(kPresentVert), &e) && e.find("fragmento") != std::string::npos);
+    // escrita em buffer de armazenamento e push constants acima de 80 bytes
+    HH_CHECK(!nr::validate_post_spirv(words(kPostTesteBufferFrag), &e));
+    std::fprintf(stderr, "  buffer: %s\n", e.c_str());
+    HH_CHECK(!nr::validate_post_spirv(words(kPostTestePushFrag), &e) && e.find("push constants") != std::string::npos);
+    std::fprintf(stderr, "  push: %s\n", e.c_str());
+    // revisao Codex 2026-10-22: instrucao com operandos de menos, laco (pode nao terminar), sampler que nao e 2D
+    auto shortw = words(kPostColorFrag);
+    shortw.push_back((1u << 16) | 17u);  // OpCapability sem o operando
+    HH_CHECK(!nr::validate_post_spirv(shortw, &e) && e.find("operandos") != std::string::npos);
+    HH_CHECK(!nr::validate_post_spirv(words(kPostTesteLacoFrag), &e) && e.find("lacos") != std::string::npos);
+    HH_CHECK(!nr::validate_post_spirv(words(kPostTeste3dFrag), &e));
+    std::fprintf(stderr, "  3d: %s\n", e.c_str());
+}
+
+HH_TEST(post_shader_manifest) {
+    const fs::path root = fs::temp_directory_path() / "hh_post_teste";
+    fs::remove_all(root);
+    fs::create_directories(root / "ok"), fs::create_directories(root / "fora"), fs::create_directories(root / "param");
+    fs::create_directories(root / "sem_spv"), fs::create_directories(root / "corrompido");
+    write(root / "ok" / "manifesto.toml", kManifest), write_spv(root / "ok" / "shader.spv", words(kPostExemploFrag));
+    write(root / "fora" / "manifesto.toml", "formato = 1\nshader = \"../ok/shader.spv\"\n");
+    write(root / "param" / "manifesto.toml", "formato = 1\n[[parametros]]\nnome = \"x\"\nminimo = 1.0\nmaximo = 0.0\n");
+    write(root / "sem_spv" / "manifesto.toml", "formato = 1\n");
+    write(root / "corrompido" / "manifesto.toml", kManifest), write_spv(root / "corrompido" / "shader.spv", words(kPostTesteBufferFrag));
+    // link para fora do pacote (revisao Codex 2026-10-22): so se o sistema deixar criar links
+    std::error_code lk;
+    fs::create_directories(root / "link");
+    write(root / "link" / "manifesto.toml", kManifest);
+    write_spv(fs::temp_directory_path() / "hh_post_fora.spv", words(kPostExemploFrag));
+    fs::create_symlink(fs::temp_directory_path() / "hh_post_fora.spv", root / "link" / "shader.spv", lk);
+    if (lk) {
+        std::fprintf(stderr, "  (sem link simbolico: %s)\n", lk.message().c_str());
+        fs::remove_all(root / "link");
+    }
+    const auto all = nr::discover_post_shaders(root);
+    HH_CHECK(all.size() == (lk ? 5u : 6u));
+    for (const auto& p : all) std::fprintf(stderr, "  %s: %s\n", p.dir.filename().string().c_str(), p.error.empty() ? "valido" : p.error.c_str());
+    for (const auto& p : all) {
+        const std::string d = p.dir.filename().string();
+        if (d == "ok") HH_CHECK(p.error.empty() && p.name == "teste" && p.params.size() == 1 && p.params[0].def == 0.5f);
+        else HH_CHECK(!p.error.empty());
+    }
+    fs::remove_all(root);
+    fs::remove(fs::temp_directory_path() / "hh_post_fora.spv", lk);
+}
+
+// A cadeia na GPU (post_run, a mesma gravacao da apresentacao): sem passes a imagem nao muda; o passe interno neutro
+// fica a 1 nivel; saturacao 0 da cinza; brilho sobe a media; o shader de exemplo (externo, carregado por post_load)
+// esquenta a imagem. Sem Vulkan: [skip].
+HH_TEST(post_chain_gpu) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t        w = 64, h = 48;
+        std::vector<uint32_t> img(size_t(w) * h), out;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x)
+                img[size_t(y) * w + x] = 0xFF000000u | ((x * 4) << 16) | ((y * 5) << 8) | ((x + y) * 2);
+        auto chan = [](uint32_t c, int s) { return int((c >> s) & 0xFF); };
+        auto maxdiff = [&](const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) {
+            int m = 0;
+            for (size_t i = 0; i < a.size(); ++i)
+                for (int s = 0; s < 24; s += 8) m = std::max(m, std::abs(chan(a[i], s) - chan(b[i], s)));
+            return m;
+        };
+        HH_CHECK(d->post_run(img, w, h, {}, out).ok() && out == img);
+        const int color = d->post_builtin_color();
+        HH_CHECK(color >= 0);
+        nr::PostPass p;
+        p.shader = color, p.params[0] = 0, p.params[1] = 1, p.params[2] = 1, p.params[3] = 1;  // neutro
+        HH_CHECK(d->post_run(img, w, h, {&p, 1}, out).ok() && out.size() == img.size());
+        std::fprintf(stderr, "  neutro: maior diferenca %d\n", maxdiff(img, out));
+        HH_CHECK(maxdiff(img, out) <= 1);
+        p.params[3] = 0;  // saturacao 0
+        HH_CHECK(d->post_run(img, w, h, {&p, 1}, out).ok());
+        int gray = 0;
+        for (uint32_t c : out) gray = std::max({gray, std::abs(chan(c, 16) - chan(c, 8)), std::abs(chan(c, 8) - chan(c, 0))});
+        HH_CHECK(gray <= 1);
+        p.params[3] = 1, p.params[0] = 0.2f;  // brilho
+        HH_CHECK(d->post_run(img, w, h, {&p, 1}, out).ok());
+        double before = 0, after = 0;
+        for (size_t i = 0; i < img.size(); ++i) before += chan(img[i], 8), after += chan(out[i], 8);
+        std::fprintf(stderr, "  brilho +0,2: media do verde %.1f -> %.1f\n", before / img.size(), after / img.size());
+        HH_CHECK(after / img.size() > before / img.size() + 40);
+        // o exemplo de mod: carregado como um externo (validado antes)
+        const auto ex = words(kPostExemploFrag);
+        HH_CHECK(nr::validate_post_spirv(ex, &err));
+        const int id = d->post_load(ex, &err);
+        HH_CHECK(id >= 0 && id != color);
+        nr::PostPass q;
+        q.shader = id, q.params[0] = 1;  // temperatura maxima, sem matiz e sem vinheta
+        HH_CHECK(d->post_run(img, w, h, {&q, 1}, out).ok());
+        double r0 = 0, r1 = 0, b0 = 0, b1 = 0;
+        for (size_t i = 0; i < img.size(); ++i)
+            r0 += chan(img[i], 16), r1 += chan(out[i], 16), b0 += chan(img[i], 0), b1 += chan(out[i], 0);
+        std::fprintf(stderr, "  exemplo (temperatura 1): vermelho %.1f -> %.1f, azul %.1f -> %.1f\n", r0 / img.size(), r1 / img.size(),
+                     b0 / img.size(), b1 / img.size());
+        HH_CHECK(r1 > r0 && b1 < b0);
+        // dois passes encadeados (o interno e o externo)
+        const nr::PostPass two[2] = {p, q};
+        HH_CHECK(d->post_run(img, w, h, two, out).ok() && out.size() == img.size());
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
+
+namespace {
+// imagem de teste com tons do preto ao branco (gradiente) e cores
+std::vector<uint32_t> ramp(uint32_t w, uint32_t h) {
+    std::vector<uint32_t> img(size_t(w) * h);
+    for (uint32_t y = 0; y < h; ++y)
+        for (uint32_t x = 0; x < w; ++x) {
+            const uint32_t v = x * 255 / (w - 1), c = (y * 255 / (h - 1));
+            img[size_t(y) * w + x] = 0xFF000000u | (v << 16) | (((v + c) / 2) << 8) | (255 - c) * v / 255;
+        }
+    return img;
+}
+double mean_luma(const std::vector<uint32_t>& img) {
+    double s = 0;
+    for (uint32_t c : img) s += 0.2126 * ((c >> 16) & 0xFF) + 0.7152 * ((c >> 8) & 0xFF) + 0.0722 * (c & 0xFF);
+    return s / double(img.size());
+}
+size_t clipped(const std::vector<uint32_t>& img) {
+    size_t n = 0;
+    for (uint32_t c : img) n += ((c >> 16) & 0xFF) == 255 || ((c >> 8) & 0xFF) == 255;
+    return n;
+}
+} // namespace
+
+// N7c: tonemapping interno. Neutro = a mesma imagem (1 nivel); exposicao +1 EV clareia; com exposicao +2 a compressao
+// das altas luzes corta (satura em 255) muito menos pixels que sem ela; sombras positivas levantam o escuro.
+HH_TEST(post_tonemap_gpu) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t w = 128, h = 64;
+        const auto     img = ramp(w, h);
+        std::vector<uint32_t> out, a, b;
+        nr::PostPass t;
+        t.shader = d->post_builtin(nr::PostBuiltin::Tonemap);
+        HH_CHECK(t.shader >= 0);
+        t.params[0] = 0, t.params[1] = 0, t.params[2] = 0;
+        HH_CHECK(d->post_run(img, w, h, {&t, 1}, out).ok());
+        int m = 0;
+        for (size_t i = 0; i < img.size(); ++i)
+            for (int s = 0; s < 24; s += 8) m = std::max(m, std::abs(int((img[i] >> s) & 0xFF) - int((out[i] >> s) & 0xFF)));
+        std::fprintf(stderr, "  neutro: maior diferenca %d\n", m);
+        HH_CHECK(m <= 1);
+        t.params[0] = 1;  // +1 EV
+        HH_CHECK(d->post_run(img, w, h, {&t, 1}, out).ok() && mean_luma(out) > mean_luma(img) + 15);
+        t.params[0] = 2, t.params[1] = 0;
+        HH_CHECK(d->post_run(img, w, h, {&t, 1}, a).ok());
+        t.params[1] = 1;
+        HH_CHECK(d->post_run(img, w, h, {&t, 1}, b).ok());
+        std::fprintf(stderr, "  +2 EV: pixels cortados sem compressao %zu, com compressao %zu (de %zu)\n", clipped(a), clipped(b), img.size());
+        HH_CHECK(clipped(b) * 2 < clipped(a));
+        t.params[0] = 0, t.params[1] = 0, t.params[2] = 0.5f;  // sombras
+        HH_CHECK(d->post_run(img, w, h, {&t, 1}, out).ok());
+        const uint32_t dark = img[size_t(h / 2) * w + w / 16], lifted = out[size_t(h / 2) * w + w / 16];
+        HH_CHECK(((lifted >> 16) & 0xFF) > ((dark >> 16) & 0xFF) + 10);
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
+
+// Custo de GPU de cada passe interno em 4K interno (2880 x 2160), pelos timestamps da cadeia: medido e impresso (o
+// criterio do plano e o custo medido por efeito; aqui so se exige que exista e fique abaixo de 4 ms por passe).
+HH_TEST(post_cost_4k) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t w = 2880, h = 2160;
+        const auto     img = ramp(w, h);
+        std::vector<uint32_t> out;
+        const char* names[] = {"correcao de cor", "tonemapping", "nitidez", "bloom (borrao H)", "bloom (borrao V + soma)", "CRT"};
+        for (int b = 0; b < int(nr::PostBuiltin::Count); ++b) {
+            nr::PostPass p;
+            p.shader = d->post_builtin(nr::PostBuiltin(b));
+            if (p.shader < 0) continue;
+            p.params[1] = p.params[2] = p.params[3] = 1;  // valores tipicos nao neutros
+            p.params[0] = 0.5f;
+            if (nr::PostBuiltin(b) == nr::PostBuiltin::BloomBlurH || nr::PostBuiltin(b) == nr::PostBuiltin::BloomBlurV)
+                p.params[1] = 0.02f;  // raio padrao
+            for (int i = 0; i < 12; ++i) HH_CHECK(d->post_run(img, w, h, {&p, 1}, out).ok());
+        }
+        const auto t = d->post_timings();
+        if (!d->stats().timestamps) std::fprintf(stderr, "  (a fila nao mede tempo de GPU neste dispositivo)\n");
+        else HH_CHECK(t.size() == size_t(nr::PostBuiltin::Count));  // um tempo para cada passe interno (revisao Codex)
+        for (const auto& x : t) {
+            int b = 0;
+            while (b < int(nr::PostBuiltin::Count) && d->post_builtin(nr::PostBuiltin(b)) != x.shader) ++b;
+            const double ms = x.ms_total / double(x.passes);
+            std::fprintf(stderr, "  %-24s %.3f ms de GPU por passe (4K, %llu passes)\n", b < int(nr::PostBuiltin::Count) ? names[b] : "?", ms,
+                         (unsigned long long)x.passes);
+            HH_CHECK(ms < 4.0);
+        }
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
+
+// N7c: nitidez. Intensidade 0 = a mesma imagem; numa borda (degrau de cinza) aumenta o contraste dos dois lados sem
+// estourar (a adaptacao ao contraste limita o realce); numa area lisa nada muda.
+HH_TEST(post_sharpen_gpu) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t        w = 64, h = 16;
+        std::vector<uint32_t> img(size_t(w) * h), out;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x) img[size_t(y) * w + x] = x < w / 2 ? 0xFF505050u : 0xFFA0A0A0u;  // degrau 80 -> 160
+        nr::PostPass s;
+        s.shader = d->post_builtin(nr::PostBuiltin::Sharpen);
+        HH_CHECK(s.shader >= 0);
+        s.params[0] = 0;
+        HH_CHECK(d->post_run(img, w, h, {&s, 1}, out).ok() && out == img);
+        s.params[0] = 1;
+        HH_CHECK(d->post_run(img, w, h, {&s, 1}, out).ok());
+        const int left = int(out[size_t(8) * w + w / 2 - 1] & 0xFF), right = int(out[size_t(8) * w + w / 2] & 0xFF);
+        const int flatL = int(out[size_t(8) * w + 4] & 0xFF), flatR = int(out[size_t(8) * w + w - 4] & 0xFF);
+        std::fprintf(stderr, "  borda 80|160 -> %d|%d; areas lisas %d e %d\n", left, right, flatL, flatR);
+        HH_CHECK(left < 80 && right > 160 && left > 40 && right < 220);  // realce sem estourar
+        HH_CHECK(flatL == 80 && flatR == 160);
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
+
+// N7c: bloom (dois passes, o vertical com o binding 1 na imagem de antes do primeiro). Um ponto claro num fundo escuro:
+// em volta dele a imagem clareia (o brilho), longe nao muda; com o limiar em 1 (nada passa) a imagem fica igual; o
+// bloom depois de outro passe compoe sobre a saida dele (a referencia ao passe anterior, nao a original).
+HH_TEST(post_bloom_gpu) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t        w = 128, h = 96;
+        std::vector<uint32_t> img(size_t(w) * h, 0xFF101010u), out;
+        for (uint32_t y = 44; y < 52; ++y)
+            for (uint32_t x = 60; x < 68; ++x) img[size_t(y) * w + x] = 0xFFFFFFFFu;  // ponto claro
+        nr::PostPass bh, bv;
+        bh.shader = d->post_builtin(nr::PostBuiltin::BloomBlurH), bv.shader = d->post_builtin(nr::PostBuiltin::BloomBlurV);
+        HH_CHECK(bh.shader >= 0 && bv.shader >= 0);
+        bh.params[0] = 0.7f, bh.params[1] = bv.params[1] = 0.05f, bv.params[2] = 1.0f, bv.original = 0;
+        const nr::PostPass two[2] = {bh, bv};
+        HH_CHECK(d->post_run(img, w, h, two, out).ok());
+        const int near = int(out[size_t(48) * w + 69] & 0xFF), far = int(out[size_t(5) * w + 5] & 0xFF), spot = int(out[size_t(48) * w + 64] & 0xFF);
+        std::fprintf(stderr, "  perto do ponto %d (antes 16), longe %d, no ponto %d\n", near, far, spot);
+        HH_CHECK(near >= 24 && far == 16 && spot == 255);  // 30% da energia do branco passa do limiar 0,7
+        nr::PostPass t1 = bh;
+        t1.params[0] = 1.0f;  // limiar maximo: nada passa
+        const nr::PostPass none[2] = {t1, bv};
+        HH_CHECK(d->post_run(img, w, h, none, out).ok() && out == img);
+        // depois de um passe de cor (saturacao 0, brilho -0,05): o bloom soma sobre a saida dele
+        nr::PostPass c;
+        c.shader = d->post_builtin_color(), c.params[0] = -0.05f, c.params[1] = 1, c.params[2] = 1, c.params[3] = 0;
+        nr::PostPass bv2 = bv;
+        bv2.original = 1;
+        const nr::PostPass three[3] = {c, bh, bv2};
+        std::vector<uint32_t> only;
+        HH_CHECK(d->post_run(img, w, h, {&c, 1}, only).ok() && d->post_run(img, w, h, three, out).ok());
+        HH_CHECK((out[size_t(5) * w + 5] & 0xFF) == (only[size_t(5) * w + 5] & 0xFF));  // longe: a saida do passe de cor
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
+
+// N7c: filtro CRT numa imagem de 1080 linhas (2,25 por linha do jogo): o centro de cada linha do jogo fica mais claro
+// que o vao entre duas; com tudo em 0 a imagem nao muda.
+HH_TEST(post_crt_gpu) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t        w = 1440, h = 1080;
+        std::vector<uint32_t> img(size_t(w) * h, 0xFF808080u), out;
+        nr::PostPass c;
+        c.shader = d->post_builtin(nr::PostBuiltin::Crt);
+        HH_CHECK(c.shader >= 0);
+        HH_CHECK(d->post_run(img, w, h, {&c, 1}, out).ok() && out == img);  // linhas, mascara e vinheta em 0
+        c.params[0] = 1.0f;                                                 // so as linhas de varredura
+        HH_CHECK(d->post_run(img, w, h, {&c, 1}, out).ok());
+        // a linha do jogo 240 ocupa as linhas da imagem 540 a 542,25: centro ~541, vao entre ela e a 241 em ~542,25
+        const int center = int(out[size_t(541) * w + w / 2] & 0xFF), gap = int(out[size_t(542) * w + w / 2] & 0xFF);
+        std::fprintf(stderr, "  linha do jogo: centro %d, vao %d (cinza 128)\n", center, gap);
+        HH_CHECK(center > gap + 20);
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
+
+// diferenca de timestamps com o contador voltando a zero em 2^bits (revisao Codex 2026-10-22)
+HH_TEST(post_timestamp_wrap) {
+    HH_CHECK(nr::timestamp_delta(100, 250, 64) == 150);
+    HH_CHECK(nr::timestamp_delta((uint64_t(1) << 36) - 10, 5, 36) == 15);  // passou do fim do contador de 36 bits
+    HH_CHECK(nr::timestamp_delta(~uint64_t(0) - 1, 3, 64) == 5);
+}
+
+// Todos os efeitos juntos em 4K (a cadeia que a apresentacao monta: bloom H e V, tonemapping, cor, nitidez, CRT): o
+// custo de GPU por quadro (soma dos passes) e a imagem continua valida (nem preta nem saturada por inteiro).
+HH_TEST(post_all_effects_4k) {
+    std::string err;
+    {
+        auto d = nr::VulkanDevice::create(&err);
+        if (!d) HH_SKIP("dispositivo Vulkan");
+        const uint32_t w = 2880, h = 2160;
+        const auto     img = ramp(w, h);
+        std::vector<uint32_t> out;
+        nr::PostPass bh, bv, tm, cc, sh, crt;
+        bh.shader = d->post_builtin(nr::PostBuiltin::BloomBlurH), bh.params[0] = 0.7f, bh.params[1] = 0.02f;
+        bv.shader = d->post_builtin(nr::PostBuiltin::BloomBlurV), bv.params[1] = 0.02f, bv.params[2] = 0.6f, bv.original = 0;
+        tm.shader = d->post_builtin(nr::PostBuiltin::Tonemap), tm.params[0] = 0.5f, tm.params[1] = 0.5f;
+        cc.shader = d->post_builtin_color(), cc.params[0] = 0, cc.params[1] = 1.05f, cc.params[2] = 1, cc.params[3] = 1.1f;
+        sh.shader = d->post_builtin(nr::PostBuiltin::Sharpen), sh.params[0] = 0.5f;
+        crt.shader = d->post_builtin(nr::PostBuiltin::Crt), crt.params[0] = 0.6f, crt.params[1] = 0.3f, crt.params[2] = 0.3f;
+        const nr::PostPass chain[6] = {bh, bv, tm, cc, sh, crt};
+        const int          runs = 12;
+        for (int i = 0; i < runs; ++i) HH_CHECK(d->post_run(img, w, h, chain, out).ok());
+        double total = 0;
+        for (const auto& t : d->post_timings()) total += t.ms_total;
+        std::fprintf(stderr, "  todos os efeitos em 4K: %.3f ms de GPU por quadro (%d quadros)\n", total / runs, runs);
+        if (d->stats().timestamps) HH_CHECK(total / runs < 4.0);
+        const double l = mean_luma(out);
+        std::fprintf(stderr, "  luma media %.1f (entrada %.1f)\n", l, mean_luma(img));
+        HH_CHECK(l > 10 && l < 245);
+    }
+    HH_CHECK(nr::vulkan_live_objects() == 0);
+}
