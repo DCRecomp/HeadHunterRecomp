@@ -20,7 +20,7 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
-| HH14 | EM_ANDAMENTO | — (áudio nativo) |
+| HH14 | EM_ANDAMENTO | — (áudio nativo; fase A: inventário e fronteira `ac*` do Audio64 feitos, `docs/planos/HH14-PLANO.md`) |
 | HH15 | PENDENTE | — |
 | HH16 | PENDENTE | — |
 | HH17 | PENDENTE | — |
@@ -278,6 +278,17 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   `--headless` ficam no legado (roteiro de referencia sem memory card).
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
+
+### HH14 (2026-10-27, em andamento)
+
+- Plano `docs/planos/HH14-PLANO.md`; inventário reproduzível `tools/dev/hh14_inventario.py` (streams, pacotes AHFF,
+  resumo do `HH_FN_PERFIL`). Músicas: 21 + 17 streams CRI ADX; falas e efeitos: WAV com ADPCM da AICA (streams e
+  amostras dos pacotes AHFF: 368 / 307 nomes distintos, 77 / 70 com conteúdo diferente entre pacotes); reverb
+  `HHREV.FPB/FOB` (SFPB/SFOB), igual nos dois discos.
+- Fronteira: camada `ac*` do Audio64 (0x8C120534–0x8C1232FE; nomes pelas mensagens de erro, ABI pela desmontagem),
+  abaixo do motor de som do jogo (`SoundEngine_*`) e do CRI ADXT. Legado: sem o ARM7 a fila de comandos ao driver
+  enche no VBlank 56 e os comandos seguintes são descartados (740 `can't send driver command` no roteiro): hoje o jogo
+  roda com o som morto, e a referência do áudio nativo é o Flycast com o driver real, não o legado.
 
 ### HH13 (2026-10-26 a 2026-10-27, concluída)
 
