@@ -20,7 +20,7 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
-| HH14 | EM_ANDAMENTO | — (áudio nativo; fase A: inventário e fronteira `ac*` do Audio64 feitos, `docs/planos/HH14-PLANO.md`) |
+| HH14 | EM_ANDAMENTO | — (áudio nativo, `docs/planos/HH14-PLANO.md`: fase A feita (fronteira `ac*`, opcodes e leitura do driver); fase C feita (núcleo de áudio do BS, ADPCM estéreo do HH); próxima: fase D) |
 | HH15 | PENDENTE | — |
 | HH16 | PENDENTE | — |
 | HH17 | PENDENTE | — |
@@ -289,6 +289,12 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   abaixo do motor de som do jogo (`SoundEngine_*`) e do CRI ADXT. Legado: sem o ARM7 a fila de comandos ao driver
   enche no VBlank 56 e os comandos seguintes são descartados (740 `can't send driver command` no roteiro): hoje o jogo
   roda com o som morto, e a referência do áudio nativo é o Flycast com o driver real, não o legado.
+- Fase A: cada `ac*` ligada ao opcode tratado pelo `AUDIO64.DRV` (`tools/dev/hh14_ac_opcodes.py`, `hh14_drv.py` com
+  Capstone 5.0.7 fora do produto); porta = canal da AICA; modelo do canal sem envelope (liga e desliga sem rampa).
+- Fase C: `hh_native_audio_core` (ADPCM, mixer, WAV, DSP portados do N6 do BS); leitor de WAV adaptado ao `fmt` de
+  18 bytes com preenchimento e ao ADPCM estéreo com bytes alternados (correlação L/R 0,96–0,999 nas falas das cenas,
+  `tools/dev/hh14_estereo.py`); `hh14_audio_tests` 22/22 nos dois discos (74 + 44 WAV, reverb `HHREV`); etapa
+  `portoes_hh14` na regressão; `ctest` completo 46/46.
 
 ### HH13 (2026-10-26 a 2026-10-27, concluída)
 

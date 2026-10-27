@@ -273,6 +273,15 @@ def step_gates_hh13():
         raise RuntimeError('portoes do HH13 falharam, foram ignorados ou nao rodaram')
 
 
+def step_gates_hh14():
+    # HH14: nucleo de audio (ADPCM, mixer, WAV, DSP) com os streams e o reverb do disco (HH14_STREAMS, HH14_REVERB)
+    need('HH14_STREAMS'), need('HH14_REVERB')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh14_audio_tests$', '--no-tests=error', '--output-on-failure'],
+           env={'HH_EXIGIR_DADOS': '1'}, timeout=3600)
+    if r.returncode != 0 or 'Skipped' in r.stdout or ' hh14_audio_tests ' not in r.stdout:
+        raise RuntimeError('portoes do HH14 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -319,6 +328,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh11', step_gates_hh11, ['HH_DATA_DIR', 'HH11_ORACULO']),
          ('portoes_hh12', step_gates_hh12, ['HH_DATA_DIR']),
          ('portoes_hh13', step_gates_hh13, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
+         ('portoes_hh14', step_gates_hh14, ['HH14_STREAMS', 'HH14_REVERB']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 

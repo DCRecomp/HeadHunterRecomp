@@ -107,12 +107,32 @@ canal, e os comandos só a alteram e a copiam para o canal (base `*(0xAA8)` + 0x
 - 0x92 RequestEvent: guarda um valor por porta (0xD34 + porta × 4) e liga o bit da porta numa máscara de 64;
 - 0x93 Play: LPCTL (laço, +0 bit 9) e, opcionalmente, LSA/LEA do pacote; marca a porta ativa, copia a sombra para o
   canal e faz o key-on.
-Os demais (stop, volume = TL/DISDL, pan = DIPAN, pitch, taxa, DSP) seguem o mesmo padrão e são lidos na fase C/D, junto
-com o que cada um faz em cada registrador.
+- 0x94 Stop: tira KYONB e LPCTL (+0 bits 14 e 9; key-off) e limpa o bit de evento da porta;
+- 0x95 SetMixerChannel: ISEL e IMXL (envio ao DSP, +0x20 bits 3–0 e 7–4) e DISDL (nível direto, +0x24 bits 11–8);
+- 0x96 SetVolume: TL (+0x28 bits 15–8);
+- 0x97 SetPan: DIPAN (+0x24 bits 4–0; o pan com sinal do pacote convertido para a codificação da AICA);
+- 0x98 / 0xAC SetPitch / SetSampleRate: OCT/FNS (handler comum em 0x3F84/0x3F94; detalhes na fase D).
+Modelo do canal (0x1134): AR = RR = 31 e D1R = D2R = 0 (liga e desliga sem rampa), filtro aberto (FLV 0x1FFF), LFO
+em repouso (0x4210), DISDL 15 (0 dB), DIPAN 0x10, TL 0. A voz nativa é, portanto, um sampler: memória de som, formato,
+laço, pitch (OCT/FNS), volume (TL + DISDL), pan e envio ao DSP; o envelope completo do BS (`envelope.h`) só entra se um
+comando mudar o envelope (não visto nos opcodes usados).
 
 **Componentes do BS a portar** (`C:\Source\recomp-BStinger\native\audio`, MIT): `aica_adpcm` (decodificador),
 `envelope.h` (envelope da AICA, fase G do N6), `mixer`, `voice_player`, `sound_file`, `sound_catalog` e `aica_dsp`
 (programas `SFPB`/`SFOB`, o formato do `HHREV`). O que é do Manatee (`manatee*`, `sosb`, `sd_adapter`) não se aplica.
+
+**Fase C, passo 1 (2026-10-27): núcleo portado.** `native/audio/{aica_adpcm,envelope.h,mixer,sound_file,aica_dsp}` do
+BS em `hh_native_audio_core` (sem Win32); FLAC/OGG com erro explícito até a fase F (`sound_mod_codecs.cpp`).
+`hh14_audio_tests` 22/22: os 12 testes do mixer/ADPCM/WAV e os 9 do DSP do BS (o caso do programa do jogo refeito para
+o `HHREV`: RBL 2, EFSDL 15/15/15/15, EFPAN 1F/0F; resposta ao impulso estéreo que decai) e `hh14_streams_wav_adpcm`
+sobre os streams reais. Duas adaptações do leitor de WAV, com o teste falhando antes de cada uma:
+- o `fmt` dos WAV do HH declara 18 bytes e ocupa 20 (2 bytes zero antes do `data`): sem o ajuste, "WAV truncado";
+- **ADPCM estéreo** (o BS só tinha mono): bytes alternados, pares = esquerda, ímpares = direita, cada canal com o
+  próprio estado. Evidência: correlação esquerda/direita de 0,96–0,999 nas falas estéreo das cenas (`SCENE*_RL`) com
+  esse leiaute, contra < 0,2 em blocos de 16 a 32 768 bytes, nibbles alternados ou metades
+  (`tools/dev/hh14_estereo.py`). A segunda evidência (o código do jogo que separa os canais ao mandar o
+  stream para a RAM de som) fica para a fase D.
+Resultado: 74 WAV do disco 1 (18 estéreo) e 44 do disco 2 (9 estéreo) lidos sem falha, sinal plausível.
 
 **Estado atual (legado):** o ARM7 nunca roda, então a fila enche no VBlank 56 e todo comando seguinte é descartado:
 `_acG2SetHostCommand - can't send driver command` 740 vezes no roteiro, mais 2 240 avisos de `acDigiMultiStop` e os

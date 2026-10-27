@@ -282,6 +282,13 @@ target_include_directories(hh13_capture_tests PRIVATE unit)
 target_link_libraries(hh13_capture_tests PRIVATE hh_transitional)
 add_test(NAME hh13_capture_tests COMMAND hh13_capture_tests)
 
+# HH14: nucleo de audio portado do N6 do BS (ADPCM, mixer, WAV, DSP; HH14_REVERB = pasta do HHREV, senao o caso do
+# programa do jogo e SKIP)
+add_executable(hh14_audio_tests unit/main.cpp unit/test_audio_native.cpp unit/test_audio_dsp.cpp unit/test_hh14_audio.cpp)
+target_include_directories(hh14_audio_tests PRIVATE unit)
+target_link_libraries(hh14_audio_tests PRIVATE hh_native_audio_core)
+add_test(NAME hh14_audio_tests COMMAND hh14_audio_tests)
+
 add_executable(hh13_kamui_tests unit/main.cpp unit/test_hh13_kamui.cpp)
 target_include_directories(hh13_kamui_tests PRIVATE unit)
 target_link_libraries(hh13_kamui_tests PRIVATE hh_transitional)
