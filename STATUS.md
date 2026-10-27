@@ -19,7 +19,7 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH10 | CONCLUIDA | `docs/relatorios/HH10-RELATORIO.md` (controles nativos padrão: pd 1.50 sem Maple; traço do PDS, info/name e quadros idênticos ao legado, inclusive desconexão; janela com teclado + SDL3 Gamepad e `controles.toml`) |
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
-| HH13 | EM_ANDAMENTO | — (renderização nativa Vulkan; ordem trocada com o áudio pelo mantenedor em 2026-10-25) |
+| HH13 | EM_ANDAMENTO | — (Vulkan sobre a IR do TA pronto; em curso: provedores nativos do Kamui, decisão B do mantenedor) |
 | HH14 | PENDENTE | — (áudio nativo) |
 | HH15 | PENDENTE | — |
 | HH16 | PENDENTE | — |
@@ -371,6 +371,9 @@ Nenhuma decisão humana está pendente. Descobertas que contradigam estas premis
 
 - um middleware essencial exige incorporação incompatível com MIT;
 - a arquitetura observada exige código dinâmico/overlay não coberto pelo plano.
+
+Decisão do mantenedor (2026-10-27, HH13): opção B, os provedores nativos da camada Kamui (sem TA, PVR, Holly nem
+VRAM guest no caminho nativo) são feitos ainda no HH13, antes do áudio.
 
 Decisão do mantenedor (2026-10-26, HH12): os filmes continuam decodificados pelo FFmpeg (opção A). O 4xm do FFmpeg
 reproduz o conteúdo do decodificador do jogo (estáticos iguais à quantização ARGB1555; com movimento, diferença média

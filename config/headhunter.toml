@@ -161,6 +161,9 @@ slots = [
   # HH12: filmes 4X (transitional/video_adapter): open, trilha de audio, play e close do objeto do filme, chamados por
   # PlayScene 0x8C09E904 (docs/planos/HH12-PLANO.md, "Contrato da API do filme")
   0x8C11E9D2, 0x8C11EBE0, 0x8C11ECA4, 0x8C11EB32,
+  # HH13.6: funis do SDK grafico ate o hardware (transitional/kamui_device): escrita e leitura de registrador do PVR,
+  # pedido de DMA (canal 2 para o TA), copia e zeragem na VRAM pela CPU
+  0x8C1793E0, 0x8C1793EA, 0x8C17C600, 0x8C159820, 0x8C159874,
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

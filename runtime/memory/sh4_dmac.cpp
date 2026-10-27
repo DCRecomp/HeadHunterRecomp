@@ -60,7 +60,10 @@ bool sh4_dmac_ch2_transfer(Sh4Context* c, uint32_t dest, uint32_t len) {
     for (uint32_t off = 0; off < len; off += 32, src += 32) {
         uint32_t blk[8];
         for (int i = 0; i < 8; ++i) blk[i] = sh4_read32(c, src + 4 * i);
-        if (!ta_fifo_write(c, fifo ? dest : dest + off, blk))
+        ta_note_via("dma");
+        const bool ok = ta_fifo_write(c, fifo ? dest : dest + off, blk);
+        ta_note_via("cpu");
+        if (!ok)
             sh4_fatal(c, "DMA do canal 2 para destino fora da area 4", c->pc, dest);
     }
     ch[0] = src;

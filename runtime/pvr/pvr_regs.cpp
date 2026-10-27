@@ -145,6 +145,11 @@ SpgPos pvr_spg_position(uint64_t cycles) {
 bool pvr_reg_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
     const uint32_t p = canon(a);
     if (p < kBase || p >= kBase + kSize || size != 4) return false;
+    {  // diagnostico HH_TA_FONTES (HH13.6): por registrador
+        char n[24];
+        std::snprintf(n, sizeof n, "pvr_le_%03X", p - kBase);
+        ta_note_bytes(c, n, 4);
+    }
     if (p == kId) {
         v = 0x17FD11DB;
         return true;
@@ -219,6 +224,11 @@ void pvr_regs_dump(Sh4Context* c, uint32_t* out) {
 bool pvr_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
     const uint32_t p = canon(a);
     if (p < kBase || p >= kBase + kSize || size != 4) return false;
+    {  // diagnostico HH_TA_FONTES (HH13.6): por registrador
+        char n[24];
+        std::snprintf(n, sizeof n, "pvr_escreve_%03X", p - kBase);
+        ta_note_bytes(c, n, 4);
+    }
     // Diagnostico: HH_PVR_DEBUG=1 registra a 1a escrita de cada registrador e todo STARTRENDER
     static const bool debug = std::getenv("HH_PVR_DEBUG") != nullptr;
     static std::array<bool, kSize / 4> seen{};

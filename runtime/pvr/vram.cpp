@@ -8,6 +8,7 @@
 // Os 8 MB se repetem dentro de cada janela de 16 MB. O boot do jogo zera a VRAM
 // inteira pelo caminho de 32 bits (0xA5000000-0xA57FFFFF).
 #include "pvr/vram.h"
+#include "pvr/ta.h"
 
 #include "cpu/sh4_runtime.h"
 
@@ -39,6 +40,7 @@ bool vram_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
     const int64_t o = locate(a);
     if (o < 0) return false;
     if ((uint64_t(o) & 3) + size > 4) sh4_fatal(c, "acesso a VRAM atravessa palavra de 32 bits", c->pc, a);
+    ta_note_bytes(c, "vram_le_cpu", size);  // diagnostico HH_TA_FONTES (HH13.6)
     v = 0;
     std::memcpy(&v, &g_vram[size_t(o)], size);
     return true;
@@ -54,6 +56,7 @@ bool vram_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
     if (watch && (uint32_t(o) & ~3u) == wofs)
         std::fprintf(stderr, "[vram] escrita %08X <- %08X (%u bytes) pc=%08X pr=%08X ciclo %llu\n", a, v, size, c->pc,
                      c->pr, (unsigned long long)c->cycles);
+    ta_note_bytes(c, "vram_cpu", size);  // diagnostico HH_TA_FONTES (HH13.6)
     std::memcpy(&g_vram[size_t(o)], &v, size);
     return true;
 }

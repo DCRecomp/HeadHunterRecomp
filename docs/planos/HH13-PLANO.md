@@ -81,6 +81,75 @@ se couber; o que ficar é dono do HH15 (remoção do legado), registrado no rela
   Shinobi, 14 de família desconhecida), 102 pontos de chamada; o jogo não usa Ninja. O caminho nativo ainda lê as listas
   do TA e as texturas da VRAM guest (como o N7 do BS, que deixou isso para o N8): ver o relatório.
 
+## Decisão do mantenedor (2026-10-27): opção B
+
+Os provedores nativos da camada Kamui ficam no HH13 (não no HH15): o caminho nativo deixa de passar pelo TA, pelos
+registradores do PVR/Holly e pela VRAM guest. HH13.6 vira a próxima subetapa, com o inventário abaixo como ponto de
+partida e o render atual (IR do TA, R1–R5) como referência de equivalência.
+
+## HH13.6 — inventário da camada Kamui (2026-10-27)
+
+Ferramentas: `HH_FN_PERFIL=<tsv>;<ini>-<fim>` (contagem por função e ponto de retorno; `hh_host`),
+`tools/dev/hh13_kamui_api.py` (API do SDK chamada pelo jogo), `--watch` com `HH_WATCH_MAX` (argumentos), a sonda de
+hardware do HH07 (`analysis/hh07/sonda_area1.tsv`). Roteiro da área 1.
+
+**API gráfica usada pelo jogo** (78 funções do SDK chamadas por código do jogo; as de render, com a identificação por
+argumentos contra as assinaturas do Kamui2, a confirmar com a segunda evidência):
+
+| Função | Chamadas | Hipótese |
+|---|---|---|
+| 0x8C159820 | 334 181 | cópia para endereço fixo (FIFO do TA / caminho de texturas): `r4` destino fixo, `r5` origem, `r6` bytes, em pares de 64 bits |
+| 0x8C15A860 | 334 482 | função vazia (`rts`) |
+| 0x8C15982A | 136 656 | entrada no meio de 0x8C159820, usada pelo caminho por store queue (0x8C0C4CE0, HH07) |
+| 0x8C159FC0, 0x8C159D80, 0x8C159E20, 0x8C15A1E0, 0x8C15A220, 0x8C15A3C0 | 2 253–2 254 (1 por quadro) | ciclo de cena/passe/render/flip; 0x8C20CD20 é o descritor do vertex buffer, 0x8C31F088 o estado global do Kamui |
+| 0x8C15ACA0 `(desc, w, h, tipo)` | 248 | kmCreateTextureSurface |
+| 0x8C15AD60 `(desc)` | 46 | liberação de textura (o filme libera as duas) |
+| 0x8C15AE00 `(desc, origem, deslocamento, 0x2000)` | 768 | carga de textura em partes (quadros do filme) |
+| 0x8C15A780 `(ctx, flags)` | 6 | geração dos contextos de strip |
+| 0x8C15A900, 0x8C15A880 `(vb, …)` | 310, 1 240 | início de strip / bloco de vértices (escrevem QACR e store queue) |
+
+**Funis de hardware** (sonda do HH07): toda escrita de registrador do PVR passa por **0x8C1793E0** `(off, val)`:
+`*(0xA05F8000 + off) = val` (350 401 escritas); leitura por **0x8C1793EA**; o DMA dos buffers da RAM para o TA por
+**0x8C17C600** (DMAC do SH-4 + `SB_C2DST`/`SB_C2DLEN`/`SB_C2DST` do Holly); escrita na VRAM/FIFO por 0x8C159820 e
+zeragem por 0x8C159874; store queue com QACR para o TA por 0x8C159E20/0x8C16BAA0/0x8C15A880/0x8C15A900. A geometria do
+motor do jogo (0x8C010744, 0x8C011C18, 0x8C010924/946, 0x8C010A98) vai por store queue para **buffers na RAM**
+(0x0C400000–0x0C610000; QACR por 0x8C090974) e só chega ao TA pelo DMA. O tratador de interrupções do Holly
+(0x8C168160, pelo despachante 0x8C180CFC) também atende o VBlank e o resto: a entrega das interrupções é do HH15
+("remover ciclos, IRQ e polling guest"); no HH13 o fim do render continua chegando ao jogo pelo caminho de eventos do
+HH09.
+
+**Desenho do provedor** (verificável a cada passo contra o caminho atual):
+1. **Fluxo de parâmetros:** os funis que alimentam o TA (DMA, cópia para a FIFO, store queue do Kamui) entregam os
+   mesmos bytes a um consumidor nativo, a partir dos argumentos e da RAM do jogo. Prova: o fluxo do consumidor é igual,
+   byte a byte e por quadro, ao que o TA do runtime recebe.
+2. **Parser nativo** dos parâmetros do TA (`native/render`, só formato) → IR. Prova: a IR é igual à do
+   `render_capture` (R1) render a render.
+3. **Estado do quadro** a partir das escritas do funil de registradores (fundo, fog, clip, ISP, início do render, endereços
+   de quadro) → `FrameParams`. Prova: igual aos `FrameParams` do `render_capture`.
+4. **Texturas** a partir das cargas (FIFO de texturas, cargas em partes, zeragem) → armazenamento nativo pelo endereço que
+   o Kamui alocou. Prova: texel a texel igual à conversão a partir da VRAM.
+5. **Troca:** os funis viram slots nativos (o TA, os registradores do PVR e a VRAM guest deixam de ser tocados); o render
+   vai ao Vulkan; o fim do render vira evento do provedor de tempo. Prova: R1–R5 com o caminho novo e a sonda de hardware
+   sem acessos a TA, PVR e VRAM no modo nativo.
+
+### Passo 1 — modo sombra (2026-10-27): concluído
+
+`transitional/kamui_device` (`HH_KAMUI=sombra`), slots dos cinco funis em `config/headhunter.toml`. Diagnósticos:
+`HH_TA_FONTES=<tsv>` (bytes por destino, caminho e função; por registrador do PVR), `HH_KAMUI_LOG`, `HH_KAMUI_ORDEM`.
+
+- O fluxo para o TA só chega pelo DMA de 0x8C17C600 (tipos 0, 1 e 2; vale o destino do descritor, na área 4); a VRAM
+  pela CPU só por 0x8C159820 (cópia) e 0x8C159874 (zeragem); os registradores do PVR só por 0x8C1793E0/0x8C1793EA (as
+  outras leituras, 0x8C16EF18/0x8C16E908, são do Maple: SPG_STATUS, tempo).
+- O pedido de tipo 1 escreve TA_LIST_INIT pelo próprio funil antes de transferir: a sombra espelha os dados depois da
+  chamada original (antes, perdia o primeiro global de cada render).
+- Roteiro da área 1 (`analysis/hh13/kamui/sombra_area1.log`): 2 250 renders; 350 401 escritas de registrador, 8 864 155
+  parâmetros e 562 000 blocos de memória conferidos com o runtime antes de cada STARTRENDER, **0 divergências**.
+
+Divisão entre o HH13 e o HH15 (do tratador de interrupções 0x8C168160: lê ISTERR/ISTNRM, reconhece o bit e, no evento 18
+— fim do DMA —, o CHCR2 do DMAC do SH-4): o HH13.6 tira do caminho nativo o TA, os registradores **de render** do PVR e
+a VRAM guest; a entrega das interrupções (INTC do Holly), os registradores do SB do Holly, o DMAC e os registradores de
+tempo do vídeo (SPG, usados pelo tempo e pelos controles) saem no HH15, com as interrupções.
+
 ## Riscos
 
 - Autosort por pixel das translúcidas (o BS precisou de listas por pixel); volumes modificadores (stencil); fog por

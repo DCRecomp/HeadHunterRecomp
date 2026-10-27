@@ -77,7 +77,10 @@ void sh4_sq_flush(Sh4Context* c, uint32_t addr) {
         for (int i = 0; i < 8; ++i) sh4_write32(c, target + 4 * i, q[i]);
         return;
     }
-    if (ta_fifo_write(c, target, q)) return;  // area 4: TA e caminho direto de textura
+    ta_note_via("sq");
+    const bool ta = ta_fifo_write(c, target, q);  // area 4: TA e caminho direto de textura
+    ta_note_via("cpu");
+    if (ta) return;
     sh4_fatal(c, "store queue para destino ainda nao implementado", c->pc, target);
 }
 

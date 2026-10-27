@@ -14,6 +14,10 @@
 // translucida 9, modificador translucido 10, punch-through 21.
 #include "pvr/ta.h"
 
+#include <map>
+#include <string>
+#include <tuple>
+
 #include "cpu/sh4_runtime.h"
 #include "pvr/holly_intc.h"
 #include "pvr/vram.h"
@@ -133,10 +137,45 @@ void ta_list_continue() { g.list = -1; }
 
 const std::vector<TaParam>& ta_params() { return g_params; }
 
+// Diagnostico (HH13.6, so desenvolvimento): HH_TA_FONTES=<arquivo.tsv> conta os bytes que chegam ao TA e a VRAM por
+// destino, caminho (store queue, DMA, CPU) e funcao guest em execucao (cur_fn); gravado no fim do processo.
+namespace {
+struct TaSources {
+    std::string                                                 path;
+    std::map<std::tuple<std::string, std::string, uint32_t>, uint64_t> bytes;
+    ~TaSources() {
+        if (path.empty()) return;
+        if (std::FILE* f = std::fopen(path.c_str(), "w")) {
+            std::fprintf(f, "destino\tcaminho\tfuncao\tbytes\n");
+            for (const auto& [k, n] : bytes)
+                std::fprintf(f, "%s\t%s\t%08X\t%llu\n", std::get<0>(k).c_str(), std::get<1>(k).c_str(), std::get<2>(k),
+                             (unsigned long long)n);
+            std::fclose(f);
+        }
+    }
+};
+TaSources& taSources() {
+    static TaSources s = [] {
+        TaSources t;
+        if (const char* v = std::getenv("HH_TA_FONTES")) t.path = v;
+        return t;
+    }();
+    return s;
+}
+const char* g_taVia = "cpu";
+} // namespace
+
+void ta_note_via(const char* via) { g_taVia = via; }
+void ta_note_bytes(Sh4Context* c, const char* dest, uint32_t n) {
+    TaSources& t = taSources();
+    if (!t.path.empty()) t.bytes[{dest, g_taVia, c ? c->cur_fn : 0}] += n;
+}
+
 bool ta_fifo_write(Sh4Context* c, uint32_t target, const uint32_t* data) {
     const uint32_t p = target & 0x1FFFFFFF;
     if ((p >> 26) != 4) return false;  // area 4: 0x10000000-0x13FFFFFF
     const uint32_t region = p & 0x01800000;  // 0x00 poligonos, 0x00800000 YUV, 0x01000000+ textura
+    ta_note_bytes(c, region == 0 ? "ta_poligonos" : (p & 0x01000000) ? "ta_textura" : "ta_yuv", 32);
     if (region == 0) {
         g_bytes += 32;
         polygonFifo(c, data);

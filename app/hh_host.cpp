@@ -15,6 +15,7 @@
 #include "bu_adapter.h"
 #include "video_adapter.h"
 #include "render_capture.h"
+#include "kamui_device.h"
 #include "platform/saves.h"
 #include "input_bridge.h"
 #include "hh_verified_files.h"
@@ -29,7 +30,9 @@
 #include <chrono>
 #include <cstdlib>
 #include <memory>
+#include <array>
 #include <cstdio>
+#include <map>
 #include <cstring>
 #include <stdexcept>
 #include <thread>
@@ -67,10 +70,27 @@ void onFatal(Sh4Context* c, const char* what, uint32_t pc, uint32_t extra) {
     throw FatalError(b);
 }
 
+// Diagnostico (HH13.6, so desenvolvimento): HH_FN_PERFIL=<arquivo.tsv>;<ini>-<fim> conta as entradas nas funcoes do
+// intervalo por ponto de retorno (PR: o chamador e achado depois pelo mapa das funcoes), com o primeiro e o ultimo
+// VBlank. Saida privada (pasta ignorada).
+struct FnProfile {
+    uint32_t                                               lo = 0, hi = 0;
+    std::string                                            path;
+    std::map<std::pair<uint32_t, uint32_t>, std::array<uint64_t, 3>> hits;  // (funcao, pr) -> {n, primeiro, ultimo}
+};
+FnProfile* g_fnProfile = nullptr;
+
 void onTrace(Sh4Context* c, uint32_t entry) {
-    static uint64_t hits = 0;
+    if (g_fnProfile && entry >= g_fnProfile->lo && entry < g_fnProfile->hi) {
+        auto& h = g_fnProfile->hits[{entry, c->pr}];
+        if (!h[0]++) h[1] = g_res->vblanks;
+        h[2] = g_res->vblanks;
+    }
+    // limite por endereco (HH_WATCH_MAX, padrao 200): uma funcao frequente nao esconde as outras
+    static const uint64_t                  maxHits = [] { const char* v = std::getenv("HH_WATCH_MAX"); return v ? std::strtoull(v, nullptr, 10) : 200ull; }();
+    static std::map<uint32_t, uint64_t> hits;
     for (uint32_t w : g_opt->watch)
-        if (entry == w && hits++ < 200)
+        if (entry == w && hits[w]++ < maxHits)
             std::printf("watch vblank %llu: %08X r4=%08X r5=%08X r6=%08X r7=%08X pr=%08X\n",
                         (unsigned long long)g_res->vblanks, entry, c->r[4], c->r[5], c->r[6], c->r[7], c->pr);
 }
@@ -228,6 +248,10 @@ HostResult host_run(const HostOptions& opt) {
             for (const std::string& w : warn) std::fprintf(stderr, "[video] %s\n", w.c_str());
             std::fprintf(stderr, "[video] nativo: %s\n", vo.dataDir.string().c_str());
         }
+        // HH13.6: funis do SDK grafico (HH_KAMUI=sombra: os originais continuam e um estado nativo e conferido com o do
+        // runtime em cada STARTRENDER)
+        if (const char* k = std::getenv("HH_KAMUI"); k && std::string(k) == "sombra")
+            transitional::kamui::install(boundaries, transitional::kamui::Mode::Shadow);
         // HH13: IR de render capturada do decodificador do TA (HH_RENDER_IR=capturar|conferir|comparar; HH_RENDER_IR_CADA=N
         // confere 1 render a cada N); o rasterizador em software continua a referencia. --render nativo desenha a IR no
         // Vulkan; comparar mantem o software e mede o Vulkan (HH_RENDER_IR_BMP=<pasta>, 1 a cada HH_RENDER_IR_BMP_CADA).
@@ -264,7 +288,19 @@ HostResult host_run(const HostOptions& opt) {
         g_epoch = std::chrono::steady_clock::now();
         pvr_set_vblank_hook(&onVblank, nullptr);
         if (opt.stop) sh4_set_service_hook(onService);
-        if (!opt.watch.empty()) sh4_set_trace(onTrace);
+        static FnProfile fnProfile;
+        if (const char* fp = std::getenv("HH_FN_PERFIL"); fp && *fp) {
+            const std::string spec = fp;
+            const size_t      semi = spec.find(';'), dash = spec.find('-', semi);
+            if (semi == std::string::npos || dash == std::string::npos)
+                throw std::runtime_error("HH_FN_PERFIL=<arquivo.tsv>;<ini>-<fim> (enderecos em hexa)");
+            fnProfile      = FnProfile{};
+            fnProfile.path = spec.substr(0, semi);
+            fnProfile.lo   = uint32_t(std::stoul(spec.substr(semi + 1, dash - semi - 1), nullptr, 16));
+            fnProfile.hi   = uint32_t(std::stoul(spec.substr(dash + 1), nullptr, 16));
+            g_fnProfile    = &fnProfile;
+        }
+        if (!opt.watch.empty() || g_fnProfile) sh4_set_trace(onTrace);
         const Sh4Func entry = sh4_lookup(c.pc);
         if (!entry) throw std::runtime_error("entrada do jogo sem codigo recompilado");
         entry(&c);
@@ -282,6 +318,16 @@ HostResult host_run(const HostOptions& opt) {
     pvr_set_vblank_hook(nullptr, nullptr);
     sh4_set_service_hook(nullptr);
     sh4_set_trace(nullptr);
+    if (g_fnProfile) {  // HH_FN_PERFIL
+        if (std::FILE* f = std::fopen(g_fnProfile->path.c_str(), "w")) {
+            std::fprintf(f, "funcao\tpr\tchamadas\tprimeiro_vblank\tultimo_vblank\n");
+            for (const auto& [k, h] : g_fnProfile->hits)
+                std::fprintf(f, "%08X\t%08X\t%llu\t%llu\t%llu\n", k.first, k.second, (unsigned long long)h[0],
+                             (unsigned long long)h[1], (unsigned long long)h[2]);
+            std::fclose(f);
+        }
+        g_fnProfile = nullptr;
+    }
     if (!sh4_threads_shutdown() && res.end != HostEnd::Error) {
         res.end   = HostEnd::Error;
         res.error = "falha ao liberar as fibras das threads do guest";
@@ -313,6 +359,10 @@ HostResult host_run(const HostOptions& opt) {
     if (transitional::bu::installed()) {
         std::fputs(transitional::bu::summary().c_str(), stderr);
         transitional::bu::uninstall(boundaries);
+    }
+    if (transitional::kamui::installed()) {
+        std::fputs(transitional::kamui::summary().c_str(), stderr);
+        transitional::kamui::uninstall(boundaries);
     }
     if (transitional::video::installed()) {
         std::fputs(transitional::video::summary().c_str(), stderr);

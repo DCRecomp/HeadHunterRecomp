@@ -26,6 +26,9 @@ uint32_t                     ta_bytes();          // bytes recebidos pela FIFO d
 // Destino das store queues/DMA na area 4: FIFO de poligonos (0x10000000), caminho direto
 // de textura (0x11000000, escreve na VRAM pelo caminho de 64 bits). 32 bytes por vez.
 bool ta_fifo_write(Sh4Context* c, uint32_t target, const uint32_t* data);
+// Diagnostico HH_TA_FONTES (HH13.6): caminho da proxima escrita ("sq", "dma", "cpu") e contagem por destino.
+void ta_note_via(const char* via);
+void ta_note_bytes(Sh4Context* c, const char* dest, uint32_t n);
 
 // Conversor YUV (0x10800000): escrever TA_YUV_TEX_BASE ou TA_YUV_TEX_CTRL recomeca a
 // conversao com os valores atuais; TA_YUV_TEX_CNT le ta_yuv_count().
