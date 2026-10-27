@@ -77,6 +77,26 @@ endereço na memória de som != 0, tamanho <= 0xFFFF amostras, formato 0..3, tax
 base em +16; procura uma entrada livre, palavra 0, até 21 vezes). Não espera resposta; com a fila cheia, avisa
 (0x8C1222BC) e descarta, devolvendo falha em `r0`.
 
+**Opcodes** (`tools/dev/hh14_ac_opcodes.py`; segunda evidência de cada nome: o opcode que a função envia existe na
+tabela de despacho do driver, `tools/dev/hh14_drv.py` com Capstone 5.0.7, despacho em 0x30B4 do `AUDIO64.DRV`, fila
+de comandos em 0xC800 da RAM de som, 16 bytes por entrada, +0 opcode u16, +2 porta):
+
+| Opcode | Função | Opcode | Função |
+|---|---|---|---|
+| 0x81 | acSystemSetMasterVolume | 0x96 | acDigiSetVolume |
+| 0x8A | acSystemSetStereoOrMono | 0x97 | acDigiSetPan |
+| 0x90 | acDigiOpen | 0x98 | acDigiSetCurrentPitch |
+| 0x91 | acDigiClose | 0x99 | acDigiSetQSoundAngle |
+| 0x92 | acDigiRequestEvent | 0x9A / 0x9B | acDspInstallProgram / InstallOutputMixer |
+| 0x93 | acDigiPlay | 0x95 | acDspSetMixerChannel |
+| 0x94 | acDigiStop | 0x9C, 0x9D | acDigiMultiPlay (0x9D também em acDigiMultiStop) |
+| 0xAC | acDigiSetSampleRate | 0xAD | acDigiPlayWithParameters |
+
+Sem comando ao driver: `acDigiSetLoopPoints` e `acDigiGetCurrentReadPosition` (memória compartilhada pelo G2),
+`acTransfer`/`acSetTransferMode` (G2/DMA para a RAM de som), `acSystemInit`/`InstallDriver`, `acInt*`. O driver trata
+ainda 0x30–0x32, 0x35, 0x36, 0x3E, 0x80, 0x82–0x85, 0x89, 0x8F, 0x9E, 0x9F, 0xAE, 0xAF (MIDI e outros, sem uso visto
+no roteiro: a confirmar nos dois discos).
+
 **Estado atual (legado):** o ARM7 nunca roda, então a fila enche no VBlank 56 e todo comando seguinte é descartado:
 `_acG2SetHostCommand - can't send driver command` 740 vezes no roteiro, mais 2 240 avisos de `acDigiMultiStop` e os
 de `acDigiStop`/`SetVolume`/`Open`/`SetPan`/`PlayWithParameters` (3 701 avisos no total). O jogo hoje roda com o som
