@@ -27,14 +27,17 @@
 #else
 #define HH_WW_POLL(resume, ret) ((void)0)
 #endif
-#define HH_POLL_KIND(resume, ret)             \
-    do {                                      \
-        ++c->polls;                           \
-        HH_WW_POLL(resume, ret);              \
-        if (c->cycles >= c->next_event) {     \
-            c->pc = (resume);                 \
-            ::hh::sh4_service(c);             \
-        }                                     \
+// HH15.1 (cadencia B): no tempo logico o atendimento nao vem do quantum de ciclos (next_event fica no maximo ate um
+// pedido: espera que andou o instante, fim de DMA, nivel de interrupcao entregavel); next_poll da o tick de
+// vivacidade. No tempo por ciclos next_poll fica no maximo e o poll e o de sempre.
+#define HH_POLL_KIND(resume, ret)                                         \
+    do {                                                                  \
+        ++c->polls;                                                       \
+        HH_WW_POLL(resume, ret);                                          \
+        if (c->cycles >= c->next_event || c->polls >= c->next_poll) {     \
+            c->pc = (resume);                                             \
+            ::hh::sh4_poll_slow(c);                                       \
+        }                                                                 \
     } while (0)
 #define HH_POLL(resume) HH_POLL_KIND(resume, false)
 #define HH_POLL_RET(resume) HH_POLL_KIND(resume, true)
@@ -51,7 +54,7 @@
 #define HH_IRQ_CHECK(resume)        \
     do {                            \
         c->pc = (resume);           \
-        ::hh::sh4_irq_check(c);     \
+        ::hh::sh4_irq_check_sr(c);  \
     } while (0)
 // Chamada: registra o retorno esperado para verificar o rts do chamado. No retorno ha
 // um ponto de poll (alem dos back-edges): trechos longos sem laco, mas com chamadas,

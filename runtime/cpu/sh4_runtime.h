@@ -57,6 +57,18 @@ void sh4_ldtlb(Sh4Context* c);
 void sh4_sq_flush(Sh4Context* c, uint32_t addr);  // pref em 0xE0000000-0xE3FFFFFF
 constexpr uint64_t kServiceQuantum = 2000;          // ciclos entre polls (~10 us a 200 MHz)
 void sh4_service(Sh4Context* c);                   // eventos/interrupcoes pendentes
+// HH15.1 (cadencia B do N8.1 do BS). Caminho lento do HH_POLL: atendimento (cycles >= next_event) ou tick de
+// vivacidade (polls >= next_poll, so no tempo logico).
+void sh4_poll_slow(Sh4Context* c);
+// Tempo logico (--tempo experimental): o atendimento so roda quando pedido; o quantum de ciclos nao conta. Ligado pelo
+// provedor de tempo na instalacao, com o contexto da sessao (o unico; as threads do guest o compartilham).
+void sh4_set_logical_cadence(bool on);
+bool sh4_logical_cadence();
+void sh4_set_session_context(Sh4Context* c);  // registrado no boot; nullptr no encerramento
+// Pede atendimento no proximo poll se ha nivel de interrupcao entregavel agora (SR.BL = 0, nivel IRL > SR.IMASK), sem
+// avaliar eventos: chamado quando uma fonte acende ou uma mascara muda. Sem efeito no tempo por ciclos.
+void sh4_irq_wakeup();
+constexpr uint64_t kProgressTick = 4096;  // polls entre ticks de vivacidade no tempo logico
 // HH06 (revisao Codex): gancho do host chamado a cada poll central (sh4_service), antes dos
 // eventos. Permite ao host parar o jogo (lancando a propria excecao de parada) mesmo quando o
 // guest deixou de produzir VBlank (laco preso, espera sem fim). nullptr = nenhum.

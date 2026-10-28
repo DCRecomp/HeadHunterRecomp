@@ -71,7 +71,8 @@ void waitVblank(Sh4Context* c) {
     const uint64_t     v0          = holly_vblank_count();
     while (holly_vblank_count() == v0) {
         c->cycles += kSpinCycles;
-        if (c->cycles < c->next_event) c->cycles = c->next_event;  // voltas sem evento nao mudam nada: pula
+        // voltas sem evento nao mudam nada: pula (no tempo logico os ciclos nao contam e next_event fica no maximo)
+        if (!sh4_logical_cadence() && c->cycles < c->next_event) c->cycles = c->next_event;
         sh4_wait_point(c, kWaitPc);
         ++c->polls;
         c->pc = kWaitPc;

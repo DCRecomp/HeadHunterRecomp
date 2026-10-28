@@ -16,6 +16,7 @@
 // interrupcao). Interrupcao de underflow, captura e fontes RTC/externas sao registradas e
 // ainda nao modeladas.
 #include "memory/sh4_tmu.h"
+#include "memory/sys_logical.h"
 #include "pvr/holly_intc.h"
 #include "cpu/time_hooks.h"
 #include "debug/clock_log.h"
@@ -96,6 +97,12 @@ void sh4_tmu_reset() {
     for (auto& ch : g_ch) ch = Channel{};
     g_tocr = g_tstr = 0;
     g_tcpr2         = 0;
+    sys_logical_reset();  // HH15.1: sessao nova do hardware tambem para os servicos do tempo logico
+}
+
+void sh4_tmu_adopt(uint8_t tocr, uint8_t tstr, uint32_t tcor0, uint32_t tcr0, uint32_t base0, uint64_t baseAt0) {
+    g_tocr = tocr, g_tstr = tstr;
+    g_ch[0].tcor = tcor0, g_ch[0].tcr = tcr0, g_ch[0].base = base0, g_ch[0].baseCycle = baseAt0;
 }
 
 // Diagnostico N2b (D7): HH_TMU_DIAG=quadro faz o TCNT lido valer o do instante em que o ultimo

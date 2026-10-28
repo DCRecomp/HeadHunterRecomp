@@ -28,10 +28,25 @@ constexpr uint32_t kIntevt = 0xFF000028;
 uint16_t g_icr = 0, g_ipr[3] = {0, 0, 0};
 uint32_t g_intevt = 0;
 uint64_t g_taken  = 0;  // diagnostico (sh4_irq_taken_count)
+uint64_t  g_byOrigin[size_t(IrqOrigin::Count)] = {};  // HH15.1: entregas por origem
+IrqOrigin g_origin      = IrqOrigin::SrCheck;          // origem das entregas agora
+IrqOrigin g_scope       = IrqOrigin::Quantum;          // IrqOriginScope ativo
+bool      g_scopeActive = false;
 
 void take(Sh4Context* c, uint32_t intevt) {
     g_intevt     = intevt;
     ++g_taken;
+    ++g_byOrigin[size_t(g_origin)];
+    // HH15.1 (diagnostico): HH_IRQ_QUANTUM=1 lista as entregas feitas pelo quantum de ciclos
+    static const bool listQuantum = std::getenv("HH_IRQ_QUANTUM") != nullptr;
+    if (listQuantum && g_origin == IrqOrigin::Quantum) {
+        uint32_t nrm = 0, ext = 0, m4n = 0, m4e = 0, m6n = 0;
+        holly_intc_read(c, 0x005F6900, 4, nrm), holly_intc_read(c, 0x005F6904, 4, ext);
+        holly_intc_read(c, 0x005F6920, 4, m4n), holly_intc_read(c, 0x005F6924, 4, m4e), holly_intc_read(c, 0x005F6930, 4, m6n);
+        std::fprintf(stderr, "[irq] quantum: intevt=%03X spc=%08X vblank=%llu imask=%u istnrm=%08X istext=%08X iml4nrm=%08X "
+                     "iml4ext=%08X iml6nrm=%08X\n", intevt, c->pc, static_cast<unsigned long long>(holly_vblank_count()),
+                     (sh4_get_sr(*c) & kSrImask) >> 4, nrm, ext, m4n, m4e, m6n);
+    }
     if (g_event_trace) event_trace(TraceEvent::Irq, c->cycles, intevt, c->pc);
     const uint32_t sr = sh4_get_sr(*c);
     c->ssr       = sr;
@@ -74,6 +89,29 @@ bool deliverOne(Sh4Context* c) {
 
 uint64_t sh4_irq_taken_count() { return g_taken; }
 
+void sh4_intc_adopt(uint16_t icr, const uint16_t ipr[3]) {
+    g_icr = icr;
+    for (int i = 0; i < 3; ++i) g_ipr[i] = ipr[i];
+}
+uint64_t sh4_irq_origin_count(IrqOrigin o) { return o < IrqOrigin::Count ? g_byOrigin[size_t(o)] : 0; }
+
+IrqOriginScope::IrqOriginScope(IrqOrigin o) : saved_(g_scope), savedSet_(g_scopeActive) {
+    g_scope       = o;
+    g_scopeActive = true;
+}
+IrqOriginScope::~IrqOriginScope() {
+    g_scope       = saved_;
+    g_scopeActive = savedSet_;
+}
+IrqOrigin sh4_irq_service_origin(bool forced) {
+    return g_scopeActive ? g_scope : forced ? IrqOrigin::Forced : IrqOrigin::Quantum;
+}
+IrqOrigin sh4_irq_set_origin(IrqOrigin o) {
+    const IrqOrigin prev = g_origin;
+    g_origin             = o;
+    return prev;
+}
+
 void sh4_intc_reset() {
     g_icr = 0;
     g_ipr[0] = g_ipr[1] = g_ipr[2] = 0;
@@ -85,6 +123,12 @@ void sh4_irq_check(Sh4Context* c) {
     // instrucao em SPC (manual SH7750, 19.6): por isso reavalia ate nao haver nada.
     for (int n = 0; deliverOne(c); ++n)
         if (n == 1000) sh4_fatal(c, "interrupcao nunca reconhecida pelo tratador", c->pc, g_intevt);
+}
+
+void sh4_irq_check_sr(Sh4Context* c) {
+    const IrqOrigin prev = sh4_irq_set_origin(IrqOrigin::SrCheck);
+    sh4_irq_check(c);
+    sh4_irq_set_origin(prev);
 }
 
 bool sh4_intc_read(uint32_t a, unsigned size, uint32_t& v) {

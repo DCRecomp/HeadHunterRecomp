@@ -22,6 +22,7 @@ bool isCacheArray(uint32_t a) { return a >= 0xF0000000 && a < 0xF8000000; }
 } // namespace
 
 void sh4_ccn_reset() { g_ccr = 0; }
+void sh4_ccn_adopt(uint32_t ccr) { g_ccr = ccr; }
 
 bool sh4_ccn_read(uint32_t a, unsigned size, uint32_t& v) {
     if (a == kCcr && size == 4) {

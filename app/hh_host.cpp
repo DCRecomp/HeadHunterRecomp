@@ -4,8 +4,10 @@
 #include "funcs.h"
 
 #include "boot/native_boot.h"
+#include "cpu/sh4_intc.h"
 #include "cpu/sh4_runtime.h"
 #include "cpu/sh4_threads.h"
+#include "memory/sys_logical.h"
 #include "debug/call_trace.h"
 #include "mods/mod_api.h"
 #include "gdfs_adapter.h"
@@ -223,6 +225,7 @@ HostResult host_run(const HostOptions& opt) {
             transitional::time::install(to);
         }
         boot_prepare(c, boot, rtc);
+        sh4_set_session_context(&c);  // HH15.1: despertar da cadencia B (depois do reset do contexto)
         gdrom_set_disc(open_runtime_data(opt.data, {}));
         if (opt.files == FileProvider::Native) {
             // data\disc e o que o Builder extraiu do disco; nada de setor nem de disc_meta
@@ -343,6 +346,7 @@ HostResult host_run(const HostOptions& opt) {
     }
     pvr_set_vblank_hook(nullptr, nullptr);
     sh4_set_service_hook(nullptr);
+    sh4_set_session_context(nullptr);
     sh4_set_trace(nullptr);
     if (g_fnProfile) {  // HH_FN_PERFIL
         if (std::FILE* f = std::fopen(g_fnProfile->path.c_str(), "w")) {
@@ -416,6 +420,13 @@ HostResult host_run(const HostOptions& opt) {
                      static_cast<unsigned long long>(s.delivered[4]), static_cast<unsigned long long>(s.posted),
                      static_cast<unsigned long long>(s.cancelled), static_cast<unsigned long long>(s.clockRegressions),
                      static_cast<unsigned long long>(s.vblankCollapsed));
+    }
+    std::fputs(sys_logical_summary().c_str(), stderr);  // HH15.1: servicos do tempo logico (vazio fora dele)
+    {  // HH15.1: origem das entregas de interrupcao (quantum de ciclos x atendimento pedido x espera do hardware x ldc sr)
+        auto n = [](IrqOrigin o) { return static_cast<unsigned long long>(sh4_irq_origin_count(o)); };
+        std::fprintf(stderr, "[irq] entregas %llu: quantum %llu, pedido %llu, espera do hardware %llu, ldc sr %llu, despertar %llu\n",
+                     static_cast<unsigned long long>(sh4_irq_taken_count()), n(IrqOrigin::Quantum), n(IrqOrigin::Forced),
+                     n(IrqOrigin::Hardware), n(IrqOrigin::SrCheck), n(IrqOrigin::Wakeup));
     }
     if (files) {
         const auto fs = transitional::gdfs::stats();

@@ -4,6 +4,7 @@
 #include "time_adapter.h"
 
 
+#include "cpu/sh4_intc.h"
 #include "cpu/sh4_runtime.h"
 #include "cpu/time_hooks.h"
 #include "platform/clock.h"
@@ -71,6 +72,7 @@ struct WaitDecl {
 constexpr WaitDecl kWaitDecls[] = {
     {0x8C08ED26, WaitKind::Event, false, "pausa de N quadros: contador 0x8C14DAE4 (callback de VBlank 0x8C0CDD74)"},
     {0x8C16B7CE, WaitKind::Event, false, "Kamui: bits de 0x8C31FA04 (f_8C16B6FE)"},
+    {0x8C118346, WaitKind::Event, false, "bu: status 0x8C1603DC ocupado ate a passada do servidor (VBlank, f_8C118334)"},
     {0x8C16A5E4, WaitKind::SpgLine, true, "boot: linha do SPG (f_8C16A5A0, timeout pelo TMU)"},
     {0x8C16A608, WaitKind::SpgLine, true, "boot: linha do SPG voltar a 0 (f_8C16A5A0, timeout pelo TMU)"},
     {0x8C169704, WaitKind::SpgLine, true, "boot: vsync do SPG apagar (f_8C1696C0, timeout pelo TMU)"},
@@ -700,6 +702,7 @@ void install(const Options& opt) {
     uninstall();
     g_native = std::make_unique<NativeTime>(opt);
     time_set_provider(g_native.get());
+    sh4_set_logical_cadence(opt.experimental);  // HH15.1: cadencia B so no tempo logico
 }
 
 void install_legacy_steps() {
@@ -716,6 +719,7 @@ void uninstall() {
         g_legacy.reset();
     }
     if (!g_native) return;
+    sh4_set_logical_cadence(false);
     time_set_provider(nullptr);
     g_lastStats    = g_native->stats;
     g_lastProgress = g_native->progress_summary();
@@ -738,6 +742,7 @@ void set_step_observer(void (*fn)(uint64_t step, void* ctx), void* ctx) {
 std::string progress_summary() { return g_native ? g_native->progress_summary() : g_lastProgress; }
 
 bool hardware_wait(Sh4Context* c, uint64_t ticks) {
+    const IrqOriginScope origin(IrqOrigin::Hardware);  // HH15.1: diagnostico da origem das entregas
     if (g_native && g_native->experimental()) {  // o instante logico anda o tempo do hardware (nao e trabalho, D11)
         g_native->timed_wait(c, ticks);
         return true;

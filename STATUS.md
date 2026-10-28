@@ -1,6 +1,6 @@
 # STATUS — Head Hunter Recompiled
 
-Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
+Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 
 ## Estado das etapas
 
@@ -21,7 +21,7 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | — (fim do tempo guest e remoção do legado) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0 concluída: referências pré-corte; HH15.1 em curso: cadência B e serviços do tempo lógico, 0 entregas pelo quantum de ciclos) |
 | HH16 | PENDENTE | — |
 | HH17 | PENDENTE | — |
 | HH18 | PENDENTE | — (Builder com Recompiler/Developer antecipado em 2026-10-25; distribuição final pendente) |
@@ -278,6 +278,20 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   `--headless` ficam no legado (roteiro de referencia sem memory card).
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
+
+### HH15 (2026-10-28, em andamento)
+
+- Plano `docs/planos/HH15-PLANO.md` (modelo: N2c + N8 do BS). Inventário (sonda na rota nativa): store queues, CCN
+  (QACR, INTEVT), TMU, Holly INTC/SB, DMAC ch2, G2 (trava do RTC), Maple, RTC da AICA e SPG ainda alcançados; AICA não.
+- HH15.0: `tools/dev/hh15_referencias.py` (quadros, trace de ordem sem ciclos, relógios, RAM em 5 VBlanks, áudio,
+  resumo), casos `estavel`, `experimental` e `experimental_saves`, reproduzidos (6/6 por caso).
+- HH15.1: espera do `bu` `0x8C118346` declarada (o experimental com saves nativos parava no VBlank 2 047); origem das
+  entregas (`[irq]`); cadência B (atendimento só quando pedido no tempo lógico, despertar por nível entregável, tick de
+  vivacidade); `runtime/memory/sys_logical` (TMU canal 0, CCN não gráfico, porta, ICR/IPR do boot) com 0 acessos fora
+  do contrato. Estável idêntico; experimental idêntico fora de 7 SPCs da interrupção da AICA (lista fechada
+  `config/hh15_excecoes_spc.toml`, comparador com negativos); ruído de ciclos sem efeito no experimental (o estável
+  diverge, controle); TMU parado é acusado.
+- Pendente na HH15.1: promoção do tempo lógico na janela (critérios B do HH09), ponte de interrupções separada do modelo.
 
 ### HH14 (2026-10-27, concluída)
 

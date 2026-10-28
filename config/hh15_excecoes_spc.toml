@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: MIT
+# HH15.1 (cadencia B, docs/planos/HH15-PLANO.md): lista fechada das entregas de interrupcao cujo SPC muda em relacao as
+# referencias pre-corte (analysis/hh15/ref, tools/dev/hh15_referencias.py). Regra do N8.1 do BS: o SPC nao e relaxado;
+# cada entrada vale para uma unica diferenca (caso, VBlank, INTEVT, SPC da referencia e o novo). Qualquer outra
+# diferenca no trace de ordem, ou em quadros, relogios, RAM, audio e resumo, reprova.
+#
+# Causa (todas): interrupcao externa da AICA (INTEVT 0x360, nivel 4: ISTEXT bit 1 com IML4EXT bit 1, medido com
+# HH_IRQ_QUANTUM). O provedor nativo de audio (HH14) avanca o motor ate o instante atual dentro do comando ao driver
+# (slot 0x8C122440); a passada do driver acende o evento da porta e o nivel. Antes a entrega esperava o quantum de
+# ciclos seguinte (SPC em qualquer ponto do jogo); com a cadencia B o nivel entregavel pede atendimento e a entrega
+# vai para o primeiro ponto seguro, o retorno da chamada ao slot.
+# Evidencia: mesma posicao e mesmo INTEVT; as outras entregas e eventos do trace iguais; quadros, relogios, RAM (5
+# pontos), audio (WAV byte a byte) e resumo iguais. HH_CADENCIA=quantum reproduz a referencia sem nenhuma diferenca.
+
+[[retornos]]
+spc = "8C121964"
+nota = "retorno do jsr @r3 em 0x8C121960 para o slot 0x8C122440 (comando ao driver de som); a seguir so tst r0,r0 / bt"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4382
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4404
+intevt = "360"
+spc_ref = "8C08D7E4"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4460
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4482
+intevt = "360"
+spc_ref = "8C016E1E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4538
+intevt = "360"
+spc_ref = "8C15C0FE"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4560
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental"
+vblank = 4638
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4381
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4403
+intevt = "360"
+spc_ref = "8C08D7E4"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4459
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4481
+intevt = "360"
+spc_ref = "8C016E1E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4537
+intevt = "360"
+spc_ref = "8C15C0FE"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4559
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"
+
+[[excecao]]
+caso = "experimental_saves"
+vblank = 4637
+intevt = "360"
+spc_ref = "8C09F91E"
+spc_novo = "8C121964"

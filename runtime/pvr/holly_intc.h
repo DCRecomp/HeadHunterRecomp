@@ -39,6 +39,8 @@ uint64_t holly_event_count();
 // Nivel IRL pedido ao SH-4 (6, 4, 2 ou 0): maior nivel cujas mascaras IMLn
 // (NRM/EXT/ERR) tem algum bit pendente em ISTNRM/ISTEXT/ISTERR.
 uint32_t holly_irl_level(uint64_t cycles);
+// O mesmo nivel, so com o estado atual dos registradores (sem avaliar eventos vencidos): despertar da cadencia B.
+uint32_t holly_irl_level_now();
 
 // true se `a` e um registrador do controlador (o acesso foi tratado).
 bool holly_intc_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v);

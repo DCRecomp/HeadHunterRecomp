@@ -1,0 +1,133 @@
+# HH15 — Fim do tempo guest e remoção do legado: plano
+
+Data: 2026-10-27. Validação mínima do ROADMAP: **V3** (regressão integral antes e depois da remoção).
+Referência MIT: N2c + N8 do Blue Stinger (`C:\Source\recomp-BStinger\docs\N8-PLANO.md`, `N8-1-PREPARACAO.md`,
+`N8-2-SEPARACAO.md` … `N8-6-AUDIO.md`), só como projeto de referência.
+
+Critério de saída (ROADMAP): V3 passa antes e depois da remoção; o build do produto falha se qualquer biblioteca
+legada for religada.
+
+## 1. Limite da etapa
+
+O produto (`HeadHunter.exe`) deve usar só os provedores nativos de arquivos, tempo/eventos, controles, saves, vídeo,
+áudio e render, sem depender em execução de GD-ROM/BIOS/flash por HLE, Maple/VMU, AICA, PVR/Holly/TA/VRAM, INTC/TMU/
+DMAC/CCN/portas/store queues, ciclos estimados nem poll por ciclos. Esses módulos continuam num alvo de validação
+separado e nas ferramentas (oráculos, testes históricos), nunca na distribuição.
+
+**Contradição documental a resolver (D-HH15-1).** O ROADMAP põe na HH15 "remover contexto SH-4, RAM guest e
+dispatch", e o `ARCHITECTURE.md` ("Critério operacional final") proíbe `Sh4Context`, despacho e RAM guest no produto
+final. Mas todo o jogo ainda é C++ gerado do SH-4, que lê e escreve o `Sh4Context` e a RAM guest e chama por despacho;
+a HH17 é a etapa que eleva o gameplay para `native/game`, e a HH16 (campanha) roda sobre o código gerado. Tirar o
+substrato AOT na HH15 exigiria elevar o jogo inteiro antes da HH16/HH17. O BS teve a mesma contradição e o mantenedor
+decidiu (D-N8-1, 2026-10-24): o N8 remove a simulação de hardware e os provedores legados; o substrato AOT (código
+gerado, RAM guest, `Sh4Context`, `sh4_ops`, despacho e fibras) fica até a elevação (N10, equivalente à HH17). Esta
+etapa executa primeiro tudo o que não depende da decisão (seção 6) e só então a apresenta.
+
+## 2. Precedentes do BS adotados (decisões do mantenedor no projeto de referência)
+
+- **Cadência B** (N8.1): o poll deixa de atender a cada quantum de ciclos; no tempo lógico o atendimento só roda
+  quando pedido (espera que andou o instante, nível de interrupção entregável, evento no instante atual) e a
+  vivacidade vai por um tick a cada N polls. O SPC de cada entrega não é relaxado: toda diferença precisa de exceção
+  explícita, por diferença, provada pelo disassembly.
+- **TMU, CCN não gráfico e porta do cabo** no tempo lógico por interceptação estreita do contrato medido; fora do
+  contrato, erro explícito no produto (recuo para o modelo só na validação).
+- **Ponte de interrupções:** reproduzir o contrato observável do tratador do SDK (INTEVT, SSR/SPC/SGR, `rte`), sem
+  reescrever a lógica do SDK.
+- **Macros do gerador** (`HH_CYCLES`, `HH_POLL`) continuam definidas: `HH_CYCLES` vira nada no produto; o gerador só
+  muda depois da equivalência provada (o Builder embute o gerador e o projeto editável traz o próprio C++ gerado).
+- **Alvo de validação separado** (D-N8-3): os modelos de hardware, o tempo estável por ciclos, os provedores
+  `legado` e as baterias históricas ficam num build próprio (`HH_VALIDACAO`), nunca na distribuição.
+- **Serviços nativos** no lugar do HLE (N8.3, N8.4, N8.6): o produto atende o contrato medido do jogo (syscalls,
+  barramento de periféricos, área de som) e fora dele dá erro explícito.
+- **Campanha completa** é critério da HH16, não pré-requisito desta etapa (D-N8-4).
+
+## 3. Inventário
+
+### 3.1 Sonda dinâmica no caminho nativo (HH15.0)
+
+`HH_HW_PROBE` na rota `newgame_area1_nativo` (4 700 VBlanks; `--arquivos/--controles/--video/--audio/--render nativo`,
+tempo estável; `analysis/hh15/sonda_*.tsv`). Acessos por região e quem os faz:
+
+| Região | Acessos | Funções do guest | Dono |
+|---|---|---|---|
+| store queues (escrita na área SQ e `pref` para a RAM) | 19 521 443 + 2 288 440 | gráficos do jogo e do Kamui | HH15.7 |
+| CCN | 510 061 | QACR0/1 (`0x8C090974`, `0x8C159E20`, `0x8C16BAA0`…: SQ, 15.7); INTEVT pelo tratador `0x8C00FA00`; CCR/MMUCR no boot | 15.1 (INTEVT, CCR) e 15.7 (QACR) |
+| TMU | 241 098 | leitor `0x8C15E856`; esperas do boot `0x8C1696C0`/`0x8C16A5A0`; timeouts do Kamui (`0x8C16B516`, `0x8C16B60E`, `0x8C16C120`, `0x8C16C340`, `0x8C179520`, `0x8C17C600`); configuração `0x8C15E830` | 15.1 |
+| Holly INTC | 94 360 | tratador `0x8C168160` (ISTNRM/ISTERR), servidor de periféricos `0x8C16E908`/`0x8C16E9EE`, máscaras no boot | 15.1 (ponte) e 15.7 |
+| DMAC (canal 2) | 76 840 | Kamui `0x8C17C600` e tratador `0x8C168160` | 15.7 |
+| G2 | 74 409 | trava/FIFO em volta do RTC da AICA (`0x8C183C6C`, `0x8C183C8C`, `0x8C183CD4`, 2 por VBlank); boot `0x8C15FAC8` | 15.6 |
+| Holly SB | 38 132 | DMA do TA pelo Kamui `0x8C17C600`; boot | 15.7 |
+| Maple | 18 591 | servidor de periféricos `0x8C17F0AA` (DMA por VBlank, mesmo com controles e saves nativos) | 15.4 |
+| RTC da AICA | 18 592 | `0x8C1706E8` (2 leituras por VBlank) | 15.6 |
+| SPG (PVR) | 13 935 | `0x8C16E908`, `0x8C16EF18` (SPG_STATUS, SPG_VBLANK) | 15.7 |
+| INTC do SH-4, porta (PDTRA), arrays de cache, G1, PVR-DMA | 1–512 | boot (`0x8C15FAC8`, `0x8C15DF7A`, `0x8C15F460`) | 15.1/15.3 |
+
+A AICA (RAM de som e registradores) já não aparece: só o RTC. Com `--saves nativo` o DMA do Maple continua (o servidor
+`bu` nativo roda na passada da camada `per`, chamada pelo servidor de periféricos).
+
+### 3.2 Mapa do linker do `HeadHunter.exe`
+
+Objetos de `hh_runtime` ainda ligados: `aica_regs`, `bios`, `flashrom`, `gdrom`, `data_source`, `holly_intc`, `holly_sb`,
+`maple`, `input`, `memory`, `native_boot`, `pvr_regs`, `pvr_render`, `pvr_texture`, `pvr_video`, `ta`, `vram`,
+`sh4_ccn`, `sh4_dmac`, `sh4_intc`, `sh4_port`, `sh4_sq`, `sh4_tmu`, `sh4_service`, `sh4_threads`, `time_legacy` e os
+diagnósticos (`call_trace`, `clock_log`, `event_trace`, `file_log`, `hw_probe`). Substrato AOT: `hh_generated`,
+`hh_runtime_cpu` (`sh4_context`, `sh4_runtime`, `mod_api`). Adaptadores: os 13 objetos de `hh_transitional`.
+
+### 3.3 Consumidores de tempo
+
+No gerado: 67 093 `HH_CYCLES`, 2 571 `HH_POLL`, 22 704 `HH_CALL` (cada um com `HH_POLL_RET`), 265 `HH_IRQ_CHECK`, 8
+`HH_WAIT` e 1 107 despachos indiretos.
+
+## 4. Subetapas
+
+| ID | Entrega | Portão |
+|---|---|---|
+| HH15.0 | Referências pré-corte (V3 do HH14, rotas, hashes, traces de ordem e entrega) e inventário (seção 3) | regressão integral ok; referências reproduzidas duas vezes |
+| HH15.1 | Fim do tempo guest (N2c): cadência sem ciclos no tempo lógico; TMU, CCN não gráfico, porta e INTC pela ponte; experimental fechado (B1–B11 do HH09) e padrão da janela | referências iguais fora da lista fechada de exceções provadas; ruído de ciclos sem efeito; 0 acessos fora do contrato |
+| HH15.2 | Alvos por papel: produto, substrato AOT, validação (`HH_VALIDACAO`), catraca de mapa do linker | build do produto falha ao religar biblioteca legada (negativo); manifesto × mapa |
+| HH15.3 | Boot, arquivos, GD-ROM, BIOS e flash: serviço nativo das syscalls; HLE só na validação | zero setores/syscalls fora do contrato; bytes lidos iguais |
+| HH15.4 | Controles, saves e Maple: barramento sem dispositivos; `--controles/--saves legado` só na validação | roteiros e saves iguais; zero Maple |
+| HH15.5 | Vídeo: `--video legado` e conversões dependentes do PVR fora do produto | filmes iguais; nenhum caminho legado |
+| HH15.6 | Áudio: área de som nativa (RAM de som e RTC do contrato); modelo da AICA e `--audio legado` só na validação | A1–A5 do HH14; zero AICA |
+| HH15.7 | Render: IR sem SQ/DMAC/TA/VRAM/PVR no produto; renderizador software sobre a IR nativa; Holly/SB/SPG pela ponte | R1–R5 do HH13 e K1–K4; zero PVR |
+| HH15.8 | Fechamento: mapa/imports/strings/sonda, regressão V3 pós-corte, Builder/Preview, Codex, decisão D-HH15-1 | critério de saída |
+
+## 5. Regras
+
+- Recompilar, nunca emular: nenhuma instrução interpretada; a validação reproduz o que o produto fazia antes, não
+  simula hardware novo.
+- Cada corte remove do caminho de execução do produto primeiro (com prova contra as referências) e do link depois.
+- Não enfraquecer testes: as baterias que medem o modelo por ciclos vão para a validação com as referências delas.
+- Saídas em `analysis/hh15/` e `reviews/` (ignorados).
+
+## 6. Andamento
+
+### HH15.0 (concluída, 2026-10-28)
+
+- Regressão integral do fechamento do HH14 (`analysis/hh14/regressao.log`, 13/13) vale como V3 pré-corte.
+- `tools/dev/hh15_referencias.py` (`capturar`/`conferir`): na rota `newgame_area1_nativo`, por caso, hashes de quadro a
+  cada 50 VBlanks, trace de ordem sem ciclos (V, I com INTEVT e SPC, R, T, N, J), relógios por VBlank, SHA-256 da RAM
+  em 5 VBlanks, SHA-256 do áudio e resumo. Casos `estavel` (saves nativos) e `experimental`; referências em
+  `analysis/hh15/ref`, reproduzidas duas vezes (6/6 por caso). Inventário na seção 3.
+
+### HH15.1 (em andamento)
+
+1. **Espera do `bu`** (`0x8C118346`, `[native] esperas`): `f_8C118334` repete enquanto o status `0x8C1603DC` devolve
+   −1; a operação conclui na passada do servidor `bu`, chamada pela camada `per` a cada fim de DMA do Maple. Sem a
+   declaração, o tempo experimental com `--saves nativo` parava no VBlank 2 047 (falta de progresso). Com ela: 4 700
+   VBlanks, 2 SAVE ok, espera liberada por InputDone em 10/10 episódios; no estável o mesmo laço dava 4,1 milhões de
+   voltas sem efeito. Caso `experimental_saves` acrescentado às referências.
+2. **Origem das entregas** (`IrqOrigin`, linha `[irq]` no resumo, `HH_IRQ_QUANTUM`): no experimental, 29 790 entregas
+   por atendimento pedido, 391 por `ldc sr` e 6 pelo quantum de ciclos; as 6 são a interrupção externa da AICA (ISTEXT
+   bit 1, IML4EXT), acesa pelo provedor nativo de áudio dentro do comando ao driver (slot `0x8C122440`).
+3. **Cadência B** (`sh4_poll_slow`, `sh4_irq_wakeup`, `Sh4Context::next_poll`): no tempo lógico o atendimento só roda
+   quando pedido — espera que andou o instante, fim do DMA do canal 2, nível entregável depois de `holly_intc_raise`,
+   da fonte externa da AICA ou de uma máscara IML* nova (sem avaliar eventos) — e um tick de vivacidade a cada 4 096
+   polls mantém a guarda D8 e a parada pedida pelo host. Tempo estável e legado inalterados. `HH_CADENCIA=quantum`
+   (diagnóstico) reproduz a referência sem nenhuma diferença.
+   - Resultado: estável idêntico (6/6); experimental e experimental_saves idênticos fora de 7 SPCs cada, todos a mesma
+     interrupção da AICA (`0x360`) indo para o retorno do slot (`8C121964`), na mesma posição; quadros, relógios, RAM,
+     áudio e resumo iguais. Lista fechada `config/hh15_excecoes_spc.toml`, conferida por `hh15_referencias.py conferir
+     --excecoes` (todas as listadas têm de aparecer); comparador com 8 negativos sintéticos (`hh15_excecoes_spc`).
+   - Independência dos ciclos (`HH_CICLOS_RUIDO=5000`): experimental 12/12 iguais com as mesmas exceções; estável
+     (controle) diverge em todos os artefatos.

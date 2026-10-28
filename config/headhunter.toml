@@ -179,6 +179,10 @@ esperas = [
                # o callback de VBlank 0x8C0CDD74 o decrementa (1 chamada por VBlank, HH_CALL_TRACE)
   0x8C16B7CE,  # Kamui (f_8C16B6FE, chamada por 0x8C159FC0): espera bits de 0x8C31FA04 apagarem;
                # cada volta chama o despachante 0x8C169260(7)
+  0x8C118346,  # HH15.1: f_8C118334 repete enquanto o status do bu (0x8C1603DC) devolve -1 (ocupado); a
+               # operacao conclui na passada do servidor bu (0x8C15FC9C), chamada pela camada per a cada
+               # VBlank (servidor de perifericos 0x8C17F0AA). No experimental, sem a declaracao, o laco gira
+               # sem o instante andar (falta de progresso na tela do memory card com --saves nativo)
   # tempo experimental (o estavel ignora): esperas temporais do boot
   0x8C16A5E4,  # Kamui (f_8C16A5A0 <- 0x8C16A640 <- 0x8C159ACE): linha do SPG_STATUS (0x10C, mascara 0x3FF)
   0x8C16A608,  # idem, segunda espera (linha 0); timeout pelo TMU (TCNT0, 0x3D09)

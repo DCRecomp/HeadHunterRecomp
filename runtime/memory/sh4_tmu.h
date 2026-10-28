@@ -12,6 +12,9 @@ namespace hh {
 uint64_t sh4_tmu_state_hash();
 
 void sh4_tmu_reset();
+// HH15.1: o servico do tempo logico (sys_logical) saiu do contrato: o modelo assume o canal 0 com este estado
+// (TCNT0 = base no instante baseAt, no mesmo dominio de time_now).
+void sh4_tmu_adopt(uint8_t tocr, uint8_t tstr, uint32_t tcor0, uint32_t tcr0, uint32_t base0, uint64_t baseAt0);
 
 // true se `a` pertence ao TMU (o acesso foi tratado).
 bool sh4_tmu_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v);

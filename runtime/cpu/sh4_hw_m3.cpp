@@ -24,6 +24,8 @@ void sh4_sq_flush(Sh4Context* c, uint32_t addr) { sh4_fatal(c, "store queue (sem
 // Sem eventos: o poll so reprograma o proximo quantum.
 void sh4_service(Sh4Context* c) { c->next_event = c->cycles + kServiceQuantum; }
 void sh4_irq_check(Sh4Context*) {}
+void sh4_irq_check_sr(Sh4Context*) {}
+void sh4_poll_slow(Sh4Context* c) { sh4_service(c); }
 // SLEEP so termina com uma interrupcao; sem fonte de interrupcao, retornar seria
 // silenciar uma espera infinita (revisao Codex HH04).
 void sh4_sleep(Sh4Context* c) { sh4_fatal(c, "sleep sem fonte de interrupcao (sem hardware no HH04)", c->pc, 0); }

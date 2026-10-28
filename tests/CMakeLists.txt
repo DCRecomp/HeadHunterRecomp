@@ -114,6 +114,9 @@ add_test(NAME hh_gate_comparators
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/test_gates.py
           ${PROJECT_SOURCE_DIR}/tools/dev/hh05_boot_check.py ${PROJECT_SOURCE_DIR}/tools/dev/hh05_fb.py
           ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh_boot_accepted.tsv)
+# HH15.1: comparador da lista fechada de excecoes de SPC (cadencia B), sem o jogo (positivo e negativos).
+add_test(NAME hh15_excecoes_spc
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_excecoes_test.py ${PROJECT_SOURCE_DIR})
 
 # HH07.5: interfaces nativas compilam sozinhas e nao dependem do Dreamcast (com caso negativo).
 add_test(NAME hh07_native_api COMMAND hh_native_api_check)
