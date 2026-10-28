@@ -27,7 +27,7 @@ if(HH_BUILDER_DEV_KIT)
 endif()
 
 add_executable(hh-builder main_cli.cpp builder.manifest)
-target_link_libraries(hh-builder PRIVATE hh_builder_core)
+target_link_libraries(hh-builder PRIVATE hh_builder_core hh_native_audio_core)
 target_compile_definitions(hh-builder PRIVATE ${hh_builder_defs})
 
 # Textos da interface por chave (pt-BR, en-US; um arquivo por idioma)

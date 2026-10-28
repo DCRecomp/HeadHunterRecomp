@@ -38,7 +38,7 @@ target_link_libraries(hh_native_video PUBLIC hh_native_api PRIVATE tomlplusplus:
 # HH14: audio de gameplay portavel (ADPCM da AICA, envelope, mixer, leitura de WAV, DSP de efeitos da AICA; portados do
 # N6 do BS); sem Win32 - a saida fica no hh_native_audio
 add_library(hh_native_audio_core STATIC audio/aica_adpcm.cpp audio/aica_dsp.cpp audio/mixer.cpp audio/sound_file.cpp
-            audio/sound_mod_codecs.cpp)
+            audio/sound_mod_codecs.cpp audio/aica_channels.cpp)
 target_link_libraries(hh_native_audio_core PUBLIC hh_native_api)
 add_library(hh_native_audio STATIC audio/audio_output.cpp)
 target_link_libraries(hh_native_audio PUBLIC hh_native_api PRIVATE xaudio2 ole32)

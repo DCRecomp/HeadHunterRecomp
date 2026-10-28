@@ -16,6 +16,9 @@ struct AicaAdpcmState {
     int32_t step   = 127;
 };
 
+// HH14: uma amostra a partir de um nibble (os canais da AICA decodificam lendo a RAM de som enquanto tocam).
+int16_t aica_adpcm_step(uint8_t nibble, AicaAdpcmState& st);
+
 // Decodifica `nibbles` amostras (2 por byte) e acrescenta em `out`.
 void aica_adpcm_decode(std::span<const uint8_t> data, std::vector<int16_t>& out, AicaAdpcmState& st,
                        size_t samples = SIZE_MAX);

@@ -87,6 +87,34 @@ std::shared_ptr<SoundData> parse_wav(std::span<const uint8_t> b, std::string* er
     return s;
 }
 
+std::vector<uint8_t> encode_aica_wav(const SoundData& s) {
+    if (s.channels != 1 && s.channels != 2) return {};  // os streams do jogo sao mono ou estereo
+    const uint32_t       ch = s.channels == 2 ? 2 : 1;
+    std::vector<uint8_t> data;
+    if (ch == 1) {
+        AicaAdpcmState st;
+        data = aica_adpcm_encode(s.pcm, st);
+    } else {
+        std::vector<int16_t> side[2];
+        for (size_t i = 0; i + 1 < s.pcm.size(); i += 2) side[0].push_back(s.pcm[i]), side[1].push_back(s.pcm[i + 1]);
+        AicaAdpcmState st[2];
+        const auto     l = aica_adpcm_encode(side[0], st[0]), r = aica_adpcm_encode(side[1], st[1]);
+        for (size_t i = 0; i < l.size(); ++i) data.push_back(l[i]), data.push_back(r[i]);  // bytes alternados
+    }
+    std::vector<uint8_t> out(0x30);
+    auto put16 = [&](size_t o, uint32_t v) { out[o] = uint8_t(v), out[o + 1] = uint8_t(v >> 8); };
+    auto put32 = [&](size_t o, uint32_t v) { put16(o, v & 0xFFFF), put16(o + 2, v >> 16); };
+    std::memcpy(&out[0], "RIFF", 4), std::memcpy(&out[8], "WAVEfmt ", 8), std::memcpy(&out[0x28], "data", 4);
+    put32(4, uint32_t(0x30 - 4 + data.size()));  // como a ferramenta original: tamanho do arquivo - 4 (o padrao seria - 8)
+    put32(0x10, 18);                     // fmt declarado com 18 bytes (o original: + 2 bytes zero antes do data)
+    put16(0x14, 0), put16(0x16, ch);     // tag 0 = ADPCM da AICA
+    put32(0x18, s.rate), put32(0x1C, s.rate * ch);
+    put16(0x20, 2 * ch), put16(0x22, 4);
+    put32(0x2C, uint32_t(data.size()));
+    out.insert(out.end(), data.begin(), data.end());
+    return out;
+}
+
 std::shared_ptr<SoundData> load_sound(const fs::path& file, std::string* err) {
     std::ifstream in(file, std::ios::binary);
     if (!in) return fail(err, "nao abre " + file.string());

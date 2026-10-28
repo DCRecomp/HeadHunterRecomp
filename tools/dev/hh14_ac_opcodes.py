@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """HH14: opcode do driver que cada funcao ac* do Audio64 envia (docs/planos/HH14-PLANO.md, fase A). Desmonta cada
-funcao pelo C++ gerado (tools/dev/hh_dis.py) e procura o literal mov.w gravado no pacote da pilha (r15) que esta no
+funcao pelo C++ gerado (inclusive os delay slots) e procura o literal mov.w ou o imediato mov #n gravado no pacote da pilha (r15) que esta no
 conjunto tratado pelo AUDIO64.DRV (0x30-0x3E, 0x80-0xAF). Imprime so enderecos, nomes e opcodes.
 
   python -I tools/dev/hh14_ac_opcodes.py <generated/disc1> <1ST_READ.BIN>
 """
+import glob
 import os
 import re
 import struct
@@ -32,9 +33,28 @@ def w(a):
     return struct.unpack_from('<H', raw, a - 0x8C010000)[0]
 
 
+def instructions(addr):
+    """As instrucoes da funcao no C++ gerado, na ordem, inclusive as dos delay slots (comentarios "// ENDERECO: ..." e
+    "// slot: ..."), que o hh_dis.py nao lista."""
+    name = 'void f_%08X(' % addr
+    for p in sorted(glob.glob(os.path.join(GEN, 'funcs_*.cpp'))):
+        with open(p, encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        for i, l in enumerate(lines):
+            if l.startswith(name):
+                out = []
+                for l2 in lines[i + 1:]:
+                    if l2.startswith('void f_'):
+                        break
+                    m = re.search(r'// (?:[0-9A-F]{8}: |slot: )(.+)$', l2)
+                    if m:
+                        out.append(m.group(1).strip())
+                return out
+    return []
+
+
 for addr, name in sorted(FUNCS.items()):
-    out = subprocess.run([sys.executable, '-I', ROOT + '/tools/dev/hh_dis.py', GEN, BIN, '%08X' % addr,
-                          '--max', '260'], capture_output=True, text=True).stdout.splitlines()
+    out = instructions(addr)
     regs = {}
     ops = []
     calls = set()
@@ -42,6 +62,9 @@ for addr, name in sorted(FUNCS.items()):
         m = re.search(r'mov\.w 0x([0-9a-f]+),r(\d+)', l)
         if m:
             regs[m.group(2)] = w(int(m.group(1), 16))
+        m = re.search(r'^mov #(-?\d+),r(\d+)', l)
+        if m:
+            regs[m.group(2)] = int(m.group(1)) & 0xFF
         m = re.search(r'mov\.w r(\d+),@(\(\d+,)?r15\)?', l)
         if m and m.group(1) in regs and (0x30 <= regs[m.group(1)] <= 0x3E or 0x80 <= regs[m.group(1)] <= 0xAF):
             ops.append(regs[m.group(1)])

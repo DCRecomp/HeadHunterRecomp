@@ -14,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -76,4 +77,59 @@ HH_TEST(hh14_streams_wav_adpcm) {
                 files, stereo, failed, implausible, uncorrelated, minCorr);
     HH_CHECK(files > 0 && failed == 0 && implausible == 0);
     HH_CHECK(uncorrelated == 0);
+}
+
+// HH14 (mods e dublagem): encode_aica_wav gera o formato dos streams do jogo; ida e volta pelo leitor com o sinal
+// preservado (ADPCM de 4 bits: relacao sinal/ruido acima de 15 dB) nos dois canais, sem misturar os lados.
+HH_TEST(hh14_encode_aica_wav_roundtrip) {
+    na::SoundData s;
+    s.rate = 32000, s.channels = 2;
+    for (int i = 0; i < 32000; ++i)
+        s.pcm.push_back(int16_t(9000 * std::sin(i * 0.05))), s.pcm.push_back(int16_t(6000 * std::sin(i * 0.013)));
+    const auto  wav = na::encode_aica_wav(s);
+    std::string err;
+    auto        back = na::parse_wav(wav, &err);
+    HH_CHECK(back && back->channels == 2 && back->rate == 32000 && back->frames() == 32000);
+    if (!back) return;
+    for (int c = 0; c < 2; ++c) {
+        double sig = 0, noise = 0;
+        for (size_t i = 0; i < 32000; ++i) {
+            const double a = s.pcm[2 * i + size_t(c)], b = back->pcm[2 * i + size_t(c)];
+            sig += a * a, noise += (a - b) * (a - b);
+        }
+        HH_CHECK(10 * std::log10(sig / std::max(noise, 1.0)) > 15);
+    }
+    HH_CHECK(wav.size() == 0x30 + 32000 && std::memcmp(wav.data() + 0x28, "data", 4) == 0);
+}
+
+// Com os streams do disco: reconverter um stream real (decodificado pelo leitor) da o mesmo cabecalho, byte a byte (o
+// jogo le taxa, canais e tamanho dali), mono e estereo (os 20 primeiros WAV da pasta).
+HH_TEST(hh14_encode_aica_wav_same_header) {
+    const char* dir = std::getenv("HH14_STREAMS");
+    if (!dir) HH_SKIP("HH14_STREAMS ausente");
+    int checked = 0;
+    for (const auto& e : std::filesystem::directory_iterator(dir)) {
+        WavHeader h;
+        if (checked >= 20 || !read_header(e.path(), h)) continue;  // os WAV do disco (os ADX nao sao WAV)
+        const auto        path = e.path();
+        const std::string file = path.filename().string();
+        const char*       name = file.c_str();
+        std::ifstream             f(path, std::ios::binary);
+        const std::vector<uint8_t> orig((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        auto                       s = na::parse_wav(orig);
+        HH_CHECK(s != nullptr);
+        if (!s) continue;
+        const auto enc  = na::encode_aica_wav(*s);
+        const bool same = enc.size() == orig.size() && std::memcmp(enc.data(), orig.data(), 0x30) == 0;
+        if (!same) {
+            std::printf("  %s: tamanho %zu x %zu\n  original:", name, enc.size(), orig.size());
+            for (int i = 0; i < 0x30; ++i) std::printf(" %02X", orig[size_t(i)]);
+            std::printf("\n  gerado:  ");
+            for (int i = 0; i < 0x30 && i < int(enc.size()); ++i) std::printf(" %02X", enc[size_t(i)]);
+            std::printf("\n");
+        }
+        HH_CHECK(same);
+        ++checked;
+    }
+    HH_CHECK(checked > 0);
 }

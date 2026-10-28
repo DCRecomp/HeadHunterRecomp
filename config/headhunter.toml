@@ -150,6 +150,7 @@ slots = [
   0x8C15C6B4, 0x8C15C970, 0x8C15C746,
   0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): drive sempre pronto (sem troca de disco)
   0x8C15D042,  # gdFsLoadDir (stub, tabela[32]): diretorio dos dirrec pelo provedor nativo
+  0x8C15D06E,  # gdFsSetDir (stub): dirrec de \Streams vira o corrente antes de cada stream (HH14)
   # HH10: controles (pd 1.50; transitional/pad_adapter)
   0x8C15DB3A,  # servidor pd (chamado pelo jogo em 0x8C0915F8)
   0x8C15DC40,  # pdGetPeripheral
@@ -164,6 +165,12 @@ slots = [
   # HH13.6: funis do SDK grafico ate o hardware (transitional/kamui_device): escrita e leitura de registrador do PVR,
   # pedido de DMA (canal 2 para o TA), copia e zeragem na VRAM pela CPU
   0x8C1793E0, 0x8C1793EA, 0x8C17C600, 0x8C159820, 0x8C159874,
+  # HH14: funis do Audio64 ate a AICA (transitional/audio_device; docs/planos/HH14-PLANO.md, "Fronteira"):
+  # _acG2SetHostCommand (fila de comandos ao driver), acG2Write, acG2Read, acG2Fill, acG2ReadLong, acG2WriteLong e a
+  # limpeza dos registradores do DSP (unicos acessos do jogo a RAM e aos registradores de som, sonda do HH07)
+  0x8C122440, 0x8C122784, 0x8C122602, 0x8C12250E, 0x8C1226AC, 0x8C12271C, 0x8C12234C,
+  0x8C123564,  # inicio do DMA do G2 para a AICA (fila de acTransfer): unico escritor dos registradores ADST* (HH14)
+  0x8C120610,  # acDigiGetCurrentReadPosition: le o ponteiro da tabela de posicoes direto da RAM de som (sonda no nativo)
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

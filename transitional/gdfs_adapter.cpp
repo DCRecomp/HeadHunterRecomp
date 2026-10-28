@@ -168,6 +168,10 @@ void fOpen(Sh4Context* c) {
     const bool hidden = canon.rfind(kDisc2Dir, 0) == 0 ||
                         (s.merged && canon == (s.lastDisc == 2 ? "DISC/DISK1.ID" : "DISC/DISK2.ID"));
     auto h = hidden ? native::Result<nf::FileHandle>(native::Error::NotFound) : s.fs->open(logical);
+    static const bool logOpen = std::getenv("HH_ARQUIVOS_LOG") != nullptr;  // diagnostico (HH14): aberturas
+    if (logOpen)
+        std::fprintf(stderr, "[arquivos] abre %s (%s) pr %08X dirrec %08X base %s\n", canon.c_str(), h ? "ok" : "ausente",
+                     c->pr, c->r[5], base.c_str());
     if (h && s.merged && s.lastDisc == 2) {
         if (auto v = s.fs->open(std::string(kDisc2Dir) + "/" + canon)) {
             s.fs->close(h.value());
@@ -249,6 +253,18 @@ void fLoadDir(Sh4Context* c) {
     const uint32_t rec = c->r[5];
     sh4_lookup_generated(s.a.loadDir)(c);
     if (dir) s.dirrecs[rec] = *dir;
+}
+
+// gdFsSetDir (stub 0x8C15D06E; HH14): (dirrec). O jogo carrega \Streams num dirrec (0x8C02B6A0) e, antes de cada stream
+// (0x8C02B23C), o torna o diretorio corrente; o CRI ADXT abre o stream pelo nome com dirrec 0 (o corrente). A funcao
+// original atualiza o GDFS legado; o provedor nativo passa a usar o diretorio guardado no LoadDir. Evidencias: os
+// streams (*GML.ADP) so existem em \Streams e eram abertos em \MOVIES (o ultimo ChangeDir, do filme) sem esta funcao;
+// com ela abrem (docs/planos/HH14-PLANO.md).
+void fSetDir(Sh4Context* c) {
+    State&         s   = st();
+    const uint32_t rec = c->r[4];
+    sh4_lookup_generated(s.a.setDir)(c);
+    if (const auto it = s.dirrecs.find(rec); it != s.dirrecs.end()) s.dir = it->second;
 }
 
 void fClose(Sh4Context* c) {
@@ -352,6 +368,10 @@ void fReqRd32(Sh4Context* c) {
         return call.ret(0);
     }
     const int32_t n = doRead(c, *g, c->r[5], c->r[6]);
+    static const bool logRead = std::getenv("HH_ARQUIVOS_LOG") != nullptr;  // diagnostico (HH14)
+    static int        nlog    = 0;
+    if (logRead && nlog++ < 300)
+        std::fprintf(stderr, "[arquivos] le32 %08X %u setores -> %d (status %d) pr %08X\n", c->r[4], c->r[5], n, int(g->status), c->pr);
     if (g->status != kError) {
         s.busyToken = c->r[4], s.busyTrans = g->trans;
         g->status = kBusy, g->trans = 0;
@@ -415,6 +435,7 @@ std::vector<std::pair<uint32_t, Sh4Func>> functions(const Addresses& a) {
         {a.open, &fOpen},
         {a.changeDir, &fChangeDir},
         {a.loadDir, &fLoadDir},
+        {a.setDir, &fSetDir},
         {a.close, &fClose},
         {a.getFileSize, &fGetFileSize},
         {a.getFileSctSize, &fGetFileSctSize},

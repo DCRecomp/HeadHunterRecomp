@@ -16,6 +16,10 @@ constexpr uint32_t kIstVblankOut = 1u << 4;
 void holly_intc_raise(uint32_t bits);
 
 void holly_intc_reset(uint64_t cycles = 0);
+// HH14: nivel de uma fonte externa (ISTEXT; bit 1 = AICA) a partir do pedido da AICA (MCIPD & MCIEB) do provedor nativo
+// de audio. Nivel, nao pulso: o reconhecimento e na fonte (MCIRE); ISTNRM bit 30 resume o ISTEXT. Sem fonte, nada muda.
+void holly_intc_set_external(uint32_t bits, bool on);
+constexpr uint32_t kIstExtAica = 1u << 1;
 
 // Acende os eventos ate `cycles` com a configuracao de SPG atual. Chamado antes de
 // qualquer escrita que mude a temporizacao, para nao aplicar a nova a tempo passado.

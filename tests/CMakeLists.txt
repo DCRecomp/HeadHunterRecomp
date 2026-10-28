@@ -284,7 +284,8 @@ add_test(NAME hh13_capture_tests COMMAND hh13_capture_tests)
 
 # HH14: nucleo de audio portado do N6 do BS (ADPCM, mixer, WAV, DSP; HH14_REVERB = pasta do HHREV, senao o caso do
 # programa do jogo e SKIP)
-add_executable(hh14_audio_tests unit/main.cpp unit/test_audio_native.cpp unit/test_audio_dsp.cpp unit/test_hh14_audio.cpp)
+add_executable(hh14_audio_tests unit/main.cpp unit/test_audio_native.cpp unit/test_audio_dsp.cpp unit/test_hh14_audio.cpp
+               unit/test_hh14_channels.cpp)
 target_include_directories(hh14_audio_tests PRIVATE unit)
 target_link_libraries(hh14_audio_tests PRIVATE hh_native_audio_core)
 add_test(NAME hh14_audio_tests COMMAND hh14_audio_tests)
@@ -303,4 +304,8 @@ if(HH_GENERATED_DIR)
   add_test(NAME hh13_kamui
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh13_kamui.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh13_kamui PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
+  # HH14: audio nativo (A1 driver, A2 sonda sem AICA, A3 determinismo, A4 niveis, A5 oraculo; HH_DATA_DIR, senao SKIP).
+  add_test(NAME hh14_audio
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh14_audio.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh14_audio PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
 endif()

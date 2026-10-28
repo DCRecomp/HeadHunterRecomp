@@ -1,0 +1,28 @@
+# HH14: NEW GAME ate a primeira area jogavel (disco 1) com os filmes e o audio nativos (--video nativo --audio nativo,
+# o padrao da janela). O newgame_area1 (HH06) foi gravado com os filmes legados, que morriam no VBlank 312 sem o
+# driver de som; com os filmes nativos o noticiario de abertura e a cena do NEW GAME tocam ate o START.
+# Indice = n-esima leitura do controle (porta 0); com --rtc 1700000000, leitura ~= VBlank - 56.
+# Caminho observado (capturas a cada 100 VBlanks): logos -> noticiario (START) -> titulo (VBlank ~1750) -> START ->
+# "memory card de 30 blocos; desativar save?" -> OK -> menu (NEW GAME) -> TRAINING MISSION (PLAY/SKIP) -> SKIP ->
+# carregamento -> cena de abertura (START) -> primeira area (corredor, Jack Wade, HUD) por volta do VBlank 4400.
+1700 START
+1730 -
+2000 START
+2030 -
+2300 A
+2330 -
+3200 A
+3230 -
+3700 DOWN
+3715 -
+3800 A
+3830 -
+4300 START
+4330 -
+# movimento (analogico): frente, esquerda, frente
+4500 ANALOG_UP
+4800 -
+4850 ANALOG_LEFT
+4950 -
+5000 ANALOG_UP
+5300 -

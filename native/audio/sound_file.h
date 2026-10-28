@@ -23,6 +23,11 @@ std::shared_ptr<SoundData> parse_wav(std::span<const uint8_t> bytes, std::string
 std::shared_ptr<SoundData> parse_flac(std::span<const uint8_t> bytes, std::string* err = nullptr);
 std::shared_ptr<SoundData> parse_ogg(std::span<const uint8_t> bytes, std::string* err = nullptr);  // OGG/Vorbis
 
+// HH14 (mods e dublagem): um WAV de ADPCM da AICA no formato exato dos streams do Head Hunter (STREAMS/*.ADP: fmt de 18
+// bytes com 2 bytes de preenchimento, data em 0x28; estereo com bytes alternados, um estado por canal), que o jogo
+// transmite direto para a RAM de som. Mono ou estereo; a taxa e a do som (o jogo a le do cabecalho).
+std::vector<uint8_t> encode_aica_wav(const SoundData& s);
+
 inline constexpr size_t   kMaxSoundFileBytes = 256u << 20;  // 256 MB
 inline constexpr uint32_t kMaxSoundSeconds   = 30 * 60;     // 30 min (a fala original mais longa tem 53 s)
 // PCM decodificado (amostras de 16 bits, todos os canais): 128 MB. O limite do arquivo nao limita o PCM: um FLAC pequeno

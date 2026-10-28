@@ -13,6 +13,8 @@
 #include "pad_probe.h"
 #include "pad_adapter.h"
 #include "bu_adapter.h"
+#include "audio/audio.h"
+#include "audio_device.h"
 #include "video_adapter.h"
 #include "render_capture.h"
 #include "kamui_device.h"
@@ -100,6 +102,8 @@ void onService(Sh4Context*) {
     if (g_opt->stop && g_opt->stop->load()) throw StopRequest{};
 }
 
+Sh4Context* g_ctx = nullptr;  // HH14: o contexto do jogo para o audio nativo no VBlank
+
 void onVblank(void*) {
     HostResult& r = *g_res;
     ++r.vblanks;
@@ -107,6 +111,7 @@ void onVblank(void*) {
         transitional::kamui::video_frame(g_frame.argb, g_frame.width, g_frame.height);
     else
         pvr_video_frame(g_frame.argb, g_frame.width, g_frame.height);
+    if (transitional::audio::installed()) transitional::audio::pump(g_ctx);  // HH14: o som ate este VBlank
     if (transitional::video::installed())  // HH12: o quadro do filme nativo no lugar do quadro do PVR (como no N5 do BS)
         transitional::video::compose_frame(g_frame.argb, g_frame.width, g_frame.height);
     g_frame.vblank = r.vblanks;
@@ -179,6 +184,7 @@ HostResult host_run(const HostOptions& opt) {
     std::unique_ptr<native::files::DataFileSystem> files;
     std::unique_ptr<VerifiedFileSystem>            verified;
     std::unique_ptr<native::saves::ISaveStore>     saves;
+    std::unique_ptr<native::audio::IAudioOutput>   audioOut;  // HH14: saida do audio do jogo (janela)
     g_opt = &opt;
     g_res = &res;
     hhg::register_functions();
@@ -190,6 +196,7 @@ HostResult host_run(const HostOptions& opt) {
     std::vector<uint8_t> ram(16u << 20);
     Sh4Context           c{};
     c.ram = ram.data();
+    g_ctx = &c;
     g_ram = ram.data();
     if (const char* v = std::getenv("HH_PAD_TRACE"); v && *v) g_padTrace = std::fopen(v, "w");
     const char* closurePath = std::getenv("HH_PAD_FECHAMENTO");
@@ -250,6 +257,16 @@ HostResult host_run(const HostOptions& opt) {
             transitional::video::install(boundaries, vo, &warn);
             for (const std::string& w : warn) std::fprintf(stderr, "[video] %s\n", w.c_str());
             std::fprintf(stderr, "[video] nativo: %s\n", vo.dataDir.string().c_str());
+        }
+        // HH14: audio nativo (HH_AUDIO_WAV=<arquivo>: tudo o que o motor produziu; HH_AUDIO_LEITURAS=<tsv>: leituras do
+        // SH-4 na RAM de som, diagnostico)
+        if (opt.audio == AudioProvider::Native) {
+            transitional::audio::Options ao;
+            if (opt.audioDevice) audioOut = native::audio::make_xaudio2_output(200, true);
+            ao.output = audioOut.get();
+            if (const char* w = std::getenv("HH_AUDIO_WAV"); w && *w) ao.wavPath = w;
+            if (const char* r = std::getenv("HH_AUDIO_LEITURAS"); r && *r) ao.readsPath = r;
+            transitional::audio::install(boundaries, ao);
         }
         // HH13.6: funis do SDK grafico. --render nativo usa o provedor nativo (os funis deixam de tocar o PVR e o render le
         // o estado nativo); o software continua no caminho legado. HH_KAMUI=legado|sombra|nativo escolhe explicitamente
@@ -368,6 +385,10 @@ HostResult host_run(const HostOptions& opt) {
     if (transitional::bu::installed()) {
         std::fputs(transitional::bu::summary().c_str(), stderr);
         transitional::bu::uninstall(boundaries);
+    }
+    if (transitional::audio::installed()) {
+        std::fputs(transitional::audio::summary().c_str(), stderr);
+        transitional::audio::uninstall(boundaries);
     }
     if (transitional::kamui::installed()) {
         std::fputs(transitional::kamui::summary().c_str(), stderr);

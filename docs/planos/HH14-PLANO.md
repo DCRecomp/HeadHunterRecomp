@@ -1,7 +1,7 @@
 # HH14 — Plano detalhado: áudio nativo e moddável
 
 Data: 2026-10-27. Validação mínima: **V2**. Equivalente ao N6 do Blue Stinger (`C:\Source\recomp-BStinger\docs\
-N6-PLANO.md`; MIT, somente leitura). Estado: **fase A** (inventário e fronteira feitos; contrato das funções `ac*` em curso).
+N6-PLANO.md`; MIT, somente leitura). Estado: **fases A–F feitas** (resultados nas seções "Fases D–F"; relatório `docs/relatorios/HH14-RELATORIO.md`).
 
 ## Critério de saída (ROADMAP)
 
@@ -150,6 +150,48 @@ e precisa ser medido contra o Flycast (oráculo com o driver real), não contra 
 | D | `acDigi*` (efeitos e streams do ADXT pelo anel na memória de som; posição de leitura e eventos pelo relógio lógico) | traço de comandos e áudio contra o oráculo (B) |
 | E | `acDsp*`: reverb nativo a partir de `HHREV.FPB/FOB` | comparação com o oráculo |
 | F | Mods (amostra por nome, stream por nome, idioma), diagnóstico por evento, promoção | matriz de cenas dos dois discos; sonda sem AICA no modo nativo |
+
+## Fases D–F (2026-10-27)
+
+**Provedor nativo** (`transitional/audio_device`, `--audio nativo`; padrão na janela). Os funis do Audio64 até a AICA
+(sonda do HH07 e, no nativo, a sonda nos caminhos que só rodam com o som vivo) viram slots: `_acG2SetHostCommand`
+0x8C122440, `acG2Write`/`Read`/`Fill`/`ReadLong`/`WriteLong` (0x8C122784, 0x8C122602, 0x8C12250E, 0x8C1226AC,
+0x8C12271C), a limpeza do DSP 0x8C12234C, `acDigiGetCurrentReadPosition` 0x8C120610 (lê o ponteiro da tabela direto da
+RAM de som) e o início do DMA do G2 0x8C123564 (único escritor de `ADSTAG`…`ADST`). RAM de som e registradores nativos; o
+driver reconstruído:
+- comandos 0x30 (SetLoopPoints, só a sombra), 0x81, 0x8A, 0x90–0x98, 0x9A–0x9D, 0xAC, 0xAD com a semântica dos handlers;
+  MultiPlay/MultiStop: a palavra em +4 cobre as portas 63..32 e a em +8 as 31..0 (0x3CD4 conta de 63 a 0);
+- boot do ARM (bit 0 de 0x2C00 de 1 para 0): a versão 0x00030040 em 0xEC/0xB408 e MVOL 15 (0x120–0x154);
+- passada do laço principal a cada 32 amostras: posição atual/anterior em 0xB34/0xC34, fim sem laço (porta inativa),
+  eventos (alvo em 0xD34, cruzamento com volta), anel de mensagens 0xAEC–0xB2B com o ponteiro em 0xE4, MCIPD bit 5 e o
+  nível externo da AICA no INTC do Holly (ISTEXT bit 1; `holly_intc_set_external`);
+- DMA do G2: o pedido da cabeça da fila do Audio64 (`S+0xAC`/`S+0xB4`) copiado na RAM nativa e o fim do DMA no ISTNRM
+  bit 15; o tratador do jogo (0x8C1234A2) retira o pedido, grava 802 e chama o callback; ocupado até o reconhecimento.
+Cópias com o outro lado na própria RAM de som (o jogo transmite amostras longas residentes nela para um anel) usam a RAM
+nativa.
+
+**Motor** (`native/audio/aica_channels`): 64 canais que leem a RAM de som enquanto tocam (PCM 16/8, ADPCM com o estado
+do LSA no formato 2 e contínuo no 3), laço com **LEA exclusivo** (o canal toca LSA..LEA−1; evidência: o CRI programa
+LEA = tamanho do anel e copia o início depois do fim; com LEA inclusivo o ADPCM longo perde o estado na primeira volta e
+o estéreo da música do título se descorrelaciona, 0,83 → 0,28, com o lado esquerdo 10× mais alto), pitch OCT/FNS em
+16.16, ganhos TL + DISDL e pan DIPAN (curvas do N6 do BS), envio ISEL/IMXL ao DSP (`aica_dsp`, os programas `HHREV` que
+o jogo instala por 0x9A/0x9B), MVOL/MONO. Avança pelo relógio lógico (44 100 amostras por segundo de tempo do jogo).
+
+**Correções fora do áudio expostas pelo som vivo:** `gdFsSetDir` (0x8C15D06E) no provedor nativo de arquivos (o jogo
+torna `\Streams` o diretório corrente antes de cada stream; sem ele os streams eram procurados em `\MOVIES`).
+
+**Oráculo (fase B, Flycast com o driver real):** no primeiro MultiPlay da música do título, a sombra do driver para as
+portas 14/15 (SA, PCMS, LSA, LEA, OCT, FNS, TL, DISDL, DIPAN, ISEL, IMXL) é igual à do driver nativo; o anel tem dados do
+CRI (no nativo, mais cedo: o DMA nativo termina na hora). A saída livre do Flycast (driver "disk" do SDL, 294 s sem
+entrada: logos, filme de abertura, noticiário) dá referência de nível: música/filme 1 400–2 400 RMS sem saturação.
+
+**Mods (fase F):** arquivos do disco em `modsssets` (HH08); `hh-builder --audio-mod` converte WAV PCM para o formato
+dos streams de fala (`encode_aica_wav`: cabeçalho idêntico ao original, testado nos dois discos). `docs/MODS-AUDIO.md`.
+
+**Portão** `tests/diff/hh14_audio.py` (roteiro `newgame_area1_nativo`, 5 600 VBlanks): A1 driver sem comandos
+desconhecidos, 53 key-on, 111 eventos, streams em STREAMS; A2 da AICA só o RTC (HH15), nenhum DMA do G2 pelo Audio64;
+A3 WAV idêntico em duas execuções; A4 título L 1 809 / R 1 678 RMS, gameplay 6 922, saturação 0,013 %; A5 sombra igual à
+do oráculo.
 
 ## Próximos passos de preparação
 

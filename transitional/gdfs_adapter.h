@@ -38,13 +38,14 @@ struct Addresses {
         read, reqPio, reqRd32, wait, getStat, getTransStat, stop, getErr, initGdfs, driveStat;
     uint32_t discVar;  // variavel do jogo: disco atual (0/1 = disco 1, 2 = disco 2)
     uint32_t loadDir;  // gdFsLoadDir (stub, tabela[32]): (nome, dirrec)
+    uint32_t setDir;   // gdFsSetDir (stub): (dirrec) -> o diretorio carregado vira o corrente (HH14)
 };
 
 // Head Hunter (hedhunter_v1006_a/b: o executavel e o mesmo nos dois discos fora de um dword).
 constexpr Addresses kHeadHunter = {
     0x8C15D09A, 0x8C15C7A0, 0x8C15C7B8, 0x8C15C7F0, 0x8C15C80A, 0x8C15C824, 0x8C15C83E, 0x8C15C88A,
     0x8C15C8A0, 0x8C15C8C8, 0x8C15C8E2, 0x8C15C970, 0x8C15CA48, 0x8C15C6B4, 0x8C15CD68, 0x8C15CD80,
-    0x8C15CD96, 0x8C15CEC4, 0x8C15C746, 0x8C15D150, 0x8C15174C, 0x8C15D042,
+    0x8C15CD96, 0x8C15CEC4, 0x8C15C746, 0x8C15D150, 0x8C15174C, 0x8C15D042, 0x8C15D06E,
 };
 
 constexpr uint32_t kTokenTag = 0x7E000000;

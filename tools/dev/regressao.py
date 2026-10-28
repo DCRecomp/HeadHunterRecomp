@@ -274,12 +274,21 @@ def step_gates_hh13():
 
 
 def step_gates_hh14():
-    # HH14: nucleo de audio (ADPCM, mixer, WAV, DSP) com os streams e o reverb do disco (HH14_STREAMS, HH14_REVERB)
-    need('HH14_STREAMS'), need('HH14_REVERB')
-    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh14_audio_tests$', '--no-tests=error', '--output-on-failure'],
-           env={'HH_EXIGIR_DADOS': '1'}, timeout=3600)
-    if r.returncode != 0 or 'Skipped' in r.stdout or ' hh14_audio_tests ' not in r.stdout:
+    # HH14: nucleo de audio (ADPCM, mixer, WAV, DSP, canais) com os streams e o reverb do disco (HH14_STREAMS,
+    # HH14_REVERB) e o audio nativo no roteiro newgame_area1_nativo, com o oraculo do Flycast (HH14_ORACULO)
+    need('HH_DATA_DIR'), need('HH14_STREAMS'), need('HH14_REVERB'), need('HH14_ORACULO')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh14_audio(_tests)?$', '--no-tests=error', '--output-on-failure',
+            '--timeout', '7200'], env={'HH_EXIGIR_DADOS': '1'}, timeout=14400)
+    passed = [n for n in ('hh14_audio_tests', 'hh14_audio')
+              if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 2:
         raise RuntimeError('portoes do HH14 falharam, foram ignorados ou nao rodaram')
+    # os formatos do disco 2 (streams WAV mono/estereo, cabecalho reconvertido, reverb): os mesmos unitarios
+    r2 = sh([EXE('tests', 'Release', 'hh14_audio_tests.exe')],
+            env={'HH_EXIGIR_DADOS': '1', 'HH14_STREAMS': need('HH14_STREAMS2'), 'HH14_REVERB': need('HH14_REVERB2')},
+            timeout=3600)
+    if r2.returncode != 0 or ' 0 falhas' not in r2.stdout:
+        raise RuntimeError('unitarios de audio do HH14 falharam com os dados do disco 2')
 
 
 def step_area1():
@@ -328,7 +337,8 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh11', step_gates_hh11, ['HH_DATA_DIR', 'HH11_ORACULO']),
          ('portoes_hh12', step_gates_hh12, ['HH_DATA_DIR']),
          ('portoes_hh13', step_gates_hh13, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
-         ('portoes_hh14', step_gates_hh14, ['HH14_STREAMS', 'HH14_REVERB']),
+         ('portoes_hh14', step_gates_hh14, ['HH_DATA_DIR', 'HH14_STREAMS', 'HH14_REVERB', 'HH14_STREAMS2', 'HH14_REVERB2',
+                                            'HH14_ORACULO']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 

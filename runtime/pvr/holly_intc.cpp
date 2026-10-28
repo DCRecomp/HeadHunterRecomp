@@ -101,6 +101,11 @@ uint32_t holly_irl_level(uint64_t cycles) {
     return 0;
 }
 
+void holly_intc_set_external(uint32_t bits, bool on) {
+    if (on) reg(kIstExt) |= bits;
+    else reg(kIstExt) &= ~bits;
+}
+
 void holly_intc_reset(uint64_t cycles) {
     g_regs.fill(0);
     g_last    = cycles;
@@ -115,6 +120,7 @@ bool holly_intc_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
     if (p < kBase || p >= kBase + kSize || size != 4) return false;
     update(time_now(c));
     v = reg(p);
+    if (p == kIstNrm && reg(kIstExt)) v |= 1u << 30;  // HH14: resumo do ISTEXT (so com a fonte externa da AICA)
     if (g_clock_log && (p == kIstNrm || p == kIstExt || p == kIstErr)) clock_log_read(ClockRead::Ist, v);
     return true;
 }
@@ -123,7 +129,9 @@ bool holly_intc_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
     const uint32_t p = canon(a);
     if (p < kBase || p >= kBase + kSize || size != 4) return false;
     update(time_now(c));
-    if (p == kIstNrm || p == kIstExt || p == kIstErr) {
+    if (p == kIstExt) {
+        // nivel das fontes externas: so a fonte o apaga (HH14)
+    } else if (p == kIstNrm || p == kIstErr) {
         reg(p) &= ~v;  // escrever 1 limpa
     } else {
         // Diagnostico: HH_PVR_DEBUG=1 registra mudancas das mascaras IML*

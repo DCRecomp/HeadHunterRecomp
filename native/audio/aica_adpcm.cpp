@@ -18,6 +18,8 @@ int16_t step(uint8_t nib, AicaAdpcmState& st) {
 }
 } // namespace
 
+int16_t aica_adpcm_step(uint8_t nibble, AicaAdpcmState& st) { return step(nibble, st); }
+
 void aica_adpcm_decode(std::span<const uint8_t> data, std::vector<int16_t>& out, AicaAdpcmState& st, size_t samples) {
     const size_t n = std::min(samples, data.size() * 2);
     out.reserve(out.size() + n);

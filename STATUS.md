@@ -20,8 +20,8 @@ Atualizado em 2026-10-25. Este arquivo é a fonte autoritativa do checkpoint.
 | HH11 | CONCLUIDA | `docs/relatorios/HH11-RELATORIO.md` (saves nativos: API bu 1.47 sobre arquivos; chamadas e arquivo iguais ao jogo original no Flycast com VMU; escrita atomica, reinstalacao mantem os saves; exportar/importar VMS) |
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
-| HH14 | EM_ANDAMENTO | — (áudio nativo, `docs/planos/HH14-PLANO.md`: fase A feita (fronteira `ac*`, opcodes e leitura do driver); fase C feita (núcleo de áudio do BS, ADPCM estéreo do HH); próxima: fase D) |
-| HH15 | PENDENTE | — |
+| HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
+| HH15 | EM_ANDAMENTO | — (fim do tempo guest e remoção do legado) |
 | HH16 | PENDENTE | — |
 | HH17 | PENDENTE | — |
 | HH18 | PENDENTE | — (Builder com Recompiler/Developer antecipado em 2026-10-25; distribuição final pendente) |
@@ -279,7 +279,7 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
-### HH14 (2026-10-27, em andamento)
+### HH14 (2026-10-27, concluída)
 
 - Plano `docs/planos/HH14-PLANO.md`; inventário reproduzível `tools/dev/hh14_inventario.py` (streams, pacotes AHFF,
   resumo do `HH_FN_PERFIL`). Músicas: 21 + 17 streams CRI ADX; falas e efeitos: WAV com ADPCM da AICA (streams e
@@ -295,6 +295,17 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   18 bytes com preenchimento e ao ADPCM estéreo com bytes alternados (correlação L/R 0,96–0,999 nas falas das cenas,
   `tools/dev/hh14_estereo.py`); `hh14_audio_tests` 22/22 nos dois discos (74 + 44 WAV, reverb `HHREV`); etapa
   `portoes_hh14` na regressão; `ctest` completo 46/46.
+- Fases D–F: `transitional/audio_device` (driver reconstruído: comandos, boot, posições, eventos, interrupção pelo INTC do
+  Holly, DMA do G2 pela fila do Audio64) e `native/audio/aica_channels` (64 canais na RAM de som, LEA exclusivo);
+  `gdFsSetDir` nativo (streams em `\Streams`); `--audio nativo` padrão na janela, `hh-run`/`--headless` no legado;
+  roteiro `newgame_area1_nativo` (filmes e áudio nativos); portão `tests/diff/hh14_audio.py` A1–A5 ok (oráculo do
+  Flycast: sombra das portas da música igual); mods por `modsssets` e `hh-builder --audio-mod` (`docs/MODS-AUDIO.md`).
+- Revisão Codex (`reviews/codex-hh14.log`), 5 achados: 3 aceitos e corrigidos (Stop/MultiStop pelo LPCTL do canal,
+  limpeza do DSP desliga o reverb, `--audio-mod` só mono/estéreo), 1 aceito em parte (disco 2 pelos formatos na
+  regressão; cenas com a campanha, HH16; comparação byte a byte do anel rejeitada por ser diferença de tempo), 1
+  rejeitado com evidência (LEA = tamanho − 1 é o que o driver grava; o hardware também não toca a última amostra).
+- Limitações: cenas do disco 2 (HH16); gameplay sem trecho correspondente no Flycast; envelope/filtro/LFO não modelados
+  (o driver os deixa em repouso); RTC da AICA fica com o tempo (HH15).
 
 ### HH13 (2026-10-26 a 2026-10-27, concluída)
 
@@ -418,7 +429,7 @@ branch `main`. O primeiro commit continua aguardando pedido explícito.
 
 ## Próxima ação permitida
 
-Prosseguir pelo **HH14** (áudio nativo: motor próprio no lugar do `AUDIO64.DRV`, sem ARM7) e as etapas seguintes. O teste da passagem real do
+Prosseguir pelo **HH15** (fim do tempo guest e remoção completa do legado) e as etapas seguintes. O teste da passagem real do
 disco 1 para o 2 fica para depois (HH11/HH16). Commits por etapa autorizados pelo mantenedor
 (2026-10-25).
 Parar somente em `DECISAO_NECESSARIA` legítima ou quando

@@ -45,6 +45,10 @@ enum class VideoProvider { Legacy, Native };
 // decodificador do TA produz, desenhada no Vulkan (transitional/render_capture + native/render/vulkan), com recuo para o
 // software (motivo no resumo) sem Vulkan ou se o dispositivo cair.
 enum class RenderProvider { Software, Native };
+// HH14: audio do jogo. Legado: os funis do Audio64 tocam a AICA do runtime (sem o ARM7 o driver nao responde: o jogo
+// roda sem som). Nativo: a RAM de som e os comandos ao driver atendidos pela reconstrucao do AUDIO64.DRV
+// (transitional/audio_device + native/audio/aica_channels), som pelo relogio logico.
+enum class AudioProvider { Legacy, Native };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -61,6 +65,8 @@ struct HostOptions {
     VideoProvider         video = VideoProvider::Legacy;  // --video legado|nativo (HH12)
     bool                  videoAudio = false;  // audio dos filmes nativos no dispositivo (false: saida nula, headless)
     RenderProvider        render = RenderProvider::Software;  // --render software|nativo (HH13)
+    AudioProvider         audio  = AudioProvider::Legacy;     // --audio legado|nativo (HH14)
+    bool                  audioDevice = false;  // audio do jogo no dispositivo (false: so o motor, headless)
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.
     std::filesystem::path modsDir;

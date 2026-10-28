@@ -11,10 +11,12 @@
 //   hh-builder --disc <cdi> --disc2 <cdi> --out <recursos> --projeto <pasta> --somente-exportar
 //              so exporta (sem compilador, compilacao nem instalacao); [--tipo Release|Debug] no build
 //   hh-builder --filmes <pasta data> [--ffmpeg <ffmpeg.exe>]   so converte os filmes 4X (HH12) em data\video
+//   hh-builder --audio-mod <entrada.wav> <saida.ADP>   WAV PCM -> stream ADPCM da AICA do jogo (mods e dublagem, HH14)
 // Codigo de saida: 0 = HeadHunter.exe instalado e verificado; 1 = falha; 2 = uso;
 // 3 = cancelado (Ctrl+C).
 #include "builder_core.h"
 #include "child_process.h"
+#include "audio/sound_file.h"
 #include "video/movie_build.h"
 
 #define WIN32_LEAN_AND_MEAN
@@ -24,6 +26,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -81,6 +84,7 @@ int main() {
     Request req;
     defaultKit(req);
     std::filesystem::path moviesOnly;  // --filmes <data>: so converte os filmes de uma pasta data\ ja preparada
+    std::filesystem::path audioIn, audioOut;  // --audio-mod <entrada.wav> <saida.ADP> (HH14)
     for (size_t i = 1; i < args.size(); ++i) {
         const std::wstring& a    = args[i];
         const bool          more = i + 1 < args.size();
@@ -93,6 +97,7 @@ int main() {
         else if (a == L"--sdl3" && more) req.sdl3Dir = args[++i];
         else if (a == L"--ffmpeg" && more) req.ffmpeg = args[++i];
         else if (a == L"--filmes" && more) moviesOnly = args[++i];
+        else if (a == L"--audio-mod" && i + 2 < args.size()) audioIn = args[++i], audioOut = args[++i];
         else if (a == L"--vcvars" && more) req.vcvars = args[++i];
         else if (a == L"--vswhere" && more) req.vswhere = args[++i];
         else if (a == L"--verify-vblanks" && more) req.verifyVblanks = unsigned(std::stoul(args[++i]));
@@ -115,9 +120,32 @@ int main() {
                          "  hh-builder --disc <cdi> --disc2 <cdi> --out <recursos> --projeto <pasta> --somente-exportar\n"
                          "                (valida, prepara os dados em <recursos>, gera o C++ e exporta; sem compilador)\n"
                          "  hh-builder --filmes <pasta data> [--ffmpeg <ffmpeg.exe>]\n"
+                         "  hh-builder --audio-mod <entrada.wav> <saida.ADP>   (WAV PCM -> stream ADPCM do jogo, para\n"
+                         "                mods\\assets\\STREAMS: dublagem e trilhas; mono ou estereo, a taxa do WAV)\n"
                          "                (so converte os filmes 4X de uma pasta data\\ ja preparada em data\\video)\n");
             return 2;
         }
+    }
+    if (!audioIn.empty()) {  // HH14: conversao de um WAV para o formato dos streams do jogo (mods e dublagem)
+        std::string err;
+        const auto  s = hh::native::audio::load_sound(audioIn, &err);
+        if (!s) {
+            std::fprintf(stderr, "ERRO: %s\n", err.c_str());
+            return 1;
+        }
+        if (s->channels != 1 && s->channels != 2) {  // os streams do jogo sao mono ou estereo
+            std::fprintf(stderr, "ERRO: %s tem %u canais; use mono ou estereo\n", audioIn.string().c_str(), unsigned(s->channels));
+            return 1;
+        }
+        const auto    bytes = hh::native::audio::encode_aica_wav(*s);
+        std::ofstream out(audioOut, std::ios::binary);
+        if (!out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()))) {
+            std::fprintf(stderr, "ERRO: nao foi possivel gravar %s\n", audioOut.string().c_str());
+            return 1;
+        }
+        std::printf("%s: %u Hz, %u canal(is), %.1f s -> %zu bytes (ADPCM da AICA)\n", audioOut.string().c_str(), s->rate,
+                    unsigned(s->channels), double(s->frames()) / s->rate, bytes.size());
+        return 0;
     }
     if (!moviesOnly.empty()) {  // HH12: so os filmes (testes e regressao; o Builder completo faz isto no passo dos dados)
         video::MovieBuildOptions mo;

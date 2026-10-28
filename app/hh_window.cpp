@@ -10,7 +10,10 @@
 //   HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
 //              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
 //              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo]
-//              [--mods <pasta>]
+//              [--audio legado|nativo] [--mods <pasta>]
+// Audio (HH14, --audio nativo, padrao na janela): a reconstrucao do driver de som (transitional/audio_device) e o motor
+// nativo de canais, pelo XAudio2; o --headless fica no legado (roteiro de referencia, gravado com o som mudo), salvo
+// --audio nativo.
 // Render (HH13, --render nativo, padrao na janela): a IR do TA desenhada no Vulkan, igual ao software na rota de
 // referencia; sem Vulkan ou se o dispositivo cair, o software (o --headless fica no software, salvo --render nativo).
 // Filmes (HH12, --video nativo, padrao na janela): os MP4 que o Builder converteu dos 4X (data\video), com audio
@@ -216,12 +219,13 @@ int main(int argc, char** argv) {
     std::string     logPath;
     uint64_t        hashEvery = 0;
     bool            headless  = false;
-    bool            savesSet = false, savesPortable = false, videoSet = false, renderSet = false;
+    bool            savesSet = false, savesPortable = false, videoSet = false, renderSet = false, audioSet = false;
     fs::path        vmsExport, vmsImport;
     std::string     vmsName;
     opt.realtime = true;
     opt.saves    = hh::SavesProvider::Native;
     opt.video    = hh::VideoProvider::Native;  // HH12: filmes nativos padrao na janela (promovido; legado como reserva)
+    opt.audio    = hh::AudioProvider::Native;  // HH14: audio nativo padrao na janela (legado: sem o ARM7 o jogo fica mudo)
     opt.render   = hh::RenderProvider::Native;  // HH13: Vulkan padrao na janela (recuo automatico para o software)
     opt.data     = exeDir() / "data";
     for (int i = 1; i < argc; ++i) {
@@ -253,6 +257,9 @@ int main(int argc, char** argv) {
         else if (a == "--video" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
             opt.video = std::string(argv[++i]) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy, videoSet = true;
+        else if (a == "--audio" && i + 1 < argc &&
+                 (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
+            opt.audio = std::string(argv[++i]) == "nativo" ? hh::AudioProvider::Native : hh::AudioProvider::Legacy, audioSet = true;
         else if (a == "--render" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "software" || std::string(argv[i + 1]) == "nativo"))
             opt.render = std::string(argv[++i]) == "nativo" ? hh::RenderProvider::Native : hh::RenderProvider::Software, renderSet = true;
@@ -264,7 +271,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
                                  "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
                                  "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--saves legado|nativo] "
-                                 "[--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo] [--render software|nativo] "
+                                 "[--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo] [--audio legado|nativo] [--render software|nativo] "
                                  "[--mods <pasta>]\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-exportar <pasta>\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-importar <arquivo.vms> "
@@ -337,6 +344,8 @@ int main(int argc, char** argv) {
     if (headless && !videoSet) opt.video = hh::VideoProvider::Legacy;
     if (headless && !renderSet) opt.render = hh::RenderProvider::Software;  // HH13: verificacao sem depender da GPU
     opt.videoAudio = !headless;  // HH12: audio dos filmes nativos so com a janela (headless: saida nula)
+    if (headless && !audioSet) opt.audio = hh::AudioProvider::Legacy;  // HH14: o roteiro de referencia e o legado
+    opt.audioDevice = !headless;
     // modo portatil gravado pelo Recompiler (instalacao.toml ao lado do executavel; vale ao abrir o jogo direto)
     {
         std::string warn;
