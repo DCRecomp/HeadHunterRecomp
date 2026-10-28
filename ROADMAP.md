@@ -34,6 +34,7 @@ Uma etapa só termina quando:
 | HH14 | Áudio nativo e moddável | V2 |
 | HH15 | Fim do tempo guest e remoção completa do legado | V3 |
 | HH16 | Campanha completa determinística nos dois discos | V3 |
+| HH19 | Remasterização: edições Original e Remastered do mesmo núcleo (executada depois do HH16 e antes do HH17) | V3 |
 | HH17 | Gameplay nomeado, projeto editável e mods | V3 |
 | HH18 | Recompiler/Developer finais, pacote e revisão de lançamento | V3 |
 
@@ -240,6 +241,23 @@ Entregáveis:
 - triagem e correção de todos os bloqueadores P0/P1.
 
 Critério de saída: duas execuções limpas completam a campanha; uma delas parte de instalação recém-gerada pelo Builder.
+
+## HH19 — Remasterização (equivalente ao N9 do Blue Stinger)
+
+Incluída pelo mantenedor em 2026-10-28. O número é o próximo livre (as etapas existentes não são renumeradas); a ordem
+de execução é depois do HH16 e antes do HH17, como o N9 do BS fica entre o N8 e o N10. Só começa com o HH15 e o HH16
+concluídos e autorização explícita do mantenedor. Plano: `docs/planos/HH19-PLANO.md`.
+
+Entregáveis:
+
+- duas edições instaláveis do mesmo núcleo C++ (Original, fiel ao Dreamcast, e Remastered), escolhidas no Builder por
+  um perfil de edição gravado na instalação, sem fork nem branch por edição;
+- experiência de PC na Remastered: menus e configurações no jogo, saves sem a interface de VMU, controles modernos,
+  legendas ligadas, widescreen, gráficos e iluminação, texturas HD, filmes e áudio substituíveis, acessibilidade;
+- a Original preservada e validada contra as referências existentes (estado, quadros do modo fiel, Flycast).
+
+Critério de saída: as duas edições instaladas pelo Builder passam as validações próprias; a Original continua
+equivalente às referências; nenhuma camada legada removida no HH15 volta.
 
 ## HH17 — Gameplay editável e mods
 

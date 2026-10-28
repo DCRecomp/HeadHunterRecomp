@@ -40,7 +40,7 @@ independente, presets CMake e lições de ordem/tempo do port nativo.
 | HH16 | (dentro do N8/N10) | Campanha completa; o HH a torna etapa explícita |
 | HH17 | N10 | Gameplay elevado, mods |
 | HH18 | N10 / revisão final | Recompiler/Developer, pacote |
-| — | N9 Remasterização | Específico do BS, por decisão do mantenedor; fora do escopo do HH |
+| HH19 | N9 | Remasterização (incluída pelo mantenedor em 2026-10-28; número livre seguinte, executada entre o HH16 e o HH17) |
 
 ## 3. Regras equivalentes
 

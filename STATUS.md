@@ -23,6 +23,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
 | HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0 concluída: referências pré-corte; HH15.1 em curso: cadência B e serviços do tempo lógico, 0 entregas pelo quantum de ciclos) |
 | HH16 | PENDENTE | — |
+| HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
 | HH18 | PENDENTE | — (Builder com Recompiler/Developer antecipado em 2026-10-25; distribuição final pendente) |
 
