@@ -257,7 +257,7 @@ barramento sem dispositivos com o mesmo efeito do modelo sem controle; o modelo 
      (buffers, prazo, MDST antes e depois do prazo, segundo disparo e contadores contra o modelo com o controle
      desconectado; uma mutação de 1% no prazo reprova).
 
-### HH15.5 (em andamento)
+### HH15.5 (concluída, 2026-10-29)
 
 O vídeo legado não tem módulo próprio no runtime: é o decodificador 4X do código gerado sobre a AICA e o PVR
 simulados. O que o mantinha no produto era o `--headless` (verificação da instalação contra a rota do HH06, gravada com
@@ -271,3 +271,14 @@ verificação do produto rebaseada no caminho nativo; as rotas históricas ficam
    (`regressao.py --gravar-produto`, `HH15_PRODUTO_HASHES`, privada em `snapshots/hh15`); a etapa `builder` da
    regressão compara o produto instalado pelo Builder com ela. A rota histórica do HH06 continua na etapa
    `roteiro_area1` (`hh-run`).
+3. **Recusa antes de qualquer dado**: as cinco recusas (`--arquivos/--controles/--saves/--video/--audio legado`) vêm
+   antes da conferência da instalação; negativo `hh15_produto_recusa_legado` (saída 2 e mensagem para cada uma, e a
+   mesma chamada com `nativo` não sai com 2), que reprovava antes da mudança (saída 1, a instalação era conferida
+   primeiro).
+4. **Filmes**: o adaptador nativo não tem retorno ao decodificador 4X (filme ausente é o `open` original falhando,
+   `ret 1`, nunca o caminho legado). Na rota do produto: 3 `open`, 3 `play`, 732 quadros, 0 ausentes, 0 pulados, 60
+   legendas; os 94 hashes da referência do produto (que atravessam os filmes) iguais no `hh-run` e no
+   `HeadHunter.exe` instalado (etapa `builder`, `analysis/hh15/regressao2.log`). Regressão integral 14/14; ctest
+   63/63.
+5. Fica para a HH15.7: o quadro do filme é composto no lugar do quadro do PVR e o ritmo do filme lê
+   `holly_vblank_count()`; os dois saem com o corte do PVR/Holly (ponte do SPG).

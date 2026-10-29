@@ -320,6 +320,25 @@ int main(int argc, char** argv) {
         }
         return failed ? 1 : 0;
     }
+    // HH15.4 (antes de qualquer dado): o modelo do Maple com o controle nao existe no produto (so no hh-run)
+    if (opt.controls == hh::ControlsProvider::Legacy) {
+        std::fprintf(stderr, "ERRO: --controles legado exige o modelo do Maple, que nao existe no produto (use o hh-run)\n");
+        return 2;
+    }
+    // HH15.3: o gdFs original le setores pelo drive simulado, que nao existe no produto (so no hh-run, --sistema hle)
+    if (opt.files == hh::FileProvider::Legacy) {
+        std::fprintf(stderr, "ERRO: --arquivos legado exige o drive simulado, que nao existe no produto (use o hh-run)\n");
+        return 2;
+    }
+    // HH15.4/HH15.5/HH15.6 (revisao Codex): os provedores legados de saves, filmes e audio dependem do hardware
+    // simulado (VMU pelo Maple, decodificador 4X com a AICA, AICA) e nao existem no produto (so no hh-run)
+    for (const auto& [legacy, what] : {std::pair{opt.saves == hh::SavesProvider::Legacy && savesSet, "--saves legado"},
+                                       std::pair{opt.video == hh::VideoProvider::Legacy && videoSet, "--video legado"},
+                                       std::pair{opt.audio == hh::AudioProvider::Legacy && audioSet, "--audio legado"}})
+        if (legacy) {
+            std::fprintf(stderr, "ERRO: %s exige o hardware simulado, que nao existe no produto (use o hh-run)\n", what);
+            return 2;
+        }
     try {
         const hh::InstallData inst = hh::resolve_install(opt.data);
         opt.filesManifest          = inst.manifest;
@@ -342,25 +361,6 @@ int main(int argc, char** argv) {
         return 2;
     }
     TempSaves tempSaves;
-    // HH15.4: o modelo do Maple com o controle nao existe no produto (barramento sem dispositivos; so no hh-run)
-    if (opt.controls == hh::ControlsProvider::Legacy) {
-        std::fprintf(stderr, "ERRO: --controles legado exige o modelo do Maple, que nao existe no produto (use o hh-run)\n");
-        return 2;
-    }
-    // HH15.3: o gdFs original le setores pelo drive simulado, que nao existe no produto (so no hh-run, --sistema hle)
-    if (opt.files == hh::FileProvider::Legacy) {
-        std::fprintf(stderr, "ERRO: --arquivos legado exige o drive simulado, que nao existe no produto (use o hh-run)\n");
-        return 2;
-    }
-    // HH15.4/HH15.5/HH15.6 (revisao Codex): os provedores legados de saves, filmes e audio dependem do hardware
-    // simulado (VMU pelo Maple, decodificador 4X com a AICA, AICA) e nao existem no produto (so no hh-run)
-    for (const auto& [legacy, what] : {std::pair{opt.saves == hh::SavesProvider::Legacy && savesSet, "--saves legado"},
-                                       std::pair{opt.video == hh::VideoProvider::Legacy && videoSet, "--video legado"},
-                                       std::pair{opt.audio == hh::AudioProvider::Legacy && audioSet, "--audio legado"}})
-        if (legacy) {
-            std::fprintf(stderr, "ERRO: %s exige o hardware simulado, que nao existe no produto (use o hh-run)\n", what);
-            return 2;
-        }
     // HH15.1: tempo logico (--tempo experimental) padrao na janela (portao hh15_tempo); o --headless fica no estavel
     if (!headless && !timeSet) opt.time = hh::TimeProvider::Experimental;
     // o --headless (verificacao do produto: o roteiro newgame_area1_nativo) usa os provedores nativos, com os saves num

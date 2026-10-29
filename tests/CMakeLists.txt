@@ -199,6 +199,8 @@ if(TARGET HeadHunter AND MSVC)
   add_test(NAME hh15_produto_recusa
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:HeadHunter> -DVARS=${PROJECT_SOURCE_DIR}/runtime/debug/validacao_vars.h
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa.cmake)
+  add_test(NAME hh15_produto_recusa_legado
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:HeadHunter> -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa_legado.cmake)
 endif()
 
 # HH07.7: ordem de eventos (VBlank, interrupcao, threads, longjmp) identica em duas execucoes do
