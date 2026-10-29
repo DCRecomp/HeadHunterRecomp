@@ -13,7 +13,10 @@
 #include "pvr/pvr_video.h"
 #include "pvr/ta.h"
 #include "pvr/vram.h"
+#include "render/kamui/display_service.h"
+#include "render/kamui/frame_state.h"
 #include "render/kamui/list_sink.h"
+#include "render/kamui/texture_heap.h"
 #include "render_capture.h"
 
 #include <array>
@@ -30,9 +33,8 @@ namespace hh::transitional::kamui {
 namespace {
 
 constexpr uint32_t kRegBase = 0x005F8000, kRegCount = 0x2000 / 4;  // o banco inteiro (o render le a paleta em 0x1000+)
-constexpr uint32_t kSoftReset = 0x008, kStartRender = 0x014, kListInit = 0x144, kListCont = 0x160;
-constexpr uint32_t kId = 0x000, kRevision = 0x004, kSpgStatus = 0x10C, kYuvCount = 0x150;
-constexpr uint32_t kIspBase = 0x128, kNextOpb = 0x134, kItpCurrent = 0x138, kNextOpbInit = 0x164;
+constexpr uint32_t kSoftReset = 0x008, kStartRender = 0x014, kListInit = 0x144, kListCont = 0x160, kSpgStatus = 0x10C;
+constexpr uint32_t kSpgControl = 0x0D0;
 constexpr uint32_t kListEndBit[5] = {1u << 7, 1u << 8, 1u << 9, 1u << 10, 1u << 21};  // ISTNRM, como pvr/ta.cpp
 constexpr uint32_t kBlock = 32;  // granularidade das marcas de memoria escrita
 
@@ -40,9 +42,10 @@ namespace nk = native::render::kamui;
 
 struct State {
     Mode                                 mode = Mode::Off;
-    std::array<uint32_t, kRegCount>      regs{};
+    // HH15.7c: o estado do quadro (registradores do funil) e a memoria das texturas, servicos nativos
+    nk::FrameState                       fs;
     std::array<bool, kRegCount>          regSet{};
-    std::vector<uint8_t>                 mem = std::vector<uint8_t>(kVramSize);
+    nk::TextureHeap                      heap;
     std::vector<uint8_t>                 dirty = std::vector<uint8_t>(kVramSize / kBlock);  // blocos escritos pelos funis
     // HH15.7b: as listas que chegam ao TA, no destino nativo (divididas como o TA divide, decodificadas direto para a IR)
     nk::ListSink                         list;
@@ -74,7 +77,7 @@ void memWrite(uint32_t addr, uint8_t v) {
     const int64_t o = vramOffset(addr);
     if (o < 0) return;
     State& s           = st();
-    s.mem[size_t(o)]   = v;
+    s.heap.data()[size_t(o)] = v;
     s.dirty[size_t(o) / kBlock] = 1;
 }
 
@@ -84,7 +87,7 @@ void textureWrite(uint32_t target, const uint32_t* d) {
     const uint32_t off = (target & 0x1FFFFFFF) & 0x00FFFFE0;
     for (int i = 0; i < 8; ++i) {
         const uint32_t o = vram_offset64(off + 4 * i);
-        std::memcpy(&s.mem[o], &d[i], 4);
+        std::memcpy(s.heap.data() + o, &d[i], 4);
         s.dirty[o / kBlock] = 1;
     }
 }
@@ -96,9 +99,9 @@ void compareAtStartRender() {
     for (uint32_t i = 0; i < kRegCount; ++i) {
         if (!s.regSet[i] || i * 4 == kSoftReset || i * 4 == kStartRender || i * 4 == kListInit) continue;  // disparos
         const uint32_t rt = pvr_reg(kRegBase + i * 4);
-        if (rt != s.regs[i]) {
+        if (rt != s.fs.reg(i * 4)) {
             char b[96];
-            std::snprintf(b, sizeof b, "registrador %03X: nativo %08X, runtime %08X (render %llu)", i * 4, s.regs[i], rt,
+            std::snprintf(b, sizeof b, "registrador %03X: nativo %08X, runtime %08X (render %llu)", i * 4, s.fs.reg(i * 4), rt,
                           (unsigned long long)s.stats.renders);
             mismatch(s.stats.regMismatch, b);
         }
@@ -134,7 +137,7 @@ void compareAtStartRender() {
         if (!s.dirty[blk]) continue;
         s.dirty[blk] = 0;
         ++s.stats.memBlocksChecked;
-        if (std::memcmp(&s.mem[blk * kBlock], v + blk * kBlock, kBlock) != 0) {
+        if (std::memcmp(s.heap.data() + blk * kBlock, v + blk * kBlock, kBlock) != 0) {
             char b[96];
             std::snprintf(b, sizeof b, "memoria: bloco %06zX diferente (render %llu)", blk * kBlock,
                           (unsigned long long)s.stats.renders);
@@ -189,9 +192,9 @@ template <class F> void withNative(F&& fn) {
         }
     } restore;
     // tempo do video (SPG, 0x0C8-0x0E0): continua no runtime (HH15), escrito tambem fora do funil (0x8C169FE0)
-    for (uint32_t off = 0x0C8; off <= 0x0E0; off += 4) s.regs[off / 4] = pvr_reg(kRegBase + off);
-    pvr_regs_set_override(s.regs.data());
-    vram_set_override(s.mem.data());
+    for (uint32_t off = 0x0C8; off <= 0x0E0; off += 4) s.fs.set(off, pvr_reg(kRegBase + off));
+    pvr_regs_set_override(s.fs.data());
+    vram_set_override(s.heap.data());
     ta_set_override(&s.taCopy, &s.taBytes);
     fn();
 }
@@ -256,27 +259,45 @@ template <class F> void runLoop(Sh4Context* c, const LoopShape& l, uint32_t n, F
     if (!c->redirect) c->pc = pc;
 }
 
-// HH15.7b: o render pela IR do ListSink no estado nativo emprestado (withNative): os parametros do quadro dos
-// registradores e do fundo, as listas decodificadas direto, o renderizador da captura e a imagem no framebuffer. Um
-// render que a IR nao representa inteiro, ou que o renderizador nao desenhou, e erro explicito.
+// Um aviso por motivo (como o note do pvr_render): o que o rasterizador nao representa e foi omitido.
+void noteOnce(bool& seen, const char* what) {
+    if (seen) return;
+    seen = true;
+    std::fprintf(stderr, "[render] ainda nao suportado: %s (omitido)\n", what);
+}
+
+// HH15.7b-c: o render pela IR do ListSink sobre o estado nativo (sem emprestimo ao banco do PVR nem a VRAM do runtime):
+// os parametros do quadro do estado e da memoria das texturas, as listas decodificadas direto, o renderizador da captura
+// (com os texels pela memoria nativa) e a imagem no framebuffer. Um render que a IR nao representa inteiro, ou que o
+// renderizador nao desenhou, e erro explicito.
 void renderList(Sh4Context* c) {
     // o ambiente de ponto flutuante do render (o do guest, arredondamento para zero e FTZ/DAZ, nao vale nas contas do
     // decodificador e do quadro), como no caminho do TA (revisao Codex)
     const native::render::soft::FpEnv fpEnv;
-    State&                s    = st();
-    const uint32_t        clip = s.regs[0x13C / 4];  // TA_GLOB_TILE_CLIP
-    const uint32_t        w = ((clip & 0x3F) + 1) * 32, h = (((clip >> 16) & 0xF) + 1) * 32;
-    const native::render::FrameParams fp = render_capture::frame_params(w, h);
-    pvr_check_region_sort(fp.translucent_autosort);
+    State&                            s = st();
+    const uint32_t                    w = s.fs.render_width(), h = s.fs.render_height();
+    const native::render::FrameParams fp = nk::frame_params(s.fs, s.heap, w, h);
+    static bool                       regionSeen = false, backgroundSeen = false;
+    if (nk::region_sort_differs(s.fs, s.heap, fp.translucent_autosort))
+        noteOnce(regionSeen, "Region Array com modo de ordenacao por tile diferente do global");
+    bool textured = false;
+    nk::background_color(s.fs, s.heap, &textured);
+    if (textured) noteOnce(backgroundSeen, "fundo com textura");
     nk::ListFrame lf;
-    s.list.build(fp, (s.regs[0x0E4 / 4] & 0x1F) * 32, lf);  // TEXT_CONTROL
+    s.list.build(fp, s.fs.texture_stride(), lf);
     if (lf.unsupported)
         sh4_fatal(c, "render com vertices de estados que a IR nao representa (textura que o decodificador nao le ou dois volumes)",
                   c->pc, lf.unsupported);
     std::vector<uint32_t> image(size_t(w) * h, fp.clear_color);
     if (!render_capture::draw_list(lf, w, h, image))
         sh4_fatal(c, "render que o renderizador da IR nao desenhou (motivo no resumo [render-soft])", c->pc, 0);
-    pvr_write_framebuffer(image, w, h);
+    nk::write_framebuffer(s.fs, s.heap, image, w, h);
+}
+
+// Negativos dos comparadores do estado nativo (HH_KAMUI_NATIVO_MUTACAO=framebuffer|video): o lado nativo muda um pixel
+bool nativeMutation(const char* what) {
+    static const char* m = std::getenv("HH_KAMUI_NATIVO_MUTACAO");
+    return m && std::strcmp(m, what) == 0;
 }
 
 void fRegWriteNative(Sh4Context* c) {
@@ -293,11 +314,9 @@ void fRegWriteNative(Sh4Context* c) {
         // verificacao, o caminho do TA (decodificador do legado) sobre as mesmas listas emprestadas, e a captura confere
         // o ListSink com ele
         if (render_capture::draws_lists()) {
-            withNative([&] {
-                pvr_start_render_with(c, s.list.bytes(), s.list.params().size(), &renderList, [] {
-                    for (const nk::ListParam& p : st().list.params()) pvr_render_dump_param(p.list, p.w, p.words);
-                });
-            });
+            pvr_start_render_with(c, s.list.bytes(), s.list.params().size(), &renderList, [] {
+                for (const nk::ListParam& p : st().list.params()) pvr_render_dump_param(p.list, p.w, p.words);
+            }, s.fs.data());
         } else {
             s.taCopy.clear();
             for (const nk::ListParam& p : s.list.params()) {
@@ -308,20 +327,28 @@ void fRegWriteNative(Sh4Context* c) {
             }
             s.taBytes = s.list.bytes();
             withNative([&] { pvr_start_render(c); });
+            // HH15.7c: a gravacao nativa do framebuffer poria os mesmos bytes que o caminho do TA gravou
+            uint32_t w = 0, h = 0;
+            if (const std::vector<uint32_t>* img = render_capture::last_image(w, h)) {
+                std::vector<uint32_t> im = *img;
+                if (nativeMutation("framebuffer") && !im.empty()) im[im.size() / 2] ^= 0x00FFFFFF;
+                ++s.stats.fbChecked;
+                if (nk::framebuffer_mismatch(s.fs, s.heap, im, w, h)) {
+                    char b[96];
+                    std::snprintf(b, sizeof b, "framebuffer do render %llu diferente da gravacao nativa",
+                                  (unsigned long long)s.stats.nativeRenders);
+                    mismatch(s.stats.fbMismatch, b);
+                }
+            }
         }
         return;
     }
-    if (off == kListInit) {
-        if (val & 0x80000000u) {
-            s.list.list_init();
-            s.regs[kNextOpb / 4]    = s.regs[kNextOpbInit / 4];
-            s.regs[kItpCurrent / 4] = s.regs[kIspBase / 4];
-        }
-        return;
+    // HH15.7c: a semantica do banco (comandos, registradores so de leitura, ponteiros do TA) no estado do quadro
+    switch (s.fs.write(off, val)) {
+    case nk::FrameState::Effect::ListInit: s.list.list_init(); break;
+    case nk::FrameState::Effect::ListContinue: s.list.list_continue(); break;  // continua as listas atuais
+    default: break;
     }
-    if (off == kListCont) s.list.list_continue();  // continua as listas atuais (como pvr/ta.cpp)
-    if (off == kSoftReset || off == kSpgStatus || off == kId || off == kRevision || off == kYuvCount) return;
-    s.regs[off / 4] = val;
 }
 
 void fRegReadNative(Sh4Context* c) {
@@ -331,11 +358,8 @@ void fRegReadNative(Sh4Context* c) {
     if (off >= 0x2000 || (off & 3)) return callOriginal(c, kRegRead);
     c->cycles += kRegReadCycles;  // antes da leitura, como no original (SPG_STATUS depende do instante)
     uint32_t v = 0;
-    if (off == kId) v = 0x17FD11DB;
-    else if (off == kRevision) v = 0x00000011;
-    else if (off == kSpgStatus) pvr_reg_read(c, kRegBase + off, 4, v);  // tempo do video (SPG): HH15
-    else if (off == kYuvCount) v = 0;
-    else v = s.regs[off / 4];
+    if (off == kSpgStatus) pvr_reg_read(c, kRegBase + off, 4, v);  // tempo do video (SPG): HH15.7d
+    else v = s.fs.read(off);
     GuestCall(c).ret(v);
 }
 
@@ -405,9 +429,20 @@ void fRegWrite(Sh4Context* c) {
     ++s.stats.regWrites;
     if (off < 0x400 && !(off & 3)) {
         if (off == kStartRender) compareAtStartRender();
-        if (off == kListInit) s.list.list_init();
-        if (off == kListCont) s.list.list_continue();
-        s.regs[off / 4] = val, s.regSet[off / 4] = true;
+        // HH15.7c (revisao Codex): a semantica do estado do quadro nativo (a do modo nativo), conferida com o banco do PVR
+        // do runtime em cada STARTRENDER: o valor guardado ou nao, os comandos e os ponteiros do TA
+        using FS = nk::FrameState;
+        switch (s.fs.write(off, val)) {
+        case FS::Effect::ListInit:
+            s.list.list_init();
+            s.regSet[FS::kTaNextOpb / 4] = s.regSet[FS::kTaItpCurrent / 4] = true;
+            break;
+        case FS::Effect::ListContinue: s.list.list_continue(); break;
+        default: break;
+        }
+        const bool kept = off != FS::kStartRender && off != FS::kTaListInit && off != FS::kSoftReset &&
+                          off != FS::kSpgStatus && off != FS::kId && off != FS::kRevision && off != FS::kTaYuvTexCnt;
+        if (kept) s.regSet[off / 4] = true;
     }
     const uint32_t before = ta_bytes();
     callMeasured(c, kRegWrite, off, 0, 0);
@@ -510,10 +545,15 @@ void install(BoundaryRegistry& registry, Mode m) {
     s        = State{};
     s.mode   = m;
     // o estado nativo parte do atual (o que o BIOS deixou na VRAM e nos registradores)
-    std::memcpy(s.mem.data(), vram_data(), kVramSize);
-    for (uint32_t i = 0; i < kRegCount; ++i) s.regs[i] = pvr_reg(kRegBase + 4 * i);
+    std::memcpy(s.heap.data(), vram_data(), kVramSize);
+    std::array<uint32_t, kRegCount> bank{};
+    for (uint32_t i = 0; i < kRegCount; ++i) bank[i] = pvr_reg(kRegBase + 4 * i);
+    s.fs.load(bank.data());
     if (m == Mode::Native) ta_set_sink(&areaFourSink);
     render_capture::set_list_sink(&s.list);  // HH15.7b: a captura confere o ListSink com o caminho do TA
+    // HH15.7c: texels e quadro nativos. Na sombra (o caminho real do runtime, com o banco e a VRAM dele, sem emprestimo)
+    // a captura confere o estado nativo com o do runtime, de forma independente (revisao Codex)
+    render_capture::set_native_memory(&s.fs, &s.heap);
     const auto& fns = m == Mode::Native ? kNativeFns : kFns;
     for (const auto& [addr, fn] : fns) {
         registry.add(addr, dcmap::Subsystem::Render, "kamui");
@@ -527,6 +567,7 @@ void uninstall(BoundaryRegistry& registry) {
     for (const auto& [addr, fn] : kFns) registry.select(addr, Provider::Legacy);
     ta_set_sink(nullptr);
     render_capture::set_list_sink(nullptr);
+    render_capture::set_native_memory(nullptr, nullptr);
     writeCosts();
     st().mode = Mode::Off;
 }
@@ -535,18 +576,30 @@ bool installed() { return st().mode != Mode::Off; }
 Mode mode() { return st().mode; }
 
 void video_frame(std::vector<uint32_t>& argb, uint32_t& width, uint32_t& height) {
+    State&         s   = st();
+    const uint32_t spg = pvr_reg(kRegBase + kSpgControl);  // tempo do video (SPG): HH15.7d
+    // HH15.7c: a imagem exibida pelo servico nativo; nos modos de verificacao a saida de video do runtime (sobre o mesmo
+    // estado emprestado) e a referencia e o nativo e conferido com ela, quadro a quadro
+    if (render_capture::draws_lists()) return nk::scanout(s.fs, spg, s.heap, argb, width, height);
     withNative([&] { pvr_video_frame(argb, width, height); });
+    std::vector<uint32_t> n;
+    uint32_t              nw = 0, nh = 0;
+    nk::scanout(s.fs, spg, s.heap, n, nw, nh);
+    if (nativeMutation("video") && !n.empty()) n[n.size() / 2] ^= 0x00FFFFFF;
+    ++s.stats.displayChecked;
+    if (nw != width || nh != height || n != argb) mismatch(s.stats.displayMismatch, "quadro exibido diferente do nativo");
 }
 
 Stats stats() { return st().stats; }
 
 std::string summary() {
     const Stats& s = st().stats;
-    char         b[768];
+    char         b[1024];
     std::snprintf(b, sizeof b,
                   "[kamui] %s: renders %llu (nativos %llu, fins de lista %llu); registradores escritos %llu (divergentes %llu), lidos %llu; DMA TA %llu "
                   "(%llu bytes), textura %llu (%llu bytes), outros %llu; copias %llu (%llu bytes), zeragens %llu (%llu "
                   "bytes); parametros conferidos %llu (divergencias %llu); blocos de memoria conferidos %llu (divergentes "
+                  "%llu); framebuffer conferido %llu (divergentes %llu); quadros exibidos conferidos %llu (divergentes "
                   "%llu)%s%s\n",
                   st().mode == Mode::Native ? "nativo" : "sombra", (unsigned long long)s.renders,
                   (unsigned long long)s.nativeRenders, (unsigned long long)s.listEnds, (unsigned long long)s.regWrites, (unsigned long long)s.regMismatch,
@@ -555,7 +608,9 @@ std::string summary() {
                   (unsigned long long)s.copies, (unsigned long long)s.copyBytes, (unsigned long long)s.zeros,
                   (unsigned long long)s.zeroBytes, (unsigned long long)s.paramsChecked,
                   (unsigned long long)s.paramMismatch, (unsigned long long)s.memBlocksChecked,
-                  (unsigned long long)s.memMismatch, s.first.empty() ? "" : "; primeira: ", s.first.c_str());
+                  (unsigned long long)s.memMismatch, (unsigned long long)s.fbChecked, (unsigned long long)s.fbMismatch,
+                  (unsigned long long)s.displayChecked, (unsigned long long)s.displayMismatch,
+                  s.first.empty() ? "" : "; primeira: ", s.first.c_str());
     return b;
 }
 

@@ -49,5 +49,8 @@ uint32_t vq_codebook_entries(uint32_t bytes, uint32_t w, uint32_t h, bool mipmap
 // (16 cores: o banco escolhido pelo seletor de paleta do desenho)
 bool convert_pal4(std::span<const uint8_t> data, uint32_t w, uint32_t h, std::span<const uint32_t> palette,
                   std::vector<uint32_t>& out);
+// HH15.7c: paleta de 8 bits, twiddled: 1 indice por texel no banco de 256 entradas que o seletor do desenho escolhe
+bool convert_pal8(std::span<const uint8_t> data, uint32_t w, uint32_t h, std::span<const uint32_t> palette,
+                  std::vector<uint32_t>& out);
 
 } // namespace hh::native::render

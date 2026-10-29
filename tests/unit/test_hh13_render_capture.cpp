@@ -11,7 +11,14 @@
 #include "pvr/pvr_regs.h"
 #include "pvr/ta.h"
 #include "pvr/vram.h"
+#include "pvr/pvr_render.h"
+#include "pvr/pvr_texture.h"
+#include "pvr/pvr_video.h"
+#include "render/kamui/display_service.h"
+#include "render/kamui/frame_state.h"
 #include "render/kamui/list_sink.h"
+#include "render/kamui/texture_heap.h"
+#include "render/kamui/texture_source.h"
 #include "render/soft/soft_device.h"
 #include "render/vulkan/vk_device.h"
 #include "render_capture.h"
@@ -846,4 +853,163 @@ HH_TEST(list_sink_counts_unsupported_like_the_capture) {
     km::ListFrame lf;
     s.list.build(rc::last_frame().cl.frame, rc::last_frame().texture_stride, lf);
     HH_CHECK(lf.unsupported == 3 && rc::last_frame().skipped_params == 3 && lf.cl.draws.empty());
+}
+
+// HH15.7c: o estado nativo (native/render/kamui: estado do quadro, memoria das texturas, imagem exibida) da os mesmos
+// resultados das funcoes do runtime sobre o mesmo banco e a mesma VRAM: parametros do quadro, cor do fundo, texels (16
+// bits twiddled, paleta de 4 e de 8 bits, esta antes so pelo decodificador do legado), gravacao do framebuffer e quadro
+// exibido
+HH_TEST(native_frame_state_matches_the_runtime) {
+    namespace km = hh::native::render::kamui;
+    CaptureScene s;
+    loadTexture(kTexA, 0x1234);
+    for (uint32_t i = 0; i < 64; ++i) {  // paleta de 8 bits 8x8 (indices) em kTexB e a paleta em 565
+        const uint8_t v = uint8_t(i * 3);
+        vram_data()[vram_offset64(kTexB + i)] = v;
+    }
+    for (uint32_t i = 0; i < 1024; ++i) s.reg(0x1000 + 4 * i, 0x8000u | (i * 37u & 0x7FFF));
+    s.reg(0x108, 1);   // PAL_RAM_CTRL: 565
+    s.reg(0x0E4, 2);   // TEXT_CONTROL: stride 64
+    s.reg(0x0B0, 0x112233), s.reg(0x11C, 0x40), s.reg(0x0BC, 0xFFEEDDCC), s.reg(0x0C0, 0x01020304);
+    s.reg(0x044, 1 | (1u << 2)), s.reg(0x05C, (15u) | (31u << 10)), s.reg(0x050, 0x100000);  // leitura 565, 32x32
+    s.ta({0x8000000Au, kIspAlways, kTspOpaque | (1u << 6), (1u << 27) | (kTexA >> 3)});
+    s.vtx(1, 1, 1, fb(0), fb(0), 0xFFFF8040);
+    s.vtx(31, 3, 1, fb(1), fb(0), 0xFF40FF80);
+    s.vtx(2, 30, 1, fb(0), fb(1), 0xFF8040FF, true);
+    s.endList();
+    s.render();
+    s.expectClean();
+    km::FrameState fs;
+    std::vector<uint32_t> bank(km::FrameState::kSize / 4);
+    for (uint32_t i = 0; i < bank.size(); ++i) bank[i] = pvr_reg(0xA05F8000 + 4 * i);
+    fs.load(bank.data());
+    km::TextureHeap heap;
+    std::memcpy(heap.data(), vram_data(), km::TextureHeap::kSize);
+    // quadro e fundo
+    const nr::FrameParams a = km::frame_params(fs, heap, 32, 32), b = rc::frame_params(32, 32);
+    HH_CHECK(a.clear_color == b.clear_color && a.clear_depth == b.clear_depth && a.fog_color == b.fog_color);
+    HH_CHECK(a.punch_through_ref == b.punch_through_ref && a.clamp_max == b.clamp_max && a.clamp_min == b.clamp_min);
+    HH_CHECK(a.translucent_autosort == b.translucent_autosort && a.sample_center == b.sample_center);
+    HH_CHECK(km::background_color(fs, heap) == pvr_background_color() && fs.texture_stride() == 64);
+    // texels: 16 bits twiddled, paleta de 4 bits e de 8 bits contra o decodificador do legado
+    for (const rc::TextureKey& k : {rc::TextureKey{(1u << 27) | (kTexA >> 3), 8, 8, 0},
+                                    rc::TextureKey{(5u << 27) | (3u << 21) | (kTexB >> 3), 8, 8, 0},
+                                    rc::TextureKey{(6u << 27) | (2u << 25) | (kTexB >> 3), 8, 8, 0}}) {
+        std::vector<uint32_t> n;
+        HH_CHECK(km::convert_texture(fs, heap, k, n) && n.size() == 64);
+        const TexInfo t{k.tcw, k.width, k.height, k.stride};
+        size_t        bad = 0;
+        for (uint32_t y = 0; y < 8; ++y)
+            for (uint32_t x = 0; x < 8; ++x) bad += n[y * 8 + x] != pvr_texel(t, x, y);
+        HH_CHECK(bad == 0);
+        std::vector<uint8_t> raw, nraw;
+        rc::texture_source(k, raw);
+        km::texture_bytes(fs, heap, k, nraw);
+        HH_CHECK(raw == nraw);
+    }
+    // gravacao do framebuffer: os bytes que o caminho do TA gravou sao os da gravacao nativa
+    uint32_t w = 0, h = 0;
+    const std::vector<uint32_t>* img = rc::last_image(w, h);
+    HH_CHECK(!img);  // sem o estado nativo registrado a captura nao guarda a imagem
+    std::vector<uint32_t> again = pvr_render_triangles(rc::triangles(rc::last_frame()), rc::pvr_frame(rc::last_frame()), 32, 32);
+    HH_CHECK(km::framebuffer_mismatch(fs, heap, again, 32, 32) == 0);
+    again[100] ^= 0x00FFFFFF;
+    HH_CHECK(km::framebuffer_mismatch(fs, heap, again, 32, 32) == 1);
+    km::TextureHeap written;
+    km::write_framebuffer(fs, written, again, 32, 32);
+    HH_CHECK(km::framebuffer_mismatch(fs, written, again, 32, 32) == 0);
+    // quadro exibido
+    std::vector<uint32_t> legacy, native;
+    uint32_t              lw = 0, lh = 0, nw = 0, nh = 0;
+    pvr_video_frame(legacy, lw, lh);
+    km::scanout(fs, pvr_reg(0xA05F80D0), heap, native, nw, nh);
+    HH_CHECK(lw == 32 && lh == 32 && nw == lw && nh == lh && native == legacy);
+}
+
+// HH15.7c (revisao Codex): a semantica das escritas do estado do quadro nativo e a do banco do PVR do runtime (o que fica,
+// comandos, so de leitura, ponteiros do TA no TA_LIST_INIT, TA_LIST_CONT), e as leituras do funil
+HH_TEST(native_frame_state_writes_like_the_runtime_bank) {
+    namespace km = hh::native::render::kamui;
+    using FS     = km::FrameState;
+    CaptureScene s;
+    FS           fs;
+    std::vector<uint32_t> bank(FS::kSize / 4);
+    for (uint32_t i = 0; i < bank.size(); ++i) bank[i] = pvr_reg(0xA05F8000 + 4 * i);
+    fs.load(bank.data());
+    const std::pair<uint32_t, uint32_t> writes[] = {
+        {0x128, 0x00123400}, {0x164, 0x00200000}, {0x144, 0x80000000}, {0x144, 0x00000001}, {0x160, 0x80000000},
+        {0x000, 0x11111111}, {0x004, 0x22222222}, {0x008, 0x00000001}, {0x10C, 0x33333333}, {0x150, 0x44444444},
+        {0x044, 0x0000000D}, {0x108, 0x00000002}, {0x1004, 0x0000ABCD}, {0x0E4, 0x00000003}, {0x13C, 0x000E0013}};
+    std::vector<FS::Effect> effects;
+    for (const auto& [off, v] : writes) {
+        s.reg(off, v);
+        effects.push_back(fs.write(off, v));
+    }
+    size_t bad = 0;
+    for (uint32_t off = 0; off < FS::kSize; off += 4)
+        if (off != 0x10C && fs.reg(off) != pvr_reg(0xA05F8000 + off)) {  // SPG_STATUS: calculado pelo runtime
+            std::printf("  registrador %03X: nativo %08X, runtime %08X\n", off, fs.reg(off), pvr_reg(0xA05F8000 + off));
+            ++bad;
+        }
+    HH_CHECK(bad == 0);
+    HH_CHECK(effects[2] == FS::Effect::ListInit && effects[3] == FS::Effect::None && effects[4] == FS::Effect::ListContinue);
+    HH_CHECK(fs.reg(0x134) == 0x00200000 && fs.reg(0x138) == 0x00123400);  // NEXT_OPB, ITP_CURRENT
+    HH_CHECK(fs.read(0x000) == 0x17FD11DB && fs.read(0x004) == 0x11 && fs.read(0x150) == 0);
+    HH_CHECK(fs.render_width() == 640 && fs.render_height() == 480 && fs.texture_stride() == 96);
+}
+
+// HH15.7c (revisao Codex): a gravacao nativa do framebuffer nos 7 formatos de FB_W_CTRL (com o K e o limiar de alfa),
+// com o recorte e o passo de linha, e a saida de video nativa nos 4 formatos de leitura, com a duplicacao de linhas e o
+// entrelacamento (dois campos), iguais as do runtime
+HH_TEST(native_framebuffer_and_scanout_formats_match_the_runtime) {
+    namespace km = hh::native::render::kamui;
+    CaptureScene          s;
+    std::vector<uint32_t> img(32 * 32);
+    for (uint32_t i = 0; i < img.size(); ++i) img[i] = (i * 0x9E3779B9u) ^ (i << 7);
+    auto native = [&] {
+        km::FrameState fs;
+        std::vector<uint32_t> bank(km::FrameState::kSize / 4);
+        for (uint32_t i = 0; i < bank.size(); ++i) bank[i] = pvr_reg(0xA05F8000 + 4 * i);
+        fs.load(bank.data());
+        return fs;
+    };
+    for (uint32_t fmt = 0; fmt < 7; ++fmt) {
+        s.reg(0x048, fmt | (0x80u << 8) | (0x60u << 16));  // FB_W_CTRL: formato, K e limiar do 1555
+        s.reg(0x04C, 40), s.reg(0x060, 0x7FFFF0);           // passo de 320 bytes; FB_W_SOF1 perto do fim (volta)
+        s.reg(0x068, 3u | (29u << 16)), s.reg(0x06C, 2u | (30u << 16));  // recorte
+        std::memset(vram_data(), 0, kVramSize);
+        pvr_write_framebuffer(img, 32, 32);
+        km::TextureHeap heap;
+        std::memcpy(heap.data(), vram_data(), km::TextureHeap::kSize);
+        const km::FrameState fs = native();
+        HH_CHECK(km::framebuffer_mismatch(fs, heap, img, 32, 32) == 0);
+        km::TextureHeap mine;
+        km::write_framebuffer(fs, mine, img, 32, 32);
+        HH_CHECK(std::memcmp(mine.data(), heap.data(), km::TextureHeap::kSize) == 0);
+    }
+    for (uint32_t i = 0; i < 64 * 1024; ++i) vram_data()[0x100000 + i] = uint8_t(i * 7 + (i >> 8));
+    for (uint32_t fmt = 0; fmt < 4; ++fmt)
+        for (uint32_t mode = 0; mode < 3; ++mode) {  // progressivo, linhas duplicadas, entrelacado
+            const uint32_t bpp = fmt == 2 ? 3 : (fmt == 3 ? 4 : 2);
+            s.reg(0x044, 1 | (fmt << 2) | (mode == 1 ? 2u : 0u));
+            s.reg(0x05C, (32 * bpp / 4 - 1) | (15u << 10) | (3u << 20));  // largura 32, 16 linhas, modulo 3
+            s.reg(0x050, 0x100000), s.reg(0x054, 0x108000);
+            s.reg(0x0D0, mode == 2 ? 0x10u : 0u);  // SPG_CONTROL: entrelacado
+            s.reg(0x0E8, 0);
+            std::vector<uint32_t> a, b;
+            uint32_t              aw = 0, ah = 0, bw = 0, bh = 0;
+            pvr_video_frame(a, aw, ah);
+            km::TextureHeap heap;
+            std::memcpy(heap.data(), vram_data(), km::TextureHeap::kSize);
+            km::scanout(native(), pvr_reg(0xA05F80D0), heap, b, bw, bh);
+            HH_CHECK(aw == bw && ah == bh && a == b && aw == 32 && ah == (mode ? 32u : 16u));
+        }
+    s.reg(0x0E8, 8);  // VO_CONTROL blank: preto nos dois
+    std::vector<uint32_t> a, b;
+    uint32_t              aw = 0, ah = 0, bw = 0, bh = 0;
+    pvr_video_frame(a, aw, ah);
+    km::TextureHeap heap;
+    std::memcpy(heap.data(), vram_data(), km::TextureHeap::kSize);
+    km::scanout(native(), pvr_reg(0xA05F80D0), heap, b, bw, bh);
+    HH_CHECK(a == b && std::all_of(b.begin(), b.end(), [](uint32_t v) { return v == 0xFF000000; }));
 }

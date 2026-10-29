@@ -11,6 +11,12 @@ K4  conferir (HH_RENDER_IR=conferir, 1 render a cada 5) com o provedor nativo: a
 K5  HH15.7b: o ListSink nativo (as listas decodificadas direto para a IR, o caminho do produto) igual a IR que a captura
     monta do decodificador do legado em TODO render do conferir no nativo: 0 divergencias; negativo
     HH_LISTA_NATIVA_MUTACAO=vertice acusado; e o nativo padrao (sem HH_RENDER_IR) desenha pela IR do ListSink;
+K6  HH15.7c: o estado nativo (estado do quadro, memoria das texturas, imagem exibida) sem emprestimo ao PVR do runtime:
+    no conferir, os parametros do quadro, os texels de cada textura, a gravacao do framebuffer e o quadro exibido pelas
+    funcoes nativas iguais aos das do runtime em todo render, toda textura e todo VBlank (0 divergencias, 0 texturas sem
+    conversao nativa); na sombra (o runtime com o banco e a VRAM dele), o quadro e as texturas do estado nativo iguais
+    aos do runtime em todo render (o K1 confere os registradores, com a semantica do estado nativo); negativos
+    HH_KAMUI_NATIVO_MUTACAO=quadro|textura|framebuffer|video, cada um acusado so pelo seu comparador;
 K3  sonda de hardware (HH_TA_FONTES) no nativo: nenhum byte no TA nem na VRAM do runtime; do PVR so os registradores de
     tempo do video (SPG, 0x0C8-0x0E0, e SPG_STATUS), que saem no HH15; os bytes da area 4 chegam ao destino nativo.
 
@@ -132,6 +138,36 @@ soft = re.search(r'\[render-soft\] quadros (\d+), falhas (\d+)', n['err'])
 check('K5: o nativo padrao desenha pela IR do ListSink em todo render (software sobre a IR, sem o caminho do TA)',
       soft is not None and int(soft.group(1)) == nat and int(soft.group(2)) == 0 and '[render-lista]' not in n['err'],
       soft.group(0) if soft else 'sem resumo [render-soft]')
+
+
+def nativo(err, kamui):
+    m = re.search(r'\[render-nativo\] quadros conferidos (\d+) \(divergentes (\d+)\); texturas conferidas (\d+) de (\d+) '
+                  r'\(divergentes (\d+), sem conversao nativa (\d+)\)', err)
+    k = re.search(r'framebuffer conferido (\d+) \(divergentes (\d+)\); quadros exibidos conferidos (\d+) '
+                  r'\(divergentes (\d+)\)', kamui)
+    v = [int(x) for x in m.groups()] if m else [None] * 6
+    w = [int(x) for x in k.groups()] if k else [None] * 4
+    return {'quadro': v[1], 'quadros': v[0], 'textura': v[4], 'texturas': v[2], 'total_texturas': v[3],
+            'sem_conversao': v[5], 'framebuffer': w[1], 'fbs': w[0], 'video': w[3], 'videos': w[2]}
+
+
+k6 = nativo(c['err'], c['kamui'])
+check('K6: as funcoes nativas iguais as do runtime em todo render, textura e VBlank do conferir',
+      k6['quadros'] == renders_ir and k6['fbs'] == renders_ir and (k6['texturas'] or 0) > 0
+      and k6['texturas'] == k6['total_texturas'] and k6['videos'] == VBLANKS
+      and all(k6[x] == 0 for x in ('quadro', 'textura', 'sem_conversao', 'framebuffer', 'video')), str(k6))
+# o estado nativo contra o do runtime de forma independente: na sombra o runtime usa o banco e a VRAM dele (sem
+# emprestimo), e a captura confere o quadro e as texturas lidos do estado nativo com os lidos deles
+ks = nativo(s['err'], s['kamui'])
+check('K6: na sombra, o estado nativo (quadro e texturas) igual ao do runtime em todo render',
+      ks['quadros'] and ks['quadros'] == vals['renders'] and ks['texturas'] == ks['total_texturas'] and
+      (ks['texturas'] or 0) > 0 and all(ks[x] == 0 for x in ('quadro', 'textura', 'sem_conversao')), str(ks))
+for campo in ('quadro', 'textura', 'framebuffer', 'video'):
+    mm = run('nativo', {'HH_RENDER_IR': 'conferir', 'HH_RENDER_IR_CADA': '5', 'HH_KAMUI_NATIVO_MUTACAO': campo}, 1500)
+    mv = nativo(mm['err'], mm['kamui'])
+    outros = [x for x in ('quadro', 'textura', 'framebuffer', 'video') if x != campo]
+    check('K6 negativo %s: acusado so pelo seu comparador' % campo,
+          mm['rc'] == 0 and (mv[campo] or 0) > 0 and all(mv[x] == 0 for x in outros), str(mv))
 check('K3: sonda gravou acessos', bool(rows))
 check('K3: nada no TA nem na VRAM do runtime', not any(d.startswith(('ta_', 'vram_')) for d in destinos),
       sorted(d for d in destinos if d.startswith(('ta_', 'vram_'))))

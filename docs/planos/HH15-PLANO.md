@@ -451,3 +451,36 @@ inicialização (`0x8C15FAC8`).
 - Regressão integral 14/14 com as correções (`analysis/hh15/regressao_7b.log`, com o K5), ctest 67/67.
 - A remoção do decodificador, do `ta` e da captura do link fica para depois dos cortes 7c e 7d (as funções de quadro,
   fundo e framebuffer ainda leem o banco do PVR e a VRAM emprestados), com a catraca do mapa no fim, como no BS.
+
+#### HH15.7c (concluído, 2026-10-29): estado do quadro, memória das texturas e imagem exibida
+
+- Serviços nativos em `native/render/kamui`: `FrameState` (o banco do funil, com a semântica de comando que estava no
+  `kamui_device`; a paleta; os parâmetros do quadro da IR; a cor do fundo; o aviso do Region Array; a gravação da
+  imagem no framebuffer), `TextureHeap` (8 MB no layout do caminho de 32 bits, com a vista de 64 bits),
+  `texture_source` (a conversão das texturas da captura sobre a memória nativa, mais a paleta de 8 bits por
+  `convert_pal8`, que antes ia ao decodificador do legado) e `display_service` (a saída de vídeo do `pvr_video`).
+- O produto (o render pela IR do ListSink e o quadro exibido) roda sobre o estado nativo, sem empréstimo ao banco do PVR
+  nem à VRAM do runtime; uma textura sem conversão nativa não é desenhada (o render falha com erro explícito). O SPG
+  (SPG_STATUS e o SPG_CONTROL do vídeo) continua lido do runtime até o 7d.
+- Nos modos de verificação o caminho do runtime continua a referência, e quatro comparadores conferem o nativo: os
+  parâmetros do quadro e os bytes e texels de cada textura (`[render-nativo]`), a gravação do framebuffer (por render)
+  e o quadro exibido (por VBlank) (`[kamui]`); negativos `HH_KAMUI_NATIVO_MUTACAO=quadro|textura|framebuffer|video`,
+  cada um acusado só pelo seu comparador (portão K6). Unitário `native_frame_state_matches_the_runtime` (16 bits, paletas
+  de 4 e de 8 bits contra o decodificador do legado, framebuffer, vídeo).
+- Rota da área 1: o padrão com os 94 hashes iguais ao HH06; `conferir`: 2 250 quadros, 39 422 texturas, 2 250
+  framebuffers e 4 700 quadros exibidos iguais (0 sem conversão nativa); cada mutação acusada em todos os conferidos
+  (674 renders ou 1 500 VBlanks) e só no seu comparador.
+- Revisão Codex (`reviews/codex-hh15_7c.log`), três achados aceitos e corrigidos; sem diferença de conta na paleta,
+  fundo, parâmetros do quadro, Region Array, texturas, framebuffer ou saída de vídeo:
+  - [ALTA] no `conferir` a referência lia o próprio estado nativo emprestado: provava as funções, não o estado. A sombra
+    (o runtime no caminho real, com o banco e a VRAM dele) passa a aplicar a semântica de escrita do estado nativo
+    (`FrameState::write`, conferida com o banco do runtime em cada STARTRENDER pelo K1) e a registrar o estado nativo
+    na captura, que confere o quadro e as texturas lidos dele com os lidos do runtime: na rota, 2 250 quadros e 39 422
+    texturas iguais, registradores e memória com 0 divergências (K6 na sombra);
+  - [MÉDIA] o unitário cobria só 565 progressivo: novos `native_frame_state_writes_like_the_runtime_bank` (comandos,
+    só de leitura, ponteiros do TA, `TA_LIST_CONT`, leituras do funil) e
+    `native_framebuffer_and_scanout_formats_match_the_runtime` (os 7 formatos do framebuffer com K, limiar, recorte,
+    passo e volta; os 4 formatos de leitura com linhas duplicadas, entrelaçado e blank);
+  - [BAIXA] o K6 aceitava texturas e quadros exibidos maiores que zero: exige as texturas conferidas iguais ao total
+    dos renders (contado à parte) e um quadro exibido conferido por VBlank.
+- Regressão integral 14/14 com as correções (`analysis/hh15/regressao_7c.log`, com o K6), ctest 67/67.

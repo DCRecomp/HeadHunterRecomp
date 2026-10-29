@@ -41,6 +41,7 @@ struct Stats {
     uint64_t taBytes = 0, textureBytes = 0, copyBytes = 0, zeroBytes = 0;
     uint64_t nativeRenders = 0, listEnds = 0;  // modo nativo
     uint64_t renders = 0, regMismatch = 0, paramMismatch = 0, memMismatch = 0, memBlocksChecked = 0, paramsChecked = 0;
+    uint64_t fbChecked = 0, fbMismatch = 0, displayChecked = 0, displayMismatch = 0;  // HH15.7c (verificacao)
     std::string first;  // primeira divergencia (o que e onde)
 };
 

@@ -7,7 +7,10 @@
 #include "pvr/pvr_texture.h"
 #include "pvr/ta.h"
 #include "render/frame_prep.h"
+#include "render/kamui/frame_state.h"
 #include "render/kamui/list_sink.h"
+#include "render/kamui/texture_heap.h"
+#include "render/kamui/texture_source.h"
 #include "render/render_ir.h"
 #include "render/soft/soft_device.h"
 #include "render/texture_convert.h"
@@ -86,6 +89,31 @@ nr::ITextureReplacements* g_replacements = nullptr;  // texturas HD (set_texture
 Fault                     g_fault        = Fault::None;     // testes do recuo (inject_fault)
 float                     g_scale        = 1.f;             // resolucao interna (set_scale)
 const km::ListSink*       g_list         = nullptr;         // HH15.7b: o ListSink nativo (set_list_sink)
+const km::FrameState*     g_fs           = nullptr;         // HH15.7c: o estado do quadro nativo (set_native_memory)
+const km::TextureHeap*    g_heap         = nullptr;         // HH15.7c: a memoria das texturas nativa
+
+// Os parametros do quadro campo a campo (os floats pelos bits: a mesma conta tem de dar o mesmo valor; sem o
+// preenchimento entre os campos)
+bool same_frame(const nr::FrameParams& a, const nr::FrameParams& b) {
+    auto bits = [](float f) {
+        uint32_t w;
+        std::memcpy(&w, &f, 4);
+        return w;
+    };
+    return a.width == b.width && a.height == b.height && a.clear_color == b.clear_color &&
+           bits(a.clear_depth) == bits(b.clear_depth) && a.fog_table == b.fog_table && a.fog_color == b.fog_color &&
+           a.fog_vertex_color == b.fog_vertex_color && a.fog_density == b.fog_density &&
+           bits(a.punch_through_ref) == bits(b.punch_through_ref) && a.translucent_autosort == b.translucent_autosort &&
+           a.sample_center == b.sample_center && a.attribute_center == b.attribute_center &&
+           a.texel_center == b.texel_center && bits(a.small_cull) == bits(b.small_cull) && a.clamp_min == b.clamp_min &&
+           a.clamp_max == b.clamp_max;
+}
+
+// Negativos dos comparadores do estado nativo (HH_KAMUI_NATIVO_MUTACAO=quadro|textura): o lado nativo muda
+bool native_mutation(const char* what) {
+    static const char* m = std::getenv("HH_KAMUI_NATIVO_MUTACAO");
+    return m && std::strcmp(m, what) == 0;
+}
 
 class Capture final : public PvrCaptureSink {
 public:
@@ -211,7 +239,9 @@ public:
         frame.modifier_unclosed = lf.modifier_unclosed, frame.skipped_params = lf.skipped_params;
         frame.sprites           = lf.sprites;
         stride_                 = lf.texture_stride;
+        nativeTex_              = g_fs && g_heap;  // HH15.7c: os texels pela memoria nativa (sem a VRAM do runtime)
         const bool ok           = render(PvrFrame{}, w, h, image);
+        nativeTex_              = false;
         st.modifier_unclosed += frame.modifier_unclosed;
         ++st.renders;
         account();
@@ -220,6 +250,7 @@ public:
 
     void account() {
         st.draws += frame.cl.draws.size(), st.vertices += frame.cl.vertices.size(), st.sprites += frame.sprites;
+        st.frame_textures += frame.textures.size();  // HH15.7c: o total, independente do comparador (o portao confere)
         st.modifier_params += frame.modifier_params, st.modifier_volumes += frame.modifier_volumes;
         st.skipped_params += frame.skipped_params;
         for (const nr::Draw& d : frame.cl.draws) {
@@ -230,6 +261,39 @@ public:
             }
         }
         if (!frame.cl.modifiers.empty() && !st.modifier_first_render) st.modifier_first_render = st.renders;
+    }
+
+    // HH15.7c: com o estado nativo registrado (set_native_memory), os parametros do quadro, o stride e os texels de cada
+    // textura do render lidos do estado do quadro e da memoria das texturas nativos tem de ser os que a captura leu dos
+    // registradores e da VRAM do runtime (emprestados com o mesmo estado), e a imagem fica para o comparador da gravacao
+    // do framebuffer (kamui_device). Negativos HH_KAMUI_NATIVO_MUTACAO=quadro|textura
+    void check_native(std::span<const uint32_t> image, uint32_t w, uint32_t h) {
+        if (!g_fs || !g_heap) return;
+        lastImage_.assign(image.begin(), image.end()), lastW_ = w, lastH_ = h;
+        ++st.native_checked;
+        auto fail = [&](uint64_t& counter, const std::string& why) {
+            ++counter;
+            if (st.native_error.empty()) st.native_error = "render " + std::to_string(st.renders) + ": " + why;
+        };
+        nr::FrameParams nf = km::frame_params(*g_fs, *g_heap, frame.cl.frame.width, frame.cl.frame.height);
+        if (native_mutation("quadro")) nf.clear_depth += 1.f;
+        if (!same_frame(nf, frame.cl.frame) || g_fs->texture_stride() != stride_)
+            fail(st.native_frame_mismatch, "parametros do quadro");
+        for (const TextureKey& k : frame.textures) {
+            std::vector<uint8_t>  raw, nraw;
+            std::vector<uint32_t> argb, nargb;
+            bool                  legacy = false;
+            texture_source(k, raw);
+            km::texture_bytes(*g_fs, *g_heap, k, nraw);
+            const bool have  = texture_argb(k, argb, legacy);
+            const bool nhave = km::convert_texture(*g_fs, *g_heap, k, nargb);
+            if (native_mutation("textura") && !nargb.empty()) nargb[0] ^= 0x00FFFFFF;
+            ++st.native_tex_checked;
+            char b[64];
+            std::snprintf(b, sizeof b, "textura TCW %08X %ux%u", k.tcw, k.width, k.height);
+            if (have && !nhave) fail(st.native_tex_missing, std::string(b) + " sem conversao nativa");
+            else if (raw != nraw || argb != nargb) fail(st.native_tex_mismatch, b);
+        }
     }
 
     // HH15.7b: com o ListSink nativo registrado (set_list_sink), as listas que ele juntou decodificadas direto tem de dar
@@ -247,7 +311,7 @@ public:
         ++st.list_checked;
         const nr::CommandList &a = lf.cl, &b = frame.cl;
         std::string            why;
-        if (std::memcmp(&a.frame, &b.frame, sizeof a.frame) != 0) why = "quadro";
+        if (!same_frame(a.frame, b.frame)) why = "quadro";
         else if (a.vertices.size() != b.vertices.size() ||
                  (!a.vertices.empty() && std::memcmp(a.vertices.data(), b.vertices.data(), a.vertices.size() * sizeof(nr::Vertex))))
             why = "vertices (" + std::to_string(a.vertices.size()) + " x " + std::to_string(b.vertices.size()) + ")";
@@ -286,6 +350,7 @@ public:
         if (mode == Mode::Compare && vkOk_) compare(image, w, h);
         account();
         check_list_sink();
+        check_native(image, w, h);
         // HH15.7a: em todo render do conferir (nao so nos amostrados), o software sobre a IR (o dispositivo, com as
         // texturas pelas conversoes nativas) desenha a mesma imagem que o rasterizador sobre o TA; uma falha dele e
         // contada a parte (soft_failures), nunca como imagem divergente
@@ -470,7 +535,7 @@ private:
             g_fault = Fault::None;
             return false;
         }
-        texture_source(k, raw_);
+        source(k, raw_);
         VkTex& e = vkTex_[{k.tcw, k.width, k.height, k.stride}];
         e.used   = st.renders;
         if (e.handle && e.raw == raw_ && e.provider == g_replacements) {
@@ -478,7 +543,7 @@ private:
             return true;
         }
         bool legacy = false;
-        if (!texture_argb(k, argb_, legacy)) return false;
+        if (!argb_of(k, argb_, legacy)) return false;
         st.tex_legacy += legacy;
         // substituicao HD pelo conteudo (nunca pelo endereco): compativel ou o original
         const std::vector<uint32_t>* texels = &argb_;
@@ -617,6 +682,30 @@ private:
         return false;
     }
 
+    // HH15.7c: no render pela IR do ListSink, os bytes e os texels das texturas vem do estado e da memoria nativos (sem
+    // o decodificador do legado: uma textura sem conversao nativa nao e enviada e o render falha); no caminho do TA, os do
+    // runtime
+    bool                  nativeTex_ = false;
+    std::vector<uint32_t> lastImage_;
+    uint32_t              lastW_ = 0, lastH_ = 0;
+    void source(const TextureKey& k, std::vector<uint8_t>& raw) {
+        if (nativeTex_) km::texture_bytes(*g_fs, *g_heap, k, raw);
+        else texture_source(k, raw);
+    }
+    bool argb_of(const TextureKey& k, std::vector<uint32_t>& argb, bool& legacy) {
+        if (!nativeTex_) return texture_argb(k, argb, legacy);
+        legacy = false;
+        return km::convert_texture(*g_fs, *g_heap, k, argb);
+    }
+
+public:
+    const std::vector<uint32_t>* last_image(uint32_t& w, uint32_t& h) const {
+        if (lastImage_.empty()) return nullptr;
+        w = lastW_, h = lastH_;
+        return &lastImage_;
+    }
+
+private:
     // ---- HH15.7a: software sobre a IR ----
     nr::soft::SoftwareDevice soft_;
     struct SoftTex {
@@ -628,7 +717,7 @@ private:
 
     // a textura no dispositivo em software, refeita quando os bytes dela na memoria das texturas (ou a paleta) mudam
     bool soft_texture(const TextureKey& k, nr::TextureHandle& out) {
-        texture_source(k, raw_);
+        source(k, raw_);
         SoftTex& e = softTex_[{k.tcw, k.width, k.height, k.stride}];
         e.used     = st.renders;
         if (e.handle && e.raw == raw_) {
@@ -636,7 +725,7 @@ private:
             return true;
         }
         bool legacy = false;
-        if (!texture_argb(k, argb_, legacy)) return false;
+        if (!argb_of(k, argb_, legacy)) return false;
         st.soft_tex_legacy += legacy;
         // negativo do comparador (HH_RENDER_SOFT_MUTACAO=textura): o primeiro texel de cada textura enviada muda
         static const bool mutate = [] {
@@ -1030,6 +1119,14 @@ void inject_fault(Fault f) { g_fault = f; }
 
 void set_list_sink(const native::render::kamui::ListSink* sink) { g_list = sink; }
 
+void set_native_memory(const native::render::kamui::FrameState* fs, const native::render::kamui::TextureHeap* heap) {
+    g_fs = fs, g_heap = heap;
+}
+
+const std::vector<uint32_t>* last_image(uint32_t& width, uint32_t& height) {
+    return g_cap ? g_cap->last_image(width, height) : nullptr;
+}
+
 bool draws_lists() { return g_cap && (g_cap->mode == Mode::Software || g_cap->mode == Mode::Native); }
 
 bool draw_list(const native::render::kamui::ListFrame& lf, uint32_t width, uint32_t height, std::vector<uint32_t>& image) {
@@ -1113,6 +1210,19 @@ std::string summary() {
                       s.vk_error.empty() ? "" : "; ",
                       s.vk_error.c_str());
         out += v;
+    }
+    if (s.native_checked) {  // HH15.7c: o estado nativo contra o do runtime
+        char r[400];
+        std::snprintf(r, sizeof r,
+                      "[render-nativo] quadros conferidos %llu (divergentes %llu); texturas conferidas %llu de %llu (divergentes %llu, "
+                      "sem conversao nativa %llu)%s%s",
+                      (unsigned long long)s.native_checked, (unsigned long long)s.native_frame_mismatch,
+                      (unsigned long long)s.native_tex_checked, (unsigned long long)s.frame_textures,
+                      (unsigned long long)s.native_tex_mismatch,
+                      (unsigned long long)s.native_tex_missing, s.native_error.empty() ? "" : "; primeira: ",
+                      s.native_error.c_str());
+        out += r;
+        out += '\n';
     }
     if (s.list_checked) {  // HH15.7b: o ListSink nativo contra a captura
         char r[300];

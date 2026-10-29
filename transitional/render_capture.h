@@ -30,7 +30,9 @@
 // texel a texel (contadas, nunca descartadas). O cache do backend refaz uma textura quando os bytes dela na VRAM
 // (ou a paleta) mudam.
 #include "pvr/pvr_render.h"
+#include "render/kamui/frame_state.h"
 #include "render/kamui/list_sink.h"
+#include "render/kamui/texture_heap.h"
 #include "render/render.h"
 #include "render/texture_replacement.h"
 
@@ -116,6 +118,10 @@ struct Stats {
     // HH15.7b: o ListSink nativo contra a captura (renders conferidos; divergentes tem de ficar em 0)
     uint64_t    list_checked = 0, list_mismatch = 0;
     std::string list_error;
+    // HH15.7c: o estado nativo (quadro e texturas) contra o do runtime (divergentes e sem conversao tem de ficar em 0)
+    uint64_t    native_checked = 0, native_frame_mismatch = 0, native_tex_checked = 0, native_tex_mismatch = 0;
+    uint64_t    native_tex_missing = 0, frame_textures = 0;  // frame_textures: texturas dos renders (o total)
+    std::string native_error;
     std::string first_error;
 };
 
@@ -162,6 +168,13 @@ void         inject_fault(Fault f);
 // captura confere a IR que ele decodifica direto com a montada dos retornos do decodificador do legado
 // (Stats::list_*); nullptr desliga.
 void set_list_sink(const native::render::kamui::ListSink* sink);
+// HH15.7c: o estado do quadro e a memoria das texturas nativos (transitional/kamui_device, modo nativo). Registrados, o
+// render pela IR do ListSink le os texels deles, e em todo render pelo caminho do TA a captura confere os parametros do
+// quadro e os texels lidos deles com os do runtime (Stats::native_*); nullptr desliga.
+void set_native_memory(const native::render::kamui::FrameState* fs, const native::render::kamui::TextureHeap* heap);
+// HH15.7c: a imagem do ultimo render pelo caminho do TA com o estado nativo registrado (para o comparador da gravacao
+// do framebuffer); nullptr sem ela.
+const std::vector<uint32_t>* last_image(uint32_t& width, uint32_t& height);
 // true: a captura esta instalada como o renderizador (Software ou Native), e o render vem da IR do ListSink
 bool draws_lists();
 // O render pela IR do ListSink (`image`: width x height, ja com o fundo): false = nao desenhado (sem captura no modo

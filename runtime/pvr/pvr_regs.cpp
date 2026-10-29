@@ -248,14 +248,14 @@ void startRenderDone(Sh4Context* c, uint32_t taBytes) {
 
 // Diagnostico: HH_TA_DUMP=<n> lista os parametros do TA e os registradores de render no n-esimo STARTRENDER. true =
 // este e o pedido (o cabecalho e os registradores ja foram impressos; o chamador imprime os parametros).
-bool startRenderDump(size_t params, uint32_t bytes) {
+bool startRenderDump(size_t params, uint32_t bytes, const uint32_t* bank) {
     static const char* dump = std::getenv("HH_TA_DUMP");
     if (!dump || g_startCount != std::atoi(dump)) return false;
     std::fprintf(stderr, "[render] STARTRENDER %d: %zu parametros, %u bytes\n", g_startCount, params, bytes);
     for (uint32_t r : {0x044u, 0x048u, 0x04Cu, 0x050u, 0x054u, 0x05Cu, 0x060u, 0x064u, 0x068u, 0x06Cu, 0x074u, 0x078u,
                        0x07Cu, 0x080u, 0x084u, 0x088u, 0x08Cu, 0x098u, 0x0B0u, 0x0B4u, 0x0B8u, 0x0E4u, 0x108u, 0x11Cu,
                        0x13Cu, 0x140u})
-        std::fprintf(stderr, "[render]   reg %08X = %08X\n", kBase + r, reg(kBase + r));
+        std::fprintf(stderr, "[render]   reg %08X = %08X\n", kBase + r, bank ? bank[r / 4] : reg(kBase + r));
     return true;
 }
 
@@ -268,16 +268,16 @@ void pvr_render_dump_param(uint32_t list, const uint32_t* w, uint32_t words) {
 }
 
 void pvr_start_render_with(Sh4Context* c, uint32_t taBytes, size_t params, void (*render)(Sh4Context*),
-                           void (*dumpParams)()) {
+                           void (*dumpParams)(), const uint32_t* bank) {
     startRenderBegin(c);
-    if (startRenderDump(params, taBytes) && dumpParams) dumpParams();
+    if (startRenderDump(params, taBytes, bank) && dumpParams) dumpParams();
     render(c);  // o render inteiro aqui, como no caminho do TA
     startRenderDone(c, taBytes);
 }
 
 void pvr_start_render(Sh4Context* c) {
     startRenderBegin(c);
-    if (startRenderDump(ta_params().size(), ta_bytes()))
+    if (startRenderDump(ta_params().size(), ta_bytes(), nullptr))
         for (const auto& prm : ta_params()) pvr_render_dump_param(prm.list, prm.w, prm.words);
     // O render roda inteiro aqui (a CPU nao observa estados intermediarios); o
     // jogo so ve o resultado depois do fim de render sinalizado abaixo.

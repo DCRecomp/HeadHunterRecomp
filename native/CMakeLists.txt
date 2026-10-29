@@ -52,8 +52,10 @@ target_link_libraries(hh_native_render PUBLIC hh_native_api PRIVATE tomlplusplus
 # HH15.7a: renderizador em software sobre a IR (o rasterizador de referencia, movido do runtime, e o dispositivo)
 add_library(hh_native_render_soft STATIC render/soft/soft_raster.cpp render/soft/soft_device.cpp)
 target_link_libraries(hh_native_render_soft PUBLIC hh_native_render)
-# HH15.7b: os servicos nativos da camada grafica do Kamui (as listas decodificadas direto para a IR)
-add_library(hh_native_render_kamui STATIC render/kamui/list_sink.cpp)
+# HH15.7b-c: os servicos nativos da camada grafica do Kamui: as listas decodificadas direto para a IR, o estado do
+# quadro, os texels das texturas e a imagem exibida
+add_library(hh_native_render_kamui STATIC render/kamui/list_sink.cpp render/kamui/frame_state.cpp
+            render/kamui/texture_source.cpp render/kamui/display_service.cpp)
 target_link_libraries(hh_native_render_kamui PUBLIC hh_native_render_soft)
 
 # HH13: backend Vulkan (offscreen; o Vulkan e carregado em tempo de execucao, sem SDK; cabecalhos Khronos em
