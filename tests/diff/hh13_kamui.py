@@ -173,7 +173,18 @@ check('K3: nada no TA nem na VRAM do runtime', not any(d.startswith(('ta_', 'vra
       sorted(d for d in destinos if d.startswith(('ta_', 'vram_'))))
 check('K3: do PVR so os registradores de tempo do video (HH15)',
       all(d in SPG for d in destinos if d.startswith('pvr_')), sorted(d for d in destinos if d.startswith('pvr_') and d not in SPG))
-check('K3: area 4 no destino nativo', any(d == 'kamui_poligonos' and int(r[3]) > 0 for r in rows for d in [r[0]]))
+# HH15.7d: o DMA do canal 2 nativo (system/dma_bus) entrega direto ao destino nativo, sem passar pelo TA do runtime (a
+# nota kamui_poligonos do HH_TA_FONTES era do caminho pelo ta_fifo_write). Os pedidos e os bytes por destino (listas e
+# textura) contados pelo destino nativo tem de ser os da sombra, em que o DMA do runtime entrega ao TA (revisao Codex)
+def dma(kamui):
+    m = re.search(r'DMA TA (\d+) \((\d+) bytes\), textura (\d+) \((\d+) bytes\)', kamui)
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+dn, ds = dma(n['kamui']), dma(s['kamui'])
+check('K3: area 4 no destino nativo, pedidos e bytes por destino iguais aos da sombra (DMA do canal 2 sem o TA)',
+      dn is not None and dn == ds and dn[0] > 0 and dn[1] > 0 and not any(d == 'kamui_poligonos' for d in destinos),
+      'nativo %s, sombra %s' % (dn, ds))
 
 print('FALHOU (%d)' % fails if fails else 'OK')
 sys.exit(1 if fails else 0)

@@ -51,7 +51,8 @@ if(HH_GENERATED_DIR)
     # Maple (maple_ausente) e o da AICA (aica_ausente).
     add_executable(HeadHunter WIN32 hh_window.cpp ${CMAKE_SOURCE_DIR}/runtime/debug/validacao_stubs.cpp
                    ${CMAKE_SOURCE_DIR}/runtime/system/hle_ausente.cpp ${CMAKE_SOURCE_DIR}/runtime/system/maple_ausente.cpp
-                   ${CMAKE_SOURCE_DIR}/runtime/system/aica_ausente.cpp)
+                   ${CMAKE_SOURCE_DIR}/runtime/system/aica_ausente.cpp ${CMAKE_SOURCE_DIR}/runtime/system/sb_ausente.cpp
+                   ${CMAKE_SOURCE_DIR}/runtime/system/dmac_ausente.cpp)
     target_link_libraries(HeadHunter PRIVATE hh_host hh_native_install SDL3::SDL3-static shell32 ole32)  # shell32/ole32: pasta Documentos (saves)
     # HH18: identificacao (--version) e mods em C++ do projeto exportado (com HH_MODS: slots em todas as funcoes)
     set(HH_VERSION_OVERRIDE "" CACHE STRING "Versao gravada no HeadHunter.exe (vazio = arquivo VERSION)")

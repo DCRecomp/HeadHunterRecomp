@@ -18,6 +18,7 @@
 #include "render/kamui/list_sink.h"
 #include "render/kamui/texture_heap.h"
 #include "render_capture.h"
+#include "system/dma_bus.h"
 
 #include <array>
 #include <cstdio>
@@ -387,8 +388,17 @@ bool areaFourSink(Sh4Context* c, uint32_t target, const uint32_t* d) {
 }
 
 void fDmaNative(Sh4Context* c) {
-    ++st().stats.dmaTa;
-    callOriginal(c, kDma);  // DMAC e SB do Holly (HH15); os dados vao para areaFourSink
+    // o pedido classificado pelo destino do descritor, como no modo sombra (revisao Codex HH15.7d1): FIFO de poligonos,
+    // caminho de textura ou outro
+    State&         s = st();
+    GuestMemory    mem(c);
+    const uint32_t desc = c->r[4];
+    const auto     type = mem.load<uint32_t>(desc + 8), len = mem.load<uint32_t>(desc + 12),
+               src = mem.load<uint32_t>(desc + 16), dst = mem.load<uint32_t>(desc + 20);
+    callOriginal(c, kDma);  // DMAC e SB do Holly: o DMA do canal 2 nativo (system/dma_bus) entrega a areaFourSink
+    const bool ch2 = type && *type <= 4 && dst && ((*dst & 0x1FFFFFFF) >> 26) == 4;
+    if (ch2 && len && src) (((*dst & 0x1FFFFFFF) & 0x01800000) == 0 ? s.stats.dmaTa : s.stats.dmaTexture)++;
+    else ++s.stats.dmaOther;
 }
 
 void fCopyNative(Sh4Context* c) {
@@ -549,7 +559,10 @@ void install(BoundaryRegistry& registry, Mode m) {
     std::array<uint32_t, kRegCount> bank{};
     for (uint32_t i = 0; i < kRegCount; ++i) bank[i] = pvr_reg(kRegBase + 4 * i);
     s.fs.load(bank.data());
-    if (m == Mode::Native) ta_set_sink(&areaFourSink);
+    if (m == Mode::Native) {
+        ta_set_sink(&areaFourSink);
+        dma_bus_set_sink(&areaFourSink);  // HH15.7d: o DMA do canal 2 nativo entrega direto (sem o TA do runtime)
+    }
     render_capture::set_list_sink(&s.list);  // HH15.7b: a captura confere o ListSink com o caminho do TA
     // HH15.7c: texels e quadro nativos. Na sombra (o caminho real do runtime, com o banco e a VRAM dele, sem emprestimo)
     // a captura confere o estado nativo com o do runtime, de forma independente (revisao Codex)
@@ -566,6 +579,7 @@ void install(BoundaryRegistry& registry, Mode m) {
 void uninstall(BoundaryRegistry& registry) {
     for (const auto& [addr, fn] : kFns) registry.select(addr, Provider::Legacy);
     ta_set_sink(nullptr);
+    dma_bus_set_sink(nullptr);
     render_capture::set_list_sink(nullptr);
     render_capture::set_native_memory(nullptr, nullptr);
     writeCosts();

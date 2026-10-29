@@ -8,8 +8,9 @@
 #   2. um objeto dos papeis do produto (aot, nativo, simulacao, estavel, diagnostico) falta no mapa, fora da lista
 #      fechada de objetos sem chamador no executavel (o linker nao os puxa da biblioteca estatica);
 #   3. um objeto dos papeis validacao, hle (HH15.3: BIOS HLE, flash e drive simulados), perifericos (HH15.4: modelo do
-#      Maple) ou aica (HH15.6: modelo da AICA) esta no mapa, ou falta um dos stubs (validacao_stubs, hle_ausente,
-#      maple_ausente, aica_ausente) como objeto do proprio produto;
+#      Maple), aica (HH15.6: modelo da AICA) ou sb (HH15.7d: modelos do system block e do DMAC) esta no mapa, ou falta
+#      um dos stubs (validacao_stubs, hle_ausente, maple_ausente, aica_ausente, sb_ausente, dmac_ausente) como objeto
+#      do proprio produto;
 #   4. o mapa tem um objeto do hh_runtime que nao esta no manifesto;
 #   5. o carimbo de link do mapa (Timestamp is) nao e o do cabecalho PE do executavel (mapa de outro link).
 # A comparacao e por campo do mapa (objeto precedido de espaco), nao por trecho de texto.
@@ -24,10 +25,11 @@ foreach(v MAP MANIFEST SRC)
 endforeach()
 file(READ "${MAP}" map)
 file(STRINGS "${MANIFEST}" rows)
-set(fora_do_produto validacao hle perifericos aica)       # papeis so da verificacao e das ferramentas
+set(fora_do_produto validacao hle perifericos aica sb)       # papeis so da verificacao e das ferramentas
 set(no_caller snapshot)                                   # diagnostico sem chamador no produto (como no BS)
 set(not_runtime cpu/sh4_context.cpp cpu/sh4_runtime.cpp mods/mod_api.cpp cpu/sh4_hw_m3.cpp debug/validacao_stubs.cpp
-                system/hle_ausente.cpp system/maple_ausente.cpp system/aica_ausente.cpp)
+                system/hle_ausente.cpp system/maple_ausente.cpp system/aica_ausente.cpp system/sb_ausente.cpp
+                system/dmac_ausente.cpp)
 if(MUTAR STREQUAL "sem_objeto")
   string(REPLACE " hh_runtime:sys_logical.obj" " hh_runtime:removido.obj" map "${map}")
 elseif(MUTAR STREQUAL "com_sonda")
@@ -42,6 +44,10 @@ elseif(MUTAR STREQUAL "aica_solto")
   string(APPEND map "\n 0001:00000000 ?x@@ 0 f   aica_regs.obj\n")
 elseif(MUTAR STREQUAL "aica_outra_biblioteca")
   string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_modelo:aica_regs.obj\n")
+elseif(MUTAR STREQUAL "com_sb")
+  string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_runtime:sh4_dmac.obj\n")
+elseif(MUTAR STREQUAL "sem_stub_sb")
+  string(REPLACE "   sb_ausente.obj" "   hh_runtime:sb_ausente.obj" map "${map}")
 elseif(MUTAR STREQUAL "objeto_extra")
   string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_runtime:desconhecido.obj\n")
 elseif(MUTAR STREQUAL "sem_stub")
@@ -97,7 +103,7 @@ foreach(t IN LISTS tree)
     list(APPEND bad "fonte do runtime fora do manifesto: ${t}")
   endif()
 endforeach()
-foreach(s validacao_stubs hle_ausente maple_ausente aica_ausente)
+foreach(s validacao_stubs hle_ausente maple_ausente aica_ausente sb_ausente dmac_ausente)
   string(REGEX MATCH "[ \t]${s}\\.obj" stub "${map}")
   if(NOT stub)
     list(APPEND bad "o stub ${s}.obj (objeto do proprio produto) nao esta no mapa")

@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink e 7c estado nativo do quadro concluídos) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink, 7c estado nativo do quadro e 7d1 DMA/system block nativos concluídos) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -361,6 +361,16 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   (`reviews/codex-hh15_7c.log`): aceitos [ALTA] referência do `conferir` sobre o estado emprestado (corrigido pela
   sombra independente), [MÉDIA] unitário só com 565 progressivo, [BAIXA] K6 sem contagens exatas; nenhum rejeitado.
   Regressão integral 14/14 (`analysis/hh15/regressao_7c.log`).
+- HH15.7d1 (concluído, 2026-10-29): DMA do canal 2 e system block como serviços nativos (`runtime/system/dma_bus` e
+  `sb_bus`, papel `nativo`): o canal 2 entrega os blocos direto ao destino nativo das listas e texturas, sem o TA do
+  runtime; os modelos `pvr/holly_sb` e `memory/sh4_dmac` vão para o papel `sb` (só verificação) e delegam o contrato;
+  o produto liga os stubs `system/sb_ausente` e `system/dmac_ausente` (fora do contrato, erro explícito; catraca com os
+  negativos `com_sb` e `sem_stub_sb`). Teste do contrato `hh15_dma_e_system_block_no_contrato` (modelos e stubs);
+  K3 exige pedidos e bytes por destino iguais aos da sombra. Revisão Codex (`reviews/codex-hh15_7d1.log`): aceitos
+  [MÉDIA] teste dirigido do contrato, [MÉDIA] parcial stubs sem teste sem dados, [BAIXA] contagem do K3; registrado que
+  os negativos `HH_SB_MUTACAO` não têm portão desde o HH09. A regressão achou a escrita da tabela de inicialização em
+  `0x005F6940` fora do contrato (corrigido, faixa `0x005F6940-0x005F69FF`). Regressão integral 14/14
+  (`analysis/hh15/regressao_7d1.log`), ctest 70/70.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

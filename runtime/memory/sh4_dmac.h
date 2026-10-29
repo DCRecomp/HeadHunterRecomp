@@ -10,8 +10,8 @@ namespace hh {
 
 void sh4_dmac_reset();
 
-bool sh4_dmac_read(uint32_t a, unsigned size, uint32_t& v);
-bool sh4_dmac_write(uint32_t a, unsigned size, uint32_t v);
+bool sh4_dmac_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v);
+bool sh4_dmac_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v);
 
 // Transferencia do canal 2 (SB_C2DST = 1): `len` bytes de SAR2 para `dest` (area 4:
 // FIFO do TA ou caminho de textura). Atualiza SAR2/DMATCR2/CHCR2.TE. Devolve false se

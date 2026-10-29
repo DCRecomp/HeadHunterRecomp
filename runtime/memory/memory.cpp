@@ -199,7 +199,7 @@ bool hwRead(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
            sh4_port_read(a, size, v) ||          // P4: PCTRA/PDTRA
            sh4_tmu_read(c, a, size, v) ||        // P4: TMU
            sh4_sq_read(a, size, v) ||            // P4: store queues, QACR
-           sh4_dmac_read(a, size, v) ||          // P4: DMAC
+           sh4_dmac_read(c, a, size, v) ||          // P4: DMAC
            sh4_ccn_read(a, size, v);             // P4: CCR, arrays de cache
 }
 bool hwWrite(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
@@ -218,7 +218,7 @@ bool hwWrite(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
            sh4_port_write(a, size, v) ||
            sh4_tmu_write(c, a, size, v) ||
            sh4_sq_write(a, size, v) ||
-           sh4_dmac_write(a, size, v) ||
+           sh4_dmac_write(c, a, size, v) ||
            sh4_ccn_write(a, size, v);
 }
 

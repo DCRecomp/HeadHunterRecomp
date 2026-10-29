@@ -484,3 +484,41 @@ inicialização (`0x8C15FAC8`).
   - [BAIXA] o K6 aceitava texturas e quadros exibidos maiores que zero: exige as texturas conferidas iguais ao total
     dos renders (contado à parte) e um quadro exibido conferido por VBlank.
 - Regressão integral 14/14 com as correções (`analysis/hh15/regressao_7c.log`, com o K6), ctest 67/67.
+
+#### HH15.7d1 (concluído, 2026-10-29): DMA do canal 2 e system block como serviços nativos
+
+- `runtime/system/dma_bus` (papel `nativo`): DMAOR e os registradores do canal 2 guardados (o contrato medido: o funil
+  `0x8C17C600` e o tratador `0x8C168160`); a transferência entrega os blocos da RAM, na ordem, direto ao destino nativo
+  das listas e texturas, sem o TA do runtime, com o efeito do modelo de antes no fim (SAR2, DMATCR2, CHCR2.TE).
+- `runtime/system/sb_bus` (papel `nativo`): o contrato medido do system block (leituras de C2DSTAT/C2DLEN/C2DST, SB_FFST
+  e SB_SBREV; escritas guardadas do sistema, do G1, do G2 e do DMA do PVR); SB_C2DST = 1 dispara o DMA do canal 2 e acende
+  o bit 19 do ISTNRM, como antes.
+- Os modelos `pvr/holly_sb.cpp` e `memory/sh4_dmac.cpp` vão para o papel novo `sb` (só verificação) e delegam o
+  contrato aos serviços, então as referências do `hh-run` exercitam o código do produto; o modelo guarda o resto da
+  região, os negativos `HH_SB_MUTACAO` e os diagnósticos, e entrega o canal 2 ao TA do runtime sem o destino nativo
+  (`HH_KAMUI=legado` ou `sombra`).
+- O produto compila `system/sb_ausente.cpp` e `system/dmac_ausente.cpp` (a API dos modelos direto aos serviços; fora do
+  contrato, erro explícito). Catraca: o papel `sb` fora do mapa e os stubs no mapa (negativos `com_sb` e `sem_stub_sb`).
+- Rota da área 1: o padrão e a sombra com os 94 hashes iguais ao HH06; no nativo os 14 534 pedidos ao funil de DMA entregaram
+  301 857 856 bytes de listas direto ao destino nativo; ctest 69/69.
+- Revisão Codex (`reviews/codex-hh15_7d1.log`), sem diferença de efeito apontada nos serviços:
+  - [MÉDIA] aceito: faltava um teste dirigido do contrato (os modelos delegam aos serviços, então não são uma referência
+    independente nele): `hh15_dma_e_system_block_no_contrato` com os valores fixos do modelo de antes (canal
+    desabilitado, blocos na ordem, SAR2/DMATCR2/TE, C2DSTAT/C2DLEN/C2DST, bit 19, `next_event`, caminho de textura,
+    SB_SBREV/SB_FFST), compilado com os modelos (`hh_runtime_tests`) e com os stubs do produto
+    (`hh15_produto_sb_tests`: fora do contrato, erro explícito). Fica registrado, sem mudança nesta subetapa, que os
+    negativos `HH_SB_MUTACAO` (do modelo, aplicados antes da delegação) não têm portão desde o HH09;
+  - [MÉDIA] parcial: os stubs do produto só rodavam com dados no passo `builder` da regressão (o `HeadHunter.exe`
+    instalado na rota do produto, 94 hashes), não em teste sem dados; o `hh15_produto_sb_tests` cobre agora o contrato
+    deles;
+  - [BAIXA] aceito: o K3 usava a contagem de pedidos do funil nativo, que contava todo pedido como de listas; o funil
+    nativo classifica pelo destino do descritor, como a sombra, e o K3 exige os pedidos e os bytes por destino iguais
+    aos da sombra.
+- A regressão (passo `builder`) parou o boot de teste do `HeadHunter.exe` instalado numa escrita da tabela de
+  inicialização em `0x005F6940`, fora da lista de escritas do serviço: a sonda classificava `0x005F6940-0x005F6954`
+  (logo depois do INTC) como `holly_intc`. O contrato de escrita ganhou `0x005F6940-0x005F69FF`, e todo acesso da sonda
+  da rota nativa à região do system block foi conferido contra o contrato (nenhum fora); o unitário escreve a tabela
+  inteira. Com isso o `HeadHunter.exe --headless` cumpre a rota do produto (4 700 VBlanks) com os 94 hashes da
+  referência do produto.
+- Regressão integral 14/14 (`analysis/hh15/regressao_7d1.log`), ctest 70/70; no passo `builder` o produto instalado
+  cumpre a rota sem acesso recusado.
