@@ -188,6 +188,18 @@ ni::ActionMap loadActionMap() {
 #endif
 
 int main(int argc, char** argv) {
+    // HH15.3-HH15.6 (revisao Codex): os provedores legados de arquivos, controles, saves, filmes e audio dependem do
+    // hardware simulado (drive, Maple com controle, VMU, decodificador 4X sobre a AICA, AICA), que nao existe no produto
+    // (so no hh-run). A recusa vem antes de tudo, para valer em todos os modos (jogo, --verify-data, saves).
+    for (int i = 1; i + 1 < argc; ++i) {
+        const std::string a = argv[i];
+        if ((a == "--arquivos" || a == "--controles" || a == "--saves" || a == "--video" || a == "--audio") &&
+            std::string(argv[i + 1]) == "legado") {
+            std::fprintf(stderr, "ERRO: %s legado exige o hardware simulado, que nao existe no produto (use o hh-run)\n",
+                         a.c_str());
+            return 2;
+        }
+    }
     // HH18 (verificacao do Builder): --version imprime a identificacao; --verify-data confere todos os arquivos de data\
     // contra o manifesto do Builder (sem abrir o jogo). Os dois saem na hora.
     if (argc >= 2 && std::string(argv[1]) == "--version") {
@@ -220,7 +232,7 @@ int main(int argc, char** argv) {
     std::string     logPath;
     uint64_t        hashEvery = 0;
     bool            headless  = false;
-    bool            savesSet = false, savesPortable = false, videoSet = false, renderSet = false, audioSet = false;
+    bool            savesPortable = false, renderSet = false;
     bool            timeSet = false;
     fs::path        vmsExport, vmsImport;
     std::string     vmsName;
@@ -255,14 +267,14 @@ int main(int argc, char** argv) {
             opt.controls = std::string(argv[++i]) == "nativo" ? hh::ControlsProvider::Native : hh::ControlsProvider::Legacy;
         else if (a == "--saves" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
-            opt.saves = std::string(argv[++i]) == "nativo" ? hh::SavesProvider::Native : hh::SavesProvider::Legacy, savesSet = true;
+            opt.saves = std::string(argv[++i]) == "nativo" ? hh::SavesProvider::Native : hh::SavesProvider::Legacy;
         else if (a == "--saves-pasta" && i + 1 < argc) opt.savesRoot = argv[++i];
         else if (a == "--video" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
-            opt.video = std::string(argv[++i]) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy, videoSet = true;
+            opt.video = std::string(argv[++i]) == "nativo" ? hh::VideoProvider::Native : hh::VideoProvider::Legacy;
         else if (a == "--audio" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo"))
-            opt.audio = std::string(argv[++i]) == "nativo" ? hh::AudioProvider::Native : hh::AudioProvider::Legacy, audioSet = true;
+            opt.audio = std::string(argv[++i]) == "nativo" ? hh::AudioProvider::Native : hh::AudioProvider::Legacy;
         else if (a == "--render" && i + 1 < argc &&
                  (std::string(argv[i + 1]) == "software" || std::string(argv[i + 1]) == "nativo"))
             opt.render = std::string(argv[++i]) == "nativo" ? hh::RenderProvider::Native : hh::RenderProvider::Software, renderSet = true;
@@ -320,25 +332,6 @@ int main(int argc, char** argv) {
         }
         return failed ? 1 : 0;
     }
-    // HH15.4 (antes de qualquer dado): o modelo do Maple com o controle nao existe no produto (so no hh-run)
-    if (opt.controls == hh::ControlsProvider::Legacy) {
-        std::fprintf(stderr, "ERRO: --controles legado exige o modelo do Maple, que nao existe no produto (use o hh-run)\n");
-        return 2;
-    }
-    // HH15.3: o gdFs original le setores pelo drive simulado, que nao existe no produto (so no hh-run, --sistema hle)
-    if (opt.files == hh::FileProvider::Legacy) {
-        std::fprintf(stderr, "ERRO: --arquivos legado exige o drive simulado, que nao existe no produto (use o hh-run)\n");
-        return 2;
-    }
-    // HH15.4/HH15.5/HH15.6 (revisao Codex): os provedores legados de saves, filmes e audio dependem do hardware
-    // simulado (VMU pelo Maple, decodificador 4X com a AICA, AICA) e nao existem no produto (so no hh-run)
-    for (const auto& [legacy, what] : {std::pair{opt.saves == hh::SavesProvider::Legacy && savesSet, "--saves legado"},
-                                       std::pair{opt.video == hh::VideoProvider::Legacy && videoSet, "--video legado"},
-                                       std::pair{opt.audio == hh::AudioProvider::Legacy && audioSet, "--audio legado"}})
-        if (legacy) {
-            std::fprintf(stderr, "ERRO: %s exige o hardware simulado, que nao existe no produto (use o hh-run)\n", what);
-            return 2;
-        }
     try {
         const hh::InstallData inst = hh::resolve_install(opt.data);
         opt.filesManifest          = inst.manifest;

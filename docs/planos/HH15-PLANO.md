@@ -282,3 +282,97 @@ verificação do produto rebaseada no caminho nativo; as rotas históricas ficam
    63/63.
 5. Fica para a HH15.7: o quadro do filme é composto no lugar do quadro do PVR e o ritmo do filme lê
    `holly_vblank_count()`; os dois saem com o corte do PVR/Holly (ponte do SPG).
+
+### HH15.6 (concluída, 2026-10-29)
+
+Inventário (sonda da HH15.0, rota nativa, 4 700 VBlanks): com o áudio nativo do HH14 a CPU não toca a RAM de som nem
+registrador de canal, DSP, temporizador ou interrupção do ARM7; na área da AICA só `0x8C1706E8` lê o RTC
+(`0x00710000`/`04`, 9 400 vezes cada, duas por VBlank). Os registradores do G2 (`0x005F7800-0x005F78FF`: a tabela de
+inicialização em `0x8C15FAC8` e `0x8C18113C`/`0x8C181278`, a suspensão em `0x8C183C6C`/`0x8C183C8C` a cada leitura do
+RTC) e o estado da FIFO (`0x005F688C`, `0x8C183CD4`) são do `holly_sb` e saem com a HH15.7. Precedente do N8.6 do BS:
+área de som nativa com o contrato medido, modelo só na validação; diferente do BS, a RAM de som fica fora do contrato,
+porque no HH o provedor nativo de áudio tem a sua e o SDK não a toca pela CPU.
+
+1. **`runtime/system/sound_bus`** (papel `nativo`): RTC no relógio do provedor de tempo (alto, baixo e a liberação de
+   escrita em `0x00710008`, como o modelo), controle `0x00702C00` guardado, a mesma instrumentação (`HH_CLOCK_LOG` `Rtc`
+   e `Aud`); qualquer outro acesso à área (`0x00700000-0x0071FFFF`, `0x00800000-0x00FFFFFF`) ou outro tamanho é erro
+   explícito.
+2. O modelo (`aica/aica_regs.cpp`, papel novo `aica`, só na verificação) delega controle e RTC ao serviço e guarda a RAM
+   de som do `--audio legado` e os diagnósticos `HH_AICA_*`; então as referências do `hh-run` exercitam o código do
+   produto.
+3. O produto compila `runtime/system/aica_ausente.cpp` (a API do modelo direto ao serviço; sem `aica_ram`) e recusa
+   `--audio legado` (HH15.5). Catraca: o papel `aica` fora do mapa e o stub no mapa (negativos `com_aica` e
+   `sem_stub_aica`).
+4. Unitários `hh15_area_de_som_igual_ao_modelo_no_contrato` (o roteiro do RTC e do controle no serviço e no modelo, com
+   os valores esperados pela contagem do provedor estável) e `hh15_area_de_som_recusa_fora_do_contrato` (16 recusas:
+   canais, DSP, temporizadores, RAM de som e espelho, tamanhos 1 e 2).
+5. Revisão Codex (`reviews/codex-hh15_56.log`), três achados aceitos e corrigidos:
+   - [MÉDIA] `--verify-data` e a exportação/importação de saves saíam antes das recusas
+     (`HeadHunter.exe --verify-data --audio legado` conferia os dados). As recusas passam a ser um exame do `argv` no
+     começo do `main`, válido em todos os modos; o negativo `hh15_produto_recusa_legado` cobre os 4 modos (falhou antes
+     com 15 casos);
+   - [MÉDIA] o unitário não cobria o reset entre sessões nem o `HH_CLOCK_LOG`. Novos
+     `hh15_area_de_som_clock_log_do_contrato` (contagem e hash de `Rtc` e `Aud` calculados dos valores do contrato, no
+     serviço e no modelo) e `hh15_area_de_som_reset_entre_sessoes` (RTC na hora do host, controle e liberação
+     desligados). Parte rejeitada: o RTC sem valor definido só existe antes do primeiro reset do processo, e o código é
+     o mesmo do reset (`rtcNow` define a hora do host); os valores esperados já eram fixos no teste, não do modelo; a
+     ordem do `HH_CLOCK_LOG` e os diagnósticos na rota completa ficam com as referências da HH15 e os portões do HH09 e do
+     HH14, capturados com o modelo antigo;
+   - [BAIXA] a catraca só reconhecia `hh_runtime:aica_regs.obj`. Os objetos dos papéis fora do produto passam a ser
+     reconhecidos sem biblioteca ou de qualquer uma; negativos `aica_solto` e `aica_outra_biblioteca`, que passavam na
+     catraca sem a correção.
+   - Sem achados de diferença de valor do RTC, símbolo faltando ou acesso do produto às recusas novas.
+
+Resultado: regressão integral 14/14 (`analysis/hh15/regressao3.log`, 2026-10-29, antes da revisão; as correções mudam
+só as recusas de opções, testes e a catraca), ctest 67/67, `hh_runtime_tests` 16 ok e 1 sem dados.
+
+### HH15.7 (em andamento): plano
+
+Ponto de partida, diferente do BS no N8.7: o HH13.6 já intercepta os cinco funis do Kamui (`0x8C1793E0` escrita e
+`0x8C1793EA` leitura de registrador, `0x8C17C600` DMA, `0x8C159820` cópia e `0x8C159874` zeragem), com slots
+gerados (o equivalente da D-K1 (b) do BS, já em uso desde o HH13). No modo nativo esses funis não tocam o PVR; o que
+ainda passa pelo hardware simulado no produto é:
+- o render e o quadro exibido: `pvr_start_render` (o decodificador e o rasterizador do `pvr_render` mais a captura do
+  `render_capture`) e `pvr_video_frame` sobre o estado nativo emprestado (`withNative`: `pvr_regs_set_override`,
+  `vram_set_override`, `ta_set_override`);
+- o `--render software` (padrão do headless e do `hh-run`) sem o provedor nativo do Kamui: TA, VRAM e registradores
+  do runtime;
+- o DMA: o original programa o DMAC (`FFA00020/28/2C/40`) e o SB (`SB_C2DSTAT/LEN/ST`), e o modelo entrega os bytes
+  ao `areaFourSink`; o fim do DMA e o fim de lista vêm do `holly_intc`;
+- o SPG (`0x0C8-0x0E0` e `SPG_STATUS`) no `pvr_regs`, lido pelo tempo e pelo Maple; o ritmo do filme e o adaptador
+  de vídeo leem `holly_vblank_count()`;
+- o tratador `0x8C168160` lê e limpa `ISTNRM`/`ISTERR` e lê o `CHCR2`.
+
+Decisões herdadas do BS (seção 2, mesmas regras): sem regenerar o AOT nem mudar o gerador; a memória de texturas
+endereçada como a VRAM é memória do guest (D-K2); banco mínimo de status alimentado por eventos nativos, com o
+tratador original do Kamui (D-K3 (a)); tempo estável e lógico sem mudança de relógio, ordem ou prazo (D-K4). O custo do
+fim de render continua `min(450000 + bytes do TA * 100, 1500000)`.
+
+Incrementos, cada um com o padrão do BS: o serviço nativo no produto; na validação o modelo antigo roda junto e é a
+referência; um comparador por acesso ou por render com negativo por mutação; a catraca proíbe o modelo no produto;
+referências da HH15, Codex e commit próprio.
+
+0. **Medição** (sonda gráfica só na validação, recusada no produto): na rota do produto, com o provedor nativo do Kamui
+   e os dois renderizadores, confirmar que todo byte do TA chega pelo funil de DMA (nenhum SQ para a área 4), os
+   valores de `FB_W_SOF1` (sem render para textura), quem lê a VRAM pela CPU, os registradores que o tratador e o jogo
+   leem e a sequência de status por render (fim de DMA, fins de lista, fim de render, VBlank).
+1. **7a, software sobre a IR**: `native/render/soft` (`soft_raster` movido do `pvr_render` sem mudar as contas, texels
+   por uma fonte; `soft_device` como o Vulkan, sobre a `CommandList`). O produto passa a usar o provedor nativo do
+   Kamui também no software, e o software sobre a IR é o recuo do Vulkan. Prova: a imagem do software sobre a IR igual
+   à do rasterizador sobre o TA em todo render da rota (modo `conferir`), os 94 hashes da referência do produto e as
+   referências da HH15 com o `hh-run`.
+2. **7b, ListSink**: a divisão dos parâmetros (`Params` do `kamui_device`) e o decodificador das listas viram
+   `native/render/kamui/list_sink`, que produz a IR direto; `ta`, o decodificador do `pvr_render` e o `render_capture`
+   saem do produto. Comparador: a IR do ListSink igual à do caminho do TA render a render.
+3. **7c, FrameState, TextureHeap e DisplayService**: o banco de registradores do Kamui (com o SPG num módulo
+   compartilhado, sem mudar as contas), a memória de texturas com gerações por página e a imagem exibida pelos
+   registradores `FB_R_*`; `pvr_regs`, `vram`, `pvr_texture` e `pvr_video` saem do produto. Comparadores por acesso
+   (FrameState), por página tocada (TextureHeap) e por quadro inteiro (DisplayService).
+4. **7d, eventos e DMA**: o banco de status do Holly (`holly_intc` fora do produto); o DMA do canal 2 feito pelo funil
+   nativo, com o contrato medido do DMAC e do SB (o que o tratador e o Kamui leem e os mesmos prazos); a parte do
+   `holly_sb` que não é gráfica (Maple, G2, `SB_FFST`) num serviço do sistema; `sh4_dmac` fora do produto. As store
+   queues para a RAM são semântica da CPU e ficam; para a área 4, erro explícito.
+
+Portão: R1–R5 do HH13 e K1–K4 com o caminho novo; referências da HH15 (rotas, hashes e traces de ordem e entrega);
+sonda sem acesso ao PVR, à VRAM, ao TA, ao DMAC ou ao SB gráfico; catraca do mapa sem `pvr_*`, `ta`, `vram`,
+`holly_intc`, `sh4_dmac` e `render_capture`.

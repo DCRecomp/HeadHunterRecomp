@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1 e HH15.5 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; próxima: HH15.7, Holly/PVR/DMA) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -323,6 +323,18 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   `newgame_area1_nativo`) e o passo `builder` da regressão confere o executável instalado contra ela. Regressão
   integral 14/14 (`analysis/hh15/regressao2.log`, 2026-10-29). Recusas dos 5 provedores legados antes de qualquer
   dado, negativo `hh15_produto_recusa_legado`; ctest 63/63.
+- HH15.6 (concluída, 2026-10-29): área de som nativa `runtime/system/sound_bus` (papel `nativo`) com o contrato
+  medido na rota nativa (só o RTC `0x00710000/04`, de `0x8C1706E8`, 9 400 leituras cada): RTC no relógio do provedor
+  de tempo com a liberação de escrita, controle guardado, `HH_CLOCK_LOG` `Rtc`/`Aud`; o resto da área ou outro tamanho
+  é erro explícito. O modelo `aica/aica_regs.cpp` (papel novo `aica`, só verificação) delega controle e RTC ao serviço;
+  o produto compila `system/aica_ausente.cpp` e não tem `aica_regs` no mapa (catraca com os negativos `com_aica`,
+  `aica_solto`, `aica_outra_biblioteca`, `sem_stub_aica`). Unitários `hh15_som_tests` (roteiro do contrato, clock log
+  com hashes calculados dos valores, reset entre sessões, 16 recusas). Revisão Codex (`reviews/codex-hh15_56.log`):
+  aceitos [MÉDIA] recusas dos provedores legados contornáveis por `--verify-data` e pela exportação/importação de
+  saves (agora exame do `argv` no começo do `main`; negativo nos 4 modos, que falhou antes com 15 casos), [MÉDIA]
+  cobertura do reset e do `HH_CLOCK_LOG` no unitário, [BAIXA] catraca só com o prefixo `hh_runtime:`; rejeitado o caso
+  do RTC sem valor definido como teste separado (mesmo código do reset; só existe antes do primeiro reset do processo).
+  Regressão integral 14/14 (`analysis/hh15/regressao3.log` antes da revisão; `regressao4.log` depois); ctest 67/67.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

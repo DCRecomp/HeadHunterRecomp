@@ -10,7 +10,11 @@
 //   0x00710004  RTC, 16 bits baixos
 //   0x00710008  bit 0 libera a escrita do RTC; escrever os 16 bits altos a desliga
 // O RTC conta segundos desde 1950-01-01 e avanca um por segundo de CPU emulada.
+// HH15.6: o controle e o RTC vivem na area de som nativa (system/sound_bus, a do produto); o modelo guarda a RAM de som
+// do --audio legado e os diagnosticos HH_AICA_* e so existe na verificacao (papel aica; o produto compila
+// system/aica_ausente.cpp).
 #include "aica/aica_regs.h"
+#include "system/sound_bus.h"
 #include "cpu/time_hooks.h"
 #include "debug/clock_log.h"
 #include "pvr/holly_intc.h"
@@ -34,20 +38,11 @@ constexpr uint32_t kRtcHi   = 0x00710000;
 constexpr uint32_t kRtcLo   = 0x00710004;
 constexpr uint32_t kRtcEn   = 0x00710008;
 
-uint32_t g_ctrl = 0;
-bool     g_rtcEnable = false;
-bool     g_rtcSet = false;        // sem valor definido: hora do host no primeiro acesso
-
 std::vector<uint8_t> g_ram(kAicaRamSize);
 
 uint32_t canon(uint32_t a) { return a < 0xE0000000 ? (a & 0x1FFFFFFF) : 0; }
 bool     inRam(uint32_t p) { return p >= 0x00800000 && p < 0x01000000; }
-
-// N2a: a contagem do RTC e do provedor de tempo (legado: base + ciclos; nativo: relogio logico)
-uint32_t rtcNow(uint64_t now) {
-    if (!g_rtcSet) aica_rtc_set(aica_rtc_host_now(), now);
-    return time_provider().rtc_seconds(now);
-}
+bool     inService(uint32_t p) { return p == kCtrl || p == kRtcHi || p == kRtcLo || p == kRtcEn; }
 
 } // namespace
 
@@ -55,30 +50,11 @@ uint8_t* aica_ram() { return g_ram.data(); }
 
 void aica_regs_reset() {
     std::fill(g_ram.begin(), g_ram.end(), uint8_t(0));
-    g_ctrl      = 0;
-    g_rtcEnable = false;
-    aica_rtc_set(aica_rtc_host_now(), 0);
+    sound_bus_reset();
 }
 
-void aica_rtc_set(uint32_t seconds, uint64_t now) {
-    time_provider().rtc_set(seconds, now);
-    g_rtcSet = true;
-}
-
-uint32_t aica_rtc_host_now() {
-    const std::time_t now = std::time(nullptr);
-    std::tm           local{}, utc{};
-#ifdef _WIN32
-    localtime_s(&local, &now);
-    gmtime_s(&utc, &now);
-#else
-    localtime_r(&now, &local);
-    gmtime_r(&now, &utc);
-#endif
-    const std::time_t offset = std::mktime(&local) - std::mktime(&utc);  // fuso + horario de verao
-    constexpr int64_t epoch1950 = int64_t(20 * 365 + 5) * 24 * 60 * 60;  // 1950 -> 1970
-    return uint32_t(epoch1950 + int64_t(now) + int64_t(offset));
-}
+void     aica_rtc_set(uint32_t seconds, uint64_t now) { sound_bus_rtc_set(seconds, now); }
+uint32_t aica_rtc_host_now() { return sound_bus_rtc_host_now(); }
 
 // Diagnostico (HH_AICA_TRACE=1): acessos da CPU a RAM de som por endereco, com o primeiro e o
 // ultimo valor e o ciclo; relatorio dos mais lidos no fim do processo. Serve para achar o que
@@ -222,13 +198,8 @@ bool aica_reg_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
         if (g_clock_log) clock_log_read(ClockRead::AudRd, p), clock_log_read(ClockRead::AudRd, v);
         return true;
     }
-    if (p == kCtrl && size == 4) v = g_ctrl;
-    else if (p == kRtcHi && size == 4) v = rtcNow(time_now(c)) >> 16;
-    else if (p == kRtcLo && size == 4) v = rtcNow(time_now(c)) & 0xFFFF;
-    else if (p == kRtcEn && size == 4) v = 0;
-    else return false;
-    if (g_clock_log && (p == kRtcHi || p == kRtcLo)) clock_log_read(ClockRead::Rtc, v);
-    return true;
+    if (!inService(p) || size != 4) return false;  // o resto da AICA nao e modelado (o mapa registra o acesso)
+    return sound_bus_read(c, a, size, v);
 }
 
 bool aica_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
@@ -258,9 +229,14 @@ bool aica_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
     // (correcao 2026-10-16: antes eram 99,8% do AUD do N2b-0)
     if (p < 0x00700000 || p >= 0x00720000) return false;
     if (size != 4) return false;
-    if (g_clock_log) clock_log_read(ClockRead::Aud, p), clock_log_read(ClockRead::Aud, v);
+    if (!inService(p)) {
+        if (g_clock_log) clock_log_read(ClockRead::Aud, p), clock_log_read(ClockRead::Aud, v);
+        audioLog(p, v, size);
+        trace(true, p, v, time_now(c), c->pr);  // diagnostico: registradores tambem (HH_AICA_TRACE)
+        return false;
+    }
     audioLog(p, v, size);
-    trace(true, p, v, time_now(c), c->pr);  // diagnostico: registradores tambem (HH_AICA_TRACE)
+    trace(true, p, v, time_now(c), c->pr);
     if (p == kCtrl) {
         if (std::getenv("HH_AICA_TRACE"))  // diagnostico: reset/liberacao do ARM7 (bit 0)
             std::fprintf(stderr, "[aica] controle 00702C00 = %08X (ARM7 %s; ciclo %llu, PR %08X, funcao %08X)\n", v,
@@ -273,20 +249,8 @@ bool aica_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
             }
             std::fprintf(stderr, "\n");
         }
-        g_ctrl = v;
-    } else if (p == kRtcEn) {
-        g_rtcEnable = v & 1;
-    } else if (p == kRtcHi || p == kRtcLo) {
-        if (g_rtcEnable) {
-            const uint32_t now = rtcNow(time_now(c));
-            const uint32_t val = p == kRtcHi ? (now & 0xFFFF) | ((v & 0xFFFF) << 16) : (now & 0xFFFF0000) | (v & 0xFFFF);
-            aica_rtc_set(val, time_now(c));
-            if (p == kRtcHi) g_rtcEnable = false;
-        }
-    } else {
-        return false;
     }
-    return true;
+    return sound_bus_write(c, a, size, v);  // controle e RTC: a area de som nativa (registra o HH_CLOCK_LOG Aud)
 }
 
 } // namespace hh

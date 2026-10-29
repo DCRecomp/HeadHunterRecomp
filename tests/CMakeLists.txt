@@ -72,7 +72,7 @@ endif()
 
 # HH05: testes do runtime hibrido (setjmp/longjmp entre threads do guest, portado do Blue Stinger).
 add_executable(hh_runtime_tests unit/main.cpp unit/test_longjmp.cpp hh05_bios_exit_tests.cpp hh05_gdrom_getscd_tests.cpp hh06_service_hook_tests.cpp
-               hh15_sistema_tests.cpp hh15_maple_tests.cpp)
+               hh15_sistema_tests.cpp hh15_maple_tests.cpp hh15_som_tests.cpp)
 target_include_directories(hh_runtime_tests PRIVATE unit)
 target_link_libraries(hh_runtime_tests PRIVATE hh_translator hh_runtime)
 add_test(NAME hh_runtime_tests COMMAND hh_runtime_tests)
@@ -186,12 +186,17 @@ if(TARGET HeadHunter AND MSVC)
   set(hh15_neg_com_sonda "objeto do papel validacao .so verificacao e ferramentas. no produto: hw_probe")
   set(hh15_neg_com_hle "objeto do papel hle .so verificacao e ferramentas. no produto: gdrom")
   set(hh15_neg_com_maple "objeto do papel perifericos .so verificacao e ferramentas. no produto: maple")
+  set(hh15_neg_com_aica "objeto do papel aica .so verificacao e ferramentas. no produto: aica_regs")
+  set(hh15_neg_aica_solto "${hh15_neg_com_aica}")
+  set(hh15_neg_aica_outra_biblioteca "${hh15_neg_com_aica}")
+  set(hh15_neg_sem_stub_aica "o stub aica_ausente.obj")
   set(hh15_neg_objeto_extra "objeto do hh_runtime fora do manifesto: desconhecido")
   set(hh15_neg_sem_stub "o stub validacao_stubs.obj")
   set(hh15_neg_outra_biblioteca "objeto de outra biblioteca com o nome do runtime")
   set(hh15_neg_fonte_fora "fonte do runtime fora do manifesto: pvr/pvr_video.cpp")
   set(hh15_neg_mapa_velho "o mapa e de outro link")
-  foreach(m sem_objeto com_sonda com_hle com_maple objeto_extra sem_stub outra_biblioteca fonte_fora mapa_velho)
+  foreach(m sem_objeto com_sonda com_hle com_maple com_aica aica_solto aica_outra_biblioteca objeto_extra sem_stub
+            sem_stub_aica outra_biblioteca fonte_fora mapa_velho)
     add_test(NAME hh15_produto_papeis_negativo_${m}
       COMMAND ${CMAKE_COMMAND} ${hh15_papeis_args} -DMUTAR=${m} -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_papeis.cmake)
     set_tests_properties(hh15_produto_papeis_negativo_${m} PROPERTIES PASS_REGULAR_EXPRESSION "${hh15_neg_${m}}")
