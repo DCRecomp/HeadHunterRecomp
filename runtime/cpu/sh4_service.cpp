@@ -7,11 +7,10 @@
 #include "cpu/sh4_runtime.h"
 #include "cpu/sh4_threads.h"
 #include "cpu/time_hooks.h"
+#include "debug/validacao.h"
 #include "gdrom/gdrom.h"
 #include "pvr/holly_intc.h"
 
-#include <cstdlib>
-#include <string>
 
 namespace hh {
 
@@ -34,23 +33,16 @@ Sh4ServiceHook g_serviceHook = nullptr;
 bool           g_logical     = false;    // HH15.1: cadencia B (tempo logico)
 Sh4Context*    g_session     = nullptr;  // contexto da sessao (despertar pedido fora do codigo gerado)
 bool           g_woken       = false;    // o proximo atendimento foi pedido por sh4_irq_wakeup (diagnostico)
-// HH15.1 (prova de independencia dos ciclos): HH_CICLOS_RUIDO=<n> soma ao contador de ciclos um valor pseudoaleatorio
-// em [0, n) a cada atendimento e a cada tick. No tempo logico nada pode mudar; no tempo por ciclos (controle) muda.
-const uint64_t g_noise = [] { const char* v = std::getenv("HH_CICLOS_RUIDO"); return v ? std::strtoull(v, nullptr, 10) : 0ull; }();
-uint64_t       g_noiseState = 0x9E3779B97F4A7C15ull;
-void addNoise(Sh4Context* c) {
-    if (!g_noise) return;
-    g_noiseState = g_noiseState * 6364136223846793005ull + 1442695040888963407ull;
-    c->cycles += (g_noiseState >> 33) % g_noise;
-}
+// HH15.1 (prova de independencia dos ciclos, so na validacao: debug/validacao): ruido no contador de ciclos a cada
+// atendimento e a cada tick. No tempo logico nada pode mudar; no tempo por ciclos (controle) muda.
+void addNoise(Sh4Context* c) { validation_cycle_noise(c); }
 } // namespace
 
 void sh4_set_service_hook(Sh4ServiceHook fn) { g_serviceHook = fn; }
 
 void sh4_set_logical_cadence(bool on) {
-    // diagnostico (HH15.1, referencia A/B): HH_CADENCIA=quantum mantem o atendimento pelo quantum de ciclos no tempo logico
-    static const bool quantum = [] { const char* v = std::getenv("HH_CADENCIA"); return v && std::string(v) == "quantum"; }();
-    g_logical = on && !quantum;
+    // diagnostico (HH15.1, referencia A/B, so na validacao): HH_CADENCIA=quantum mantem o quantum de ciclos no tempo logico
+    g_logical = on && !validation_cadence_quantum();
     on        = g_logical;
     if (g_session) g_session->next_poll = on ? g_session->polls + kProgressTick : UINT64_MAX;
 }

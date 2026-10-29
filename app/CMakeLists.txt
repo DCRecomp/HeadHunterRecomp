@@ -45,7 +45,9 @@ if(HH_GENERATED_DIR)
       GIT_TAG        release-3.2.30
       GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(SDL3)
-    add_executable(HeadHunter WIN32 hh_window.cpp)
+    # HH15.2: o stub dos diagnosticos de validacao e fonte do proprio produto; como os simbolos ja estao definidos aqui,
+    # o linker nao puxa hw_probe.obj nem validacao.obj do hh_runtime (a catraca hh15_produto_papeis confere no mapa).
+    add_executable(HeadHunter WIN32 hh_window.cpp ${CMAKE_SOURCE_DIR}/runtime/debug/validacao_stubs.cpp)
     target_link_libraries(HeadHunter PRIVATE hh_host hh_native_install SDL3::SDL3-static shell32 ole32)  # shell32/ole32: pasta Documentos (saves)
     # HH18: identificacao (--version) e mods em C++ do projeto exportado (com HH_MODS: slots em todas as funcoes)
     set(HH_VERSION_OVERRIDE "" CACHE STRING "Versao gravada no HeadHunter.exe (vazio = arquivo VERSION)")

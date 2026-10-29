@@ -167,3 +167,26 @@ No gerado: 67 093 `HH_CYCLES`, 2 571 `HH_POLL`, 22 704 `HH_CALL` (cada um com `H
    - [MEDIA] acessos aos arrays do cache fora da faixa do contrato iam ao modelo sem contar: o serviço cobre
      `0xF0000000–0xF7FFFFFF` (só as escritas no array de endereços do cache de operandos no contrato);
    - [BAIXA] os laços nativos de cópia/zeragem do Kamui ignoravam o tick de vivacidade: usam a condição do `HH_POLL`.
+
+### HH15.2 (em andamento)
+
+Precedentes do N8.2 do BS adotados (decisões do mantenedor no projeto de referência, 2026-10-26): o tempo estável fica
+nos dois executáveis (CLI e headless históricos); a instrumentação das referências fica no produto, inerte sem a
+variável; só as mutações e sondas exclusivas de teste saem do produto.
+
+1. **Ponte de interrupções separada** (`runtime/cpu/irq_bridge.cpp`): a entrega (contrato do tratador: INTEVT,
+   SSR/SPC/SGR, `rte` conferido, reavaliação depois do `rte`) saiu de `sh4_intc.cpp`, que ficou só com o modelo dos
+   registradores (ICR/IPR, registrador INTEVT), recuo do tempo estável e de fora do contrato.
+2. **Runtime por papel** (`runtime/CMakeLists.txt`): bibliotecas de objetos `aot`, `nativo`, `simulacao`, `estavel`,
+   `diagnostico` e `validacao`, montadas no mesmo `hh_runtime`; manifesto `runtime_papeis.tsv` no build.
+3. **Validação fora do produto sem segundo build**: o executável de verificação (`hh-run`, `hh-diff`, testes) liga os
+   objetos de validação (`debug/hw_probe`, `debug/validacao`: ruído de ciclos, cadência de referência, TMU parado,
+   lista das entregas pelo quantum); o produto compila `debug/validacao_stubs.cpp` como fonte própria, e como os
+   símbolos já estão definidos nele o linker não puxa os objetos reais da biblioteca. O stub recusa na partida, com
+   saída 2, as variáveis de sonda, prova e mutação (`HH_HW_PROBE`, `HH_CICLOS_RUIDO`, `HH_CADENCIA`, as
+   `HH_*_MUTACAO` dos adaptadores, `HH_RENDER_PROBE`, `HH_IRQ_QUANTUM`).
+4. **Catraca** `hh15_produto_papeis` (`tests/hh15/check_papeis.cmake`): manifesto × mapa do linker do `HeadHunter.exe`
+   — todo objeto dos papéis do produto no mapa (exceção fechada: `snapshot`, sem chamador), nenhum de validação, o
+   stub presente, nenhum objeto do `hh_runtime` fora do manifesto, mapa não anterior ao executável. Negativos por
+   mutação do mapa (`sem_objeto`, `com_sonda`, `objeto_extra`) reprovam pelo motivo certo. `hh15_produto_recusa`: o
+   produto sai com 2 para cada variável de teste, e sem ela não.

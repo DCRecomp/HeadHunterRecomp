@@ -28,6 +28,9 @@ bool sh4_intc_write(uint32_t a, unsigned size, uint32_t v);
 uint64_t sh4_irq_taken_count();
 // Codigo da ultima interrupcao aceita (INTEVT), gravado pela entrega (servico do tempo logico, HH15.1).
 uint32_t sh4_irq_intevt();
+void     sh4_irq_set_intevt(uint32_t v);  // escrita no registrador (modelo do tempo estavel) e reset
+// Diagnostico de validacao (debug/validacao): a ponte informa cada entrega pelo quantum de ciclos.
+void sh4_irq_quantum_note(Sh4Context* c, uint32_t intevt);
 
 // HH15.1 (diagnostico, nao muda a execucao): de onde veio cada entrega. Quantum = atendimento pelo quantum de
 // ciclos do poll; Forced = atendimento pedido (espera que andou o instante, fim de DMA: next_event = 0); Hardware =

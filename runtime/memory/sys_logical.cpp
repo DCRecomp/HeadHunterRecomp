@@ -6,6 +6,7 @@
 #include "cpu/sh4_runtime.h"
 #include "cpu/time_hooks.h"
 #include "debug/clock_log.h"
+#include "debug/validacao.h"
 #include "memory/sh4_ccn.h"
 #include "memory/sh4_port.h"
 #include "memory/sh4_tmu.h"
@@ -79,9 +80,8 @@ bool tmuOut(Sh4Context* c, uint32_t a, unsigned size, bool write, uint32_t v) {
 bool tmuRead(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
     if (a == kTstr && size == 1) v = g.tmu.tstr;
     else if (a == kTcnt0 && size == 4) {
-        // negativo (HH15.1): HH_TMU_MUTACAO=parado congela o TCNT0 (a conferencia das referencias tem de acusar)
-        static const bool stopped = [] { const char* m = std::getenv("HH_TMU_MUTACAO"); return m && std::string(m) == "parado"; }();
-        v = stopped ? g.tmu.base : tcnt(time_now(c));
+        // negativo (HH15.1, so na validacao): HH_TMU_MUTACAO=parado congela o TCNT0 (as referencias tem de acusar)
+        v = validation_tmu_stopped() ? g.tmu.base : tcnt(time_now(c));
         if (g_clock_log) clock_log_read(ClockRead::Tmu, v);
     } else return tmuOut(c, a, size, false, 0);
     ++g.stats.tmu;

@@ -172,6 +172,19 @@ if(TARGET HeadHunter AND MSVC)
   add_test(NAME hh07_produto_sem_cdi
     COMMAND ${CMAKE_COMMAND} -DMAP=$<TARGET_FILE_DIR:HeadHunter>/HeadHunter.map
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_product_map.cmake)
+  # HH15.2: papeis do runtime no produto (manifesto x mapa do linker), com negativos por mutacao do mapa, e a recusa
+  # das variaveis de teste pelo produto
+  set(hh15_papeis_args -DMAP=$<TARGET_FILE_DIR:HeadHunter>/HeadHunter.map -DMANIFEST=${CMAKE_BINARY_DIR}/runtime_papeis.tsv)
+  add_test(NAME hh15_produto_papeis
+    COMMAND ${CMAKE_COMMAND} ${hh15_papeis_args} -DEXE=$<TARGET_FILE:HeadHunter>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_papeis.cmake)
+  foreach(m sem_objeto com_sonda objeto_extra)
+    add_test(NAME hh15_produto_papeis_negativo_${m}
+      COMMAND ${CMAKE_COMMAND} ${hh15_papeis_args} -DMUTAR=${m} -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_papeis.cmake)
+    set_tests_properties(hh15_produto_papeis_negativo_${m} PROPERTIES WILL_FAIL TRUE)
+  endforeach()
+  add_test(NAME hh15_produto_recusa
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:HeadHunter> -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa.cmake)
 endif()
 
 # HH07.7: ordem de eventos (VBlank, interrupcao, threads, longjmp) identica em duas execucoes do
