@@ -8,6 +8,7 @@
 // tile de 32 bits, profundidade em 1/w, fundo, listas opaca/punch-through/translucida),
 // com aproximacoes documentadas em pvr_render.cpp.
 #include "cpu/sh4_context.h"
+#include "render/soft/soft_raster.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,34 +31,16 @@ bool pvr_render_take_fp_violation();
 // ---- O que o decodificador das listas do TA produz (N7a: a mesma decodificacao alimenta o rasterizador e a captura
 // da IR de render; nenhum segundo parser) ----
 
-struct PvrColor {
-    float a = 0, r = 0, g = 0, b = 0;  // [0, 1], ja quantizados como o TA guarda (8 bits por canal)
-};
-
-struct PvrVertex {
-    float    x = 0, y = 0, z = 0, u = 0, v = 0;  // z = 1/w
-    PvrColor col, off;
-};
-
+// HH15.7a: os tipos sao os do rasterizador de referencia (native/render/soft/soft_raster.h), que saiu daqui.
+using PvrColor  = native::render::soft::Color;   // [0, 1], ja quantizados como o TA guarda (8 bits por canal)
+using PvrVertex = native::render::soft::Vertex;  // z = 1/w
 // Um triangulo com o estado decodificado do global e do recorte do usuario (as palavras do hardware, sem traducao).
-struct PvrTri {
-    uint32_t  list = 0, isp = 0, tsp = 0, tcw = 0;
-    bool      tex = false, offset = false, gouraud = true;
-    uint32_t  clipMode = 0;                       // PCW bits 17-16: 2 dentro, 3 fora do recorte
-    int       cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;  // recorte do usuario em pixels (inclusivo)
-    PvrVertex v[3];
-};
-
+using PvrTri = native::render::soft::Tri;
 // Os registradores do quadro que o rasterizador usa (lidos uma vez por render): fundo, profundidade do fundo,
 // FPU_CULL_VAL, stride linear das texturas (TEXT_CONTROL), PT_ALPHA_REF, HALF_OFFSET, clamp de cor e a ordenacao
 // dos translucidos. A captura da IR redesenha a partir dos FrameParams convertidos de volta para esta forma.
-struct PvrFrame {
-    uint32_t background = 0;  // RGB do plano de fundo
-    float    background_depth = 0, cull_val = 0;
-    uint32_t tex_stride = 0, pt_ref = 0, half_offset = 0, clamp_max = 0, clamp_min = 0;
-    bool     autosort = true;
-    bool     operator==(const PvrFrame&) const = default;
-};
+using PvrFrame = native::render::soft::Frame;
+
 PvrFrame pvr_frame_from_regs();
 
 struct TaParam;
@@ -86,6 +69,9 @@ public:
     // N7b: depois da decodificacao, antes do rasterizador em software. true = `image` (w x h ARGB8888, ja com o
     // tamanho certo) foi preenchida por outro renderizador e o software nao roda neste render.
     virtual bool render(const PvrFrame&, uint32_t, uint32_t, std::vector<uint32_t>&) { return false; }
+    // HH15.7a: true = o renderizador do render e o deste destino (o software sobre a IR ou o Vulkan): um render que ele
+    // nao desenhou e erro explicito, nunca o rasterizador sobre o TA no lugar.
+    virtual bool renders() const { return false; }
 };
 void pvr_render_set_capture(PvrCaptureSink* sink);  // nullptr desliga
 uint32_t pvr_background_color();                     // cor do plano de fundo do render atual (ISP_BACKGND_T), RGB

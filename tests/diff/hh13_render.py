@@ -3,7 +3,9 @@
 """HH13: portoes do renderizador nativo (docs/planos/HH13-PLANO.md) no roteiro newgame_area1 (4 700 VBlanks).
 
 R1  conferir (HH_RENDER_IR=conferir, 1 render a cada 5): a IR valida descreve os triangulos, o estado, o quadro e as
-    texturas que o rasterizador em software usou, e a imagem so da IR e identica: 0 divergencias;
+    texturas que o rasterizador em software usou, e a imagem so da IR e identica: 0 divergencias; HH15.7a: a imagem do
+    software sobre a IR (o dispositivo com as texturas convertidas, o software do produto) identica em TODO render da
+    rota (sem amostragem), 0 falhas dele, e o negativo HH_RENDER_SOFT_MUTACAO=textura acusado com renders comparados;
 R2  comparar (HH_RENDER_IR=comparar): o Vulkan contra o software em todos os renders: maior diferenca <= 2 niveis,
     nenhum quadro abaixo de 40 dB, 0 falhas do Vulkan;
 R4  determinismo: duas execucoes do --render nativo com os mesmos quadros (hash a cada 50 VBlanks); equivalencia: iguais
@@ -36,13 +38,13 @@ def check(name, cond, info=''):
     fails += not cond
 
 
-def run(render='software', env_extra=None):
+def run(render='software', env_extra=None, vblanks=VBLANKS):
     env = dict(os.environ, HH_INPUT_SCRIPT=SCRIPT)
     for k in ('HH_RENDER_IR', 'HH_RENDER_IR_CADA', 'HH_RENDER_IR_BMP'):
         env.pop(k, None)
     env.update(env_extra or {})
     t0 = time.monotonic()
-    p = subprocess.run([RUN, '--data', DATA, '--vblanks', str(VBLANKS), '--rtc', str(RTC), '--every', '50',
+    p = subprocess.run([RUN, '--data', DATA, '--vblanks', str(vblanks), '--rtc', str(RTC), '--every', '50',
                         '--render', render], capture_output=True, text=True, env=env)
     vk = re.search(r'\[render-vk\] [^\n]*', p.stderr)
     ir = re.search(r'\[render-ir\] renders (\d+)', p.stderr)
@@ -83,6 +85,26 @@ check('R1 execucao termina (rc 0)', c['rc'] == 0, str(c['rc']))
 check('R1 renders conferidos', (vals['conferidos'] or 0) >= 400, str(vals['conferidos']))
 check('R1 IR valida e igual ao rasterizador (triangulos, imagem, texturas, quadro): 0 divergencias',
       all(vals[k] == 0 for k in ('invalida', 'tri', 'img', 'tex', 'quadros', 'volumes_abertos')), str(vals))
+
+def soft_line(err):
+    m = re.search(r'\[render-soft\] [^\n]*', err)
+    return m.group(0) if m else ''
+
+
+def soft_vals(line):
+    return {'quadros': num(line, r'quadros (\d+)'), 'falhas': num(line, r'falhas (\d+)'),
+            'comparados': num(line, r'conferidos com o caminho do TA (\d+)'),
+            'divergentes': num(line, r'imagens divergentes (\d+)\)')}
+
+
+sv = soft_vals(soft_line(c['err']))
+check('R1 software sobre a IR identico ao rasterizador sobre o TA em todo render da rota, 0 falhas',
+      c['renders'] and sv['comparados'] == c['renders'] and sv['falhas'] == 0 and sv['divergentes'] == 0,
+      '%s renders, %s' % (c['renders'], sv))
+m = run(env_extra={'HH_RENDER_IR': 'conferir', 'HH_RENDER_IR_CADA': '5', 'HH_RENDER_SOFT_MUTACAO': 'textura'}, vblanks=1500)
+mv = soft_vals(soft_line(m['err']))
+check('R1 negativo: textura mudada no software sobre a IR acusada (renders comparados, sem falha do software)',
+      m['rc'] == 0 and (mv['comparados'] or 0) > 0 and mv['falhas'] == 0 and (mv['divergentes'] or 0) > 0, str(mv))
 
 # R2
 k = run(env_extra={'HH_RENDER_IR': 'comparar'})

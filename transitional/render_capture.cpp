@@ -8,6 +8,7 @@
 #include "pvr/ta.h"
 #include "render/frame_prep.h"
 #include "render/render_ir.h"
+#include "render/soft/soft_device.h"
 #include "render/texture_convert.h"
 #include "render/vulkan/vk_device.h"
 
@@ -186,10 +187,14 @@ public:
         if (dumpAt.first && st.renders + 1 == dumpAt.first)
             std::fprintf(stderr, "[render] IR do render %llu em %s: %s\n", static_cast<unsigned long long>(dumpAt.first),
                          dumpAt.second.c_str(), save_frame_dump(dumpAt.second, frame) ? "ok" : "FALHOU");
+        if (mode == Mode::Software) return soft_render(w, h, image);
         if (mode != Mode::Native && mode != Mode::Compare) return false;
         vkOk_ = vk_render(w, h, mode == Mode::Native ? image : vkImage_);
+        if (mode == Mode::Native && !vkOk_) return soft_render(w, h, image);  // HH15.7a: o recuo e o software sobre a IR
         return mode == Mode::Native && vkOk_;
     }
+
+    bool renders() const override { return mode == Mode::Software || mode == Mode::Native; }
 
     void end(const PvrFrame& used, std::span<const PvrTri> drawn, std::span<const uint32_t> image, uint32_t w,
              uint32_t h) override {
@@ -208,6 +213,23 @@ public:
             }
         }
         if (!frame.cl.modifiers.empty() && !st.modifier_first_render) st.modifier_first_render = st.renders;
+        // HH15.7a: em todo render do conferir (nao so nos amostrados), o software sobre a IR (o dispositivo, com as
+        // texturas pelas conversoes nativas) desenha a mesma imagem que o rasterizador sobre o TA; uma falha dele e
+        // contada a parte (soft_failures), nunca como imagem divergente
+        if (mode == Mode::Check) {
+            std::vector<uint32_t> dev;
+            if (soft_render(w, h, dev)) {
+                ++st.soft_checked;
+                if (dev.size() != image.size() || std::memcmp(dev.data(), image.data(), image.size() * 4) != 0) {
+                    size_t diff = 0;
+                    for (size_t i = 0; i < std::min(dev.size(), image.size()); ++i) diff += dev[i] != image[i];
+                    ++st.soft_mismatch;
+                    if (st.first_error.empty())
+                        st.first_error = "render " + std::to_string(st.renders) + ": imagem do software sobre a IR difere em " +
+                                         std::to_string(diff) + " pixels";
+                }
+            }
+        }
         if (mode != Mode::Check || (st.renders - 1) % every) return;
         ++st.checked;
         auto fail = [&](uint64_t& counter, const std::string& what) {
@@ -520,6 +542,86 @@ private:
                                                         std::to_string(w) + "x" + std::to_string(h)
                                                   : std::string("leitura do quadro");
         return false;
+    }
+
+    // ---- HH15.7a: software sobre a IR ----
+    nr::soft::SoftwareDevice soft_;
+    struct SoftTex {
+        nr::TextureHandle    handle;
+        std::vector<uint8_t> raw;
+        uint64_t             used = 0;
+    };
+    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, SoftTex> softTex_;
+
+    // a textura no dispositivo em software, refeita quando os bytes dela na memoria das texturas (ou a paleta) mudam
+    bool soft_texture(const TextureKey& k, nr::TextureHandle& out) {
+        texture_source(k, raw_);
+        SoftTex& e = softTex_[{k.tcw, k.width, k.height, k.stride}];
+        e.used     = st.renders;
+        if (e.handle && e.raw == raw_) {
+            out = e.handle;
+            return true;
+        }
+        bool legacy = false;
+        if (!texture_argb(k, argb_, legacy)) return false;
+        st.soft_tex_legacy += legacy;
+        // negativo do comparador (HH_RENDER_SOFT_MUTACAO=textura): o primeiro texel de cada textura enviada muda
+        static const bool mutate = [] {
+            const char* m = std::getenv("HH_RENDER_SOFT_MUTACAO");
+            return m && std::strcmp(m, "textura") == 0;
+        }();
+        if (mutate && !argb_.empty()) argb_[0] ^= 0x00FFFFFF;
+        const auto bytes = std::as_bytes(std::span<const uint32_t>(argb_));
+        if (e.handle) {
+            if (!soft_.update_texture(e.handle, bytes)) return false;
+        } else {
+            nr::TextureDesc d;
+            d.width = k.width, d.height = k.height;
+            auto r = soft_.create_texture(d, bytes);
+            if (!r) return false;
+            e.handle = r.value();
+        }
+        e.raw = raw_;
+        ++st.soft_tex_uploads;
+        out = e.handle;
+        return true;
+    }
+
+    // a IR do render no software; false (com o motivo) deixa o render para o rasterizador sobre o TA
+    bool soft_render(uint32_t w, uint32_t h, std::vector<uint32_t>& out) {
+        if (st.renders % 300 == 0)  // texturas sem uso ha 600 renders saem do dispositivo
+            for (auto it = softTex_.begin(); it != softTex_.end();)
+                if (st.renders - it->second.used > 600) {
+                    if (it->second.handle) soft_.destroy_texture(it->second.handle);
+                    it = softTex_.erase(it), ++st.soft_tex_evicted;
+                } else {
+                    ++it;
+                }
+        auto fail = [&](const std::string& why) {
+            ++st.soft_failures;
+            if (st.soft_error.empty()) {
+                st.soft_error = "render " + std::to_string(st.renders + 1) + ": " + why;
+                std::fprintf(stderr, "[render] software sobre a IR falhou (%s)\n", st.soft_error.c_str());
+            }
+            return false;
+        };
+        if (g_fault == Fault::Soft) {
+            g_fault = Fault::None;
+            return fail("falha injetada");
+        }
+        std::vector<nr::TextureHandle> handles(frame.textures.size());
+        for (size_t i = 0; i < frame.textures.size(); ++i)
+            if (!soft_texture(frame.textures[i], handles[i])) return fail("textura sem conversao");
+        const std::vector<nr::Draw> saved = frame.cl.draws;  // a IR do quadro fica com os handles do quadro
+        for (nr::Draw& d : frame.cl.draws)
+            if (d.state.texture) d.state.texture = handles[d.state.texture.value - 1];
+        const auto r = soft_.submit(frame.cl);
+        frame.cl.draws = saved;
+        if (!r) return fail(std::string("submit: ") + error_name(r.error()));
+        uint32_t rw = 0, rh = 0;
+        if (!soft_.read_frame(out, rw, rh) || rw != w || rh != h) return fail("leitura do quadro");
+        ++st.soft_frames;
+        return true;
     }
 
     void compare(std::span<const uint32_t> sw, uint32_t w, uint32_t h) {
@@ -961,6 +1063,17 @@ std::string summary() {
                       s.vk_error.empty() ? "" : "; ",
                       s.vk_error.c_str());
         out += v;
+    }
+    if (s.soft_frames || s.soft_failures || s.soft_mismatch) {  // HH15.7a: software sobre a IR
+        char r[400];
+        std::snprintf(r, sizeof r,
+                      "[render-soft] quadros %llu, falhas %llu, conferidos com o caminho do TA %llu (imagens divergentes %llu); texturas enviadas %llu (pelo decodificador do legado %llu, "
+                      "descartadas %llu)%s%s",
+                      (unsigned long long)s.soft_frames, (unsigned long long)s.soft_failures,
+                      (unsigned long long)s.soft_checked, (unsigned long long)s.soft_mismatch, (unsigned long long)s.soft_tex_uploads, (unsigned long long)s.soft_tex_legacy,
+                      (unsigned long long)s.soft_tex_evicted, s.soft_error.empty() ? "" : "; primeira: ", s.soft_error.c_str());
+        out += r;
+        out += '\n';
     }
     if (s.hires_renders) {  // N7c: resolucao interna
         char r[300];

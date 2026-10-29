@@ -49,6 +49,10 @@ add_library(hh_native_render STATIC render/texture_convert.cpp render/render_ir.
             render/texture_replacement.cpp render/frame_prep.cpp render/post_shader.cpp)
 target_link_libraries(hh_native_render PUBLIC hh_native_api PRIVATE tomlplusplus::tomlplusplus)
 
+# HH15.7a: renderizador em software sobre a IR (o rasterizador de referencia, movido do runtime, e o dispositivo)
+add_library(hh_native_render_soft STATIC render/soft/soft_raster.cpp render/soft/soft_device.cpp)
+target_link_libraries(hh_native_render_soft PUBLIC hh_native_render)
+
 # HH13: backend Vulkan (offscreen; o Vulkan e carregado em tempo de execucao, sem SDK; cabecalhos Khronos em
 # third_party/vulkan, Apache-2.0; SPIR-V versionado em render/vulkan/spirv, gerado dos shaders do BS)
 add_library(hh_native_render_vk STATIC render/vulkan/vk_device.cpp render/vulkan/vk_present.cpp

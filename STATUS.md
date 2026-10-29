@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; próxima: HH15.7, Holly/PVR/DMA) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR concluído) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -335,6 +335,14 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   cobertura do reset e do `HH_CLOCK_LOG` no unitário, [BAIXA] catraca só com o prefixo `hh_runtime:`; rejeitado o caso
   do RTC sem valor definido como teste separado (mesmo código do reset; só existe antes do primeiro reset do processo).
   Regressão integral 14/14 (`analysis/hh15/regressao3.log` antes da revisão; `regressao4.log` depois); ctest 67/67.
+- HH15.7a (concluído, 2026-10-29): renderizador em software sobre a IR (`native/render/soft`: o rasterizador de
+  referência movido do `pvr_render` sem mudar as contas, e o `SoftwareDevice`); os dois renderizadores desenham a IR
+  com o provedor nativo do Kamui (o software sobre a IR também é o recuo do Vulkan); um render que o renderizador da IR
+  não desenhou é erro explícito; o rasterizador sobre o TA só nos modos de verificação. Rota da área 1: 2 250 renders
+  pelo software sobre a IR, 94 hashes iguais ao HH06; `conferir` compara o software sobre a IR com o caminho do TA em
+  todo render (negativo `HH_RENDER_SOFT_MUTACAO=textura`). Revisão Codex (`reviews/codex-hh15_7a.log`): aceitos [MÉDIA]
+  R1 amostrado, [MÉDIA] falha do software caindo no caminho do TA em silêncio, [BAIXA] negativo sem distinguir falha
+  de divergência; nenhum rejeitado. Regressão integral 14/14 (`analysis/hh15/regressao_7a.log`).
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

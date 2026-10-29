@@ -278,13 +278,13 @@ HostResult host_run(const HostOptions& opt) {
             if (const char* r = std::getenv("HH_AUDIO_LEITURAS"); r && *r) ao.readsPath = r;
             transitional::audio::install(boundaries, ao);
         }
-        // HH13.6: funis do SDK grafico. --render nativo usa o provedor nativo (os funis deixam de tocar o PVR e o render le
-        // o estado nativo); o software continua no caminho legado. HH_KAMUI=legado|sombra|nativo escolhe explicitamente
-        // (sombra: os originais continuam e um estado nativo e conferido com o do runtime em cada STARTRENDER).
+        // HH13.6: funis do SDK grafico pelo provedor nativo (os funis deixam de tocar o PVR e o render le o estado nativo);
+        // HH15.7a: padrao nos dois renderizadores. HH_KAMUI=legado|sombra|nativo escolhe explicitamente (sombra: os
+        // originais continuam e um estado nativo e conferido com o do runtime em cada STARTRENDER; legado: os originais).
         {
             const char*       k    = std::getenv("HH_KAMUI");
             const std::string kv   = k ? k : "";
-            const bool        kNat = kv == "nativo" || (kv.empty() && opt.render == RenderProvider::Native);
+            const bool        kNat = kv == "nativo" || kv.empty();
             if (kv == "sombra") transitional::kamui::install(boundaries, transitional::kamui::Mode::Shadow);
             else if (kNat) transitional::kamui::install(boundaries, transitional::kamui::Mode::Native);
         }
@@ -302,8 +302,12 @@ HostResult host_run(const HostOptions& opt) {
             using RM                = transitional::render_capture::Mode;
             transitional::render_capture::install(m == "conferir" ? RM::Check : (m == "comparar" ? RM::Compare : RM::Capture),
                                                   every);
-        } else if (opt.render == RenderProvider::Native) {
-            transitional::render_capture::install(transitional::render_capture::Mode::Native);
+        } else {
+            // HH15.7a: os dois renderizadores desenham a IR (o Vulkan, com o software sobre a IR de recuo, ou o software
+            // sobre a IR); o rasterizador sobre o TA fica para os modos de verificacao acima
+            transitional::render_capture::install(opt.render == RenderProvider::Native
+                                                      ? transitional::render_capture::Mode::Native
+                                                      : transitional::render_capture::Mode::Software);
         }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
         transitional::pad::probe_install();  // HH_PAD_CONTRATO=<tsv>: contrato do pd contra o legado (HH10.1)

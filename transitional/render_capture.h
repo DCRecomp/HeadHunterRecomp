@@ -15,6 +15,9 @@
 //   - os FrameParams reproduzem os registradores de quadro que o rasterizador usou (pvr_frame);
 //   - a imagem redesenhada so a partir da IR (triangulos e FrameParams; pvr_render_triangles nao le registradores)
 //     e IDENTICA a do caminho do TA;
+//   - HH15.7a: em TODO render (sem a amostragem de HH_RENDER_IR_CADA), a imagem do software sobre a IR
+//     (native/render/soft, texturas pelas conversoes nativas) e IDENTICA a do caminho do TA (negativo
+//     HH_RENDER_SOFT_MUTACAO=textura: o primeiro texel de cada textura enviada muda);
 //   - cada textura usada, convertida pelas conversoes nativas (native/render/texture_convert) a partir dos bytes da
 //     VRAM, e igual texel a texel ao decodificador do legado (pvr_texel).
 // HH_RENDER_IR=capturar so monta a IR (para o backend). Resumo no fim: render_capture::summary().
@@ -108,10 +111,15 @@ struct Stats {
     uint64_t hires_renders = 0, hires_shown = 0, hires_missed = 0;  // renders na escala; VBlanks com/sem a imagem maior
     double   hires_cpu_ms_total = 0;                                // leitura de volta (so a reduzida) na CPU
     uint32_t hires_w = 0, hires_h = 0;                              // tamanho do ultimo render na escala
+    // HH15.7a: software sobre a IR (Mode::Software e o recuo do Native)
+    uint64_t    soft_frames = 0, soft_failures = 0, soft_checked = 0, soft_mismatch = 0, soft_tex_uploads = 0, soft_tex_legacy = 0, soft_tex_evicted = 0;
+    std::string soft_error;
     std::string first_error;
 };
 
-enum class Mode : uint8_t { Off, Capture, Check, Native, Compare };
+// HH15.7a: Software desenha a IR no renderizador em software (native/render/soft/soft_device, texturas pelas conversoes
+// nativas) e a imagem substitui a do rasterizador sobre o TA; e tambem o recuo do Native quando o Vulkan falha.
+enum class Mode : uint8_t { Off, Capture, Check, Native, Compare, Software };
 void         install(Mode m, uint32_t every = 1);  // instala no pvr_render e zera as estatisticas (Off desinstala e descarta)
 const Frame& last_frame();                         // a IR do ultimo render
 const Stats& stats();
@@ -144,7 +152,8 @@ bool read_hires(const HiresImage& h, std::vector<uint32_t>& argb);
 // so originais (o padrao ate o N9, que traz o carregador de mods). O provedor tem de viver enquanto instalado.
 void         set_texture_replacements(nr::ITextureReplacements* provider);
 // Testes do recuo para o software: a proxima textura (Texture) ou o proximo quadro (Device) falha no Vulkan.
-enum class Fault : uint8_t { None, Texture, Device, DeviceOnce, DeviceAgain };  // Device: falha permanente; DeviceOnce: transitoria
+// Soft (HH15.7a): o proximo render do software sobre a IR falha.
+enum class Fault : uint8_t { None, Texture, Device, DeviceOnce, DeviceAgain, Soft };  // Device: falha permanente; DeviceOnce: transitoria
 void         inject_fault(Fault f);
 
 // Diagnostico (HH_RENDER_IR_GUARDAR=<render>:<arquivo>): a IR inteira de um render (parametros, vertices, desenhos,

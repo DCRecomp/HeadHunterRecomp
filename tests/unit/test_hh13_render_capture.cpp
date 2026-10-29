@@ -7,9 +7,11 @@
 #include "test.h"
 
 #include "cpu/sh4_mem.h"
+#include "cpu/sh4_runtime.h"
 #include "pvr/pvr_regs.h"
 #include "pvr/ta.h"
 #include "pvr/vram.h"
+#include "render/soft/soft_device.h"
 #include "render/vulkan/vk_device.h"
 #include "render_capture.h"
 
@@ -84,6 +86,8 @@ struct CaptureScene {
         HH_CHECK(s.triangle_mismatch == before.triangle_mismatch);
         HH_CHECK(s.image_mismatch == before.image_mismatch);
         HH_CHECK(s.texture_mismatch == before.texture_mismatch);
+        HH_CHECK(s.soft_mismatch == before.soft_mismatch);  // HH15.7a: o software sobre a IR desenhou o mesmo
+        HH_CHECK(s.soft_frames == before.soft_frames + 1);
     }
 };
 
@@ -667,4 +671,103 @@ HH_TEST(render_vulkan_replay_dump) {
         std::fprintf(stderr, "    v%u: x %g y %g 1/w %g u %g v %g cor %08X\n", i, x.x, x.y, x.inv_w, x.u, x.v, x.color);
     }
     HH_CHECK(false);
+}
+
+// HH15.7a: as conversoes da IR para as palavras do hardware do software sobre a IR (native/render/soft/soft_device) sao
+// as da captura (pvr_state, pvr_vertex, pvr_frame): estado com e sem textura, vertices e quadro
+HH_TEST(soft_device_conversions_match_the_capture) {
+    namespace soft = nr::soft;
+    std::vector<uint32_t> tsps = {kTspOpaque}, isps = {kIspAlways};
+    for (uint32_t b = 6; b < 32; ++b) tsps.push_back(1u << b);
+    for (uint32_t b = 26; b < 32; ++b) isps.push_back(1u << b);
+    uint32_t x = 0x9E3779B9;
+    for (int i = 0; i < 64; ++i) {
+        x = x * 1664525u + 1013904223u;
+        tsps.push_back(x & ~0x3Fu);
+        isps.push_back(x & 0xFC000000u);
+    }
+    const rc::TextureKey key{(1u << 27) | (kTexA >> 3), 16, 64, 0};
+    for (uint32_t tsp : tsps)
+        for (uint32_t isp : isps)
+            for (bool tex : {false, true}) {
+                PvrTri t;
+                t.list = 4, t.isp = isp, t.tsp = tsp, t.tex = tex, t.tcw = tex ? key.tcw : 0;
+                t.gouraud = !(tsp & 1), t.offset = tsp & 2;
+                t.clipMode = 2, t.cx0 = 0, t.cy0 = 32, t.cx1 = 31, t.cy1 = 63;
+                const nr::DrawState d = rc::draw_state(t, 1);
+                const PvrTri        a = rc::pvr_state(d, tex ? &key : nullptr);
+                const PvrTri        b = soft::tri_state(d, key.tcw, tex ? key.width : 0, key.height);
+                const bool same = a.list == b.list && a.isp == b.isp && a.tsp == b.tsp && a.tcw == b.tcw && a.tex == b.tex &&
+                                  a.offset == b.offset && a.gouraud == b.gouraud && a.clipMode == b.clipMode &&
+                                  a.cx0 == b.cx0 && a.cy0 == b.cy0 && a.cx1 == b.cx1 && a.cy1 == b.cy1;
+                HH_CHECK(same);
+                if (!same) {
+                    std::printf("  tsp %08X isp %08X tex %d: captura %08X/%08X, software %08X/%08X\n", tsp, isp, int(tex),
+                                a.tsp, a.isp, b.tsp, b.isp);
+                    return;
+                }
+            }
+    PvrVertex v{1.5f, -2.25f, 0.125f, 0.5f, 0.75f, {}, {}};
+    v.col = {200 / 255.f, 51 / 255.f, 102 / 255.f, 153 / 255.f}, v.off = {0, 1 / 255.f, 0, 254 / 255.f};
+    const PvrVertex a = rc::pvr_vertex(rc::vertex(v)), b = soft::tri_vertex(rc::vertex(v));
+    HH_CHECK(std::memcmp(&a, &b, sizeof a) == 0);
+    rc::Frame f;
+    f.cl.frame.clear_color = 0xFF123456, f.cl.frame.clear_depth = 0.25f, f.cl.frame.small_cull = 0.5f;
+    f.cl.frame.punch_through_ref = 77 / 255.f, f.cl.frame.sample_center = false, f.cl.frame.texel_center = true;
+    f.cl.frame.translucent_autosort = false, f.cl.frame.clamp_min = 0x01020304, f.cl.frame.clamp_max = 0xF0E0D0C0;
+    f.texture_stride = 96;
+    HH_CHECK(soft::tri_frame(f.cl.frame, 96) == rc::pvr_frame(f));
+}
+
+// HH15.7a: o modo Software (o software do produto) desenha a IR com as texturas convertidas e a imagem vai ao
+// framebuffer como a do rasterizador sobre o TA: mesma cena texturizada nos dois modos, mesmos bytes no framebuffer
+HH_TEST(soft_mode_writes_the_same_framebuffer_as_the_ta_rasterizer) {
+    auto scene = [](rc::Mode m) {
+        CaptureScene s(m);
+        loadTexture(kTexA, 0x1234);
+        s.ta({0x8000000Au, kIspAlways, kTspOpaque | (1u << 13) | (1u << 6), (1u << 27) | (kTexA >> 3)});  // bilinear, modulate
+        s.vtx(1, 1, 1, fb(0), fb(0), 0xFFFF8040);
+        s.vtx(31, 3, 1, fb(1.5f), fb(0), 0xFF40FF80);
+        s.vtx(2, 30, 1, fb(0), fb(1.25f), 0xFF8040FF);
+        s.vtx(29, 29, 1, fb(1.5f), fb(1.25f), 0xFFFFFFFF, true);
+        s.endList();
+        s.render();
+        std::vector<uint8_t> out(32 * 32 * 2);
+        std::memcpy(out.data(), vram_data() + 0x100000, out.size());
+        return std::pair{out, rc::stats()};
+    };
+    const auto [ref, rs] = scene(rc::Mode::Check);
+    const auto [got, gs] = scene(rc::Mode::Software);
+    HH_CHECK(rs.soft_mismatch == 0 && rs.soft_frames == 1);
+    HH_CHECK(gs.soft_frames == 1 && gs.soft_failures == 0 && gs.soft_tex_uploads == 1);
+    HH_CHECK(ref == got);
+    size_t lit = 0;  // a cena desenhou (nao e so o fundo)
+    for (size_t i = 0; i < got.size(); i += 2) lit += got[i] != got[0] || got[i + 1] != got[1];
+    HH_CHECK(lit > 100);
+}
+
+// HH15.7a (revisao Codex): no modo Software, um render que o software sobre a IR nao desenhou e erro explicito, nunca o
+// rasterizador sobre o TA no lugar
+HH_TEST(soft_mode_failure_is_fatal_not_the_ta_rasterizer) {
+    struct Fatal {};
+    sh4_set_fatal_handler([](Sh4Context*, const char*, uint32_t, uint32_t) { throw Fatal{}; });
+    bool fatal = false;
+    {
+        CaptureScene s(rc::Mode::Software);
+        s.ta({0x80000002u, kIspAlways, kTspOpaque, 0});
+        s.vtx(2, 2, 1, 0, 0, 0xFFFF0000);
+        s.vtx(30, 2, 1, 0, 0, 0xFF00FF00);
+        s.vtx(2, 30, 1, 0, 0, 0xFF0000FF, true);
+        s.endList();
+        rc::inject_fault(rc::Fault::Soft);
+        try {
+            s.render();
+        } catch (const Fatal&) {
+            fatal = true;
+        }
+        HH_CHECK(rc::stats().soft_failures == 1 && rc::stats().soft_frames == 0);
+    }
+    sh4_set_fatal_handler(nullptr);
+    rc::inject_fault(rc::Fault::None);
+    HH_CHECK(fatal);
 }

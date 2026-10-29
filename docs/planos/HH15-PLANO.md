@@ -376,3 +376,46 @@ referências da HH15, Codex e commit próprio.
 Portão: R1–R5 do HH13 e K1–K4 com o caminho novo; referências da HH15 (rotas, hashes e traces de ordem e entrega);
 sonda sem acesso ao PVR, à VRAM, ao TA, ao DMAC ou ao SB gráfico; catraca do mapa sem `pvr_*`, `ta`, `vram`,
 `holly_intc`, `sh4_dmac` e `render_capture`.
+
+#### HH15.7, medição (passo 0, 2026-10-29)
+
+Sonda `HH_HW_PROBE` da rota nativa (`analysis/hh15/sonda_nativo.tsv`, provedor nativo do Kamui): o guest não acessa a
+VRAM (área 1), o TA (área 4) nem os registradores do PVR além do SPG (`0x005F810C` por `0x8C16E908` e `0x8C16EF18`,
+`0x005F80DC` por `0x8C16EF18`, 4 645 cada); as store queues só vão para a RAM (`0x0C4xxxxx`–`0x0C6xxxxx`). O resto do
+contrato gráfico é o DMA do canal 2 pelo funil `0x8C17C600` (DMAC `FFA00020/28/40` e `CHCR2` `FFA0002C`; SB
+`SB_C2DSTAT/LEN/ST` `0x005F6800/04/08`; 9 605 pedidos) e o tratador `0x8C168160`, que lê e limpa `ISTNRM` e lê
+`ISTERR` e o `CHCR2` (25 207 / 9 605 vezes). Fora do gráfico, no SB: `SB_FFST` (`0x005F688C`, `0x8C183CD4`) e a
+inicialização (`0x8C15FAC8`).
+
+#### HH15.7a (concluído, 2026-10-29): software sobre a IR
+
+- `native/render/soft/soft_raster` (o rasterizador do `pvr_render` movido sem mudar as contas; texels por uma
+  `TexelSource`, com o handle da textura na chave do cache) e `soft_device` (`IRenderDevice` sobre a `CommandList`,
+  conversões da IR para as palavras do hardware como as da captura). O `pvr_render` decodifica e desenha com o
+  `soft::rasterize` e os texels da VRAM (o caminho do TA, referência das comparações).
+- `render_capture`: `Mode::Software` (o software do produto) desenha a IR no dispositivo em software, com as texturas
+  pelas conversões nativas e cache pelos bytes da textura; o `Mode::Native` cai no software sobre a IR quando o Vulkan
+  falha. O host usa o provedor nativo do Kamui e a IR nos dois renderizadores; o rasterizador sobre o TA só roda nos
+  modos de verificação (`HH_RENDER_IR`).
+- Comparador: o `conferir` desenha cada render conferido também no software sobre a IR e compara a imagem inteira;
+  negativo `HH_RENDER_SOFT_MUTACAO=textura` (o primeiro texel de cada textura enviada muda). Portão R1 do
+  `hh13_render` com os dois; unitários `soft_device_conversions_match_the_capture` e
+  `soft_mode_writes_the_same_framebuffer_as_the_ta_rasterizer`, e o `expectClean` das cenas exige o software igual.
+- Rota da área 1 (4 700 VBlanks, `hh-run` padrão): 2 250 renders pelo software sobre a IR, 0 falhas, 80 texturas
+  enviadas (nenhuma pelo decodificador do legado); os 94 hashes iguais à referência do HH06; tempo 144 s (o passo
+  `roteiro_area1` levava 149 s). `conferir` (1 render a cada 5): 450 conferidos, 0 imagens divergentes; com a
+  mutação, 130 dos 135 conferidos acusados.
+- Revisão Codex (`reviews/codex-hh15_7a.log`), três achados aceitos e corrigidos; sem diferença de conta no
+  rasterizador movido, nas conversões nem no cache de texturas:
+  - [MÉDIA] o R1 conferia o software sobre a IR só nos renders amostrados (1 a cada 5): a comparação dele passa a rodar
+    em todo render do `conferir`, e o portão exige todos os renders da rota comparados;
+  - [MÉDIA] uma falha do software sobre a IR (ou do recuo do Vulkan) caía no rasterizador sobre o TA em silêncio: agora
+    o destino da captura declara que é o renderizador (`renders()`) e um render que ele não desenhou é `sh4_fatal`, com
+    o motivo no log na primeira falha; unitário `soft_mode_failure_is_fatal_not_the_ta_rasterizer` (falha injetada
+    `Fault::Soft`), que reprovava sem a correção;
+  - [BAIXA] no `conferir` a falha do software contava como imagem divergente, e o negativo aceitava isso: falhas e
+    divergências separadas, e o negativo exige renders comparados e 0 falhas.
+- Regressão integral 14/14 com as correções (`analysis/hh15/regressao_7a.log`; `portoes_hh13` com o R1 novo em todo
+  render e o negativo), ctest 67/67.
+- Fica para o 7b: o produto ainda aceita `HH_RENDER_IR` (observacional; os modos de verificação com o caminho do TA;
+  o `HH_KAMUI` já é recusado); o decodificador e o rasterizador sobre o TA continuam ligados até o ListSink.

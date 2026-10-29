@@ -41,9 +41,10 @@ enum class SavesProvider { Legacy, Native };
 // HH12: provedor dos filmes. Legado: o objeto do filme 4X recompilado (decodificador, stream do arquivo, AICA). Nativo:
 // open/play/close atendidos pelos MP4 do Builder (transitional/video_adapter + native/video), sem o 4X.
 enum class VideoProvider { Legacy, Native };
-// HH13: renderizador. Software: o rasterizador de referencia do PVR (runtime/pvr/pvr_render). Nativo: a IR que o
-// decodificador do TA produz, desenhada no Vulkan (transitional/render_capture + native/render/vulkan), com recuo para o
-// software (motivo no resumo) sem Vulkan ou se o dispositivo cair.
+// HH13: renderizador. Os dois desenham a IR que o decodificador do TA produz (transitional/render_capture). Software
+// (HH15.7a): o rasterizador de referencia sobre a IR (native/render/soft), com as texturas pelas conversoes nativas.
+// Nativo: o Vulkan (native/render/vulkan), com recuo para o software sobre a IR (motivo no resumo) sem Vulkan ou se o
+// dispositivo cair. O rasterizador sobre o TA (runtime/pvr/pvr_render) so roda nos modos de verificacao (HH_RENDER_IR).
 enum class RenderProvider { Software, Native };
 // HH14: audio do jogo. Legado: os funis do Audio64 tocam a AICA do runtime (sem o ARM7 o driver nao responde: o jogo
 // roda sem som). Nativo: a RAM de som e os comandos ao driver atendidos pela reconstrucao do AUDIO64.DRV
