@@ -227,28 +227,58 @@ void pvr_regs_dump(Sh4Context* c, uint32_t* out) {
 // STARTRENDER: o render das listas atuais e o agendamento do fim do render (HH13.6: tambem chamado pelo provedor nativo do
 // Kamui, com os registradores, a memoria e os parametros nativos emprestados por pvr_regs_set_override,
 // vram_set_override e ta_set_override).
-void pvr_start_render(Sh4Context* c) {
+namespace {
+
+// O inicio de todo STARTRENDER: a contagem, o gancho e a parada pedida (HH_STOP_ON_STARTRENDER).
+void startRenderBegin(Sh4Context* c) {
     ++g_startCount;
     if (g_startHook) g_startHook(c, g_startCount);
     static const char* stop = std::getenv("HH_STOP_ON_STARTRENDER");
     if (stop && g_startCount == std::atoi(stop))
         sh4_fatal(c, "parada pedida: STARTRENDER", c->pc, uint32_t(g_startCount));
-    // Diagnostico: HH_TA_DUMP=<n> lista os parametros do TA e os registradores de render
-    // no n-esimo STARTRENDER
+}
+
+// Fim de render: o hardware nao documenta a duracao; mesma estimativa do Flycast (spg.cpp, scheduleRenderDone):
+// min(450000 + bytes do TA * 100, 1500000) ciclos. Aproximacao. Depois disso, ISTNRM bits 0 (video), 1 (ISP) e 2 (TSP).
+void startRenderDone(Sh4Context* c, uint32_t taBytes) {
+    const uint64_t cost = std::min<uint64_t>(450000 + uint64_t(taBytes) * 100, 1500000);
+    g_renderDue         = time_now(c) + cost;
+    time_provider().render_scheduled(g_renderDue);
+}
+
+// Diagnostico: HH_TA_DUMP=<n> lista os parametros do TA e os registradores de render no n-esimo STARTRENDER. true =
+// este e o pedido (o cabecalho e os registradores ja foram impressos; o chamador imprime os parametros).
+bool startRenderDump(size_t params, uint32_t bytes) {
     static const char* dump = std::getenv("HH_TA_DUMP");
-    if (dump && g_startCount == std::atoi(dump)) {
-        std::fprintf(stderr, "[render] STARTRENDER %d: %zu parametros, %u bytes\n", g_startCount, ta_params().size(),
-                     ta_bytes());
-        for (uint32_t r : {0x044u, 0x048u, 0x04Cu, 0x050u, 0x054u, 0x05Cu, 0x060u, 0x064u, 0x068u, 0x06Cu, 0x074u,
-                           0x078u, 0x07Cu, 0x080u, 0x084u, 0x088u, 0x08Cu, 0x098u, 0x0B0u, 0x0B4u, 0x0B8u, 0x0E4u,
-                           0x108u, 0x11Cu, 0x13Cu, 0x140u})
-            std::fprintf(stderr, "[render]   reg %08X = %08X\n", kBase + r, reg(kBase + r));
-        for (const auto& prm : ta_params()) {
-            std::fprintf(stderr, "[render]   L%u", prm.list);
-            for (uint32_t i = 0; i < prm.words; ++i) std::fprintf(stderr, " %08X", prm.w[i]);
-            std::fprintf(stderr, "\n");
-        }
-    }
+    if (!dump || g_startCount != std::atoi(dump)) return false;
+    std::fprintf(stderr, "[render] STARTRENDER %d: %zu parametros, %u bytes\n", g_startCount, params, bytes);
+    for (uint32_t r : {0x044u, 0x048u, 0x04Cu, 0x050u, 0x054u, 0x05Cu, 0x060u, 0x064u, 0x068u, 0x06Cu, 0x074u, 0x078u,
+                       0x07Cu, 0x080u, 0x084u, 0x088u, 0x08Cu, 0x098u, 0x0B0u, 0x0B4u, 0x0B8u, 0x0E4u, 0x108u, 0x11Cu,
+                       0x13Cu, 0x140u})
+        std::fprintf(stderr, "[render]   reg %08X = %08X\n", kBase + r, reg(kBase + r));
+    return true;
+}
+
+} // namespace
+
+void pvr_render_dump_param(uint32_t list, const uint32_t* w, uint32_t words) {
+    std::fprintf(stderr, "[render]   L%u", list);
+    for (uint32_t i = 0; i < words; ++i) std::fprintf(stderr, " %08X", w[i]);
+    std::fprintf(stderr, "\n");
+}
+
+void pvr_start_render_with(Sh4Context* c, uint32_t taBytes, size_t params, void (*render)(Sh4Context*),
+                           void (*dumpParams)()) {
+    startRenderBegin(c);
+    if (startRenderDump(params, taBytes) && dumpParams) dumpParams();
+    render(c);  // o render inteiro aqui, como no caminho do TA
+    startRenderDone(c, taBytes);
+}
+
+void pvr_start_render(Sh4Context* c) {
+    startRenderBegin(c);
+    if (startRenderDump(ta_params().size(), ta_bytes()))
+        for (const auto& prm : ta_params()) pvr_render_dump_param(prm.list, prm.w, prm.words);
     // O render roda inteiro aqui (a CPU nao observa estados intermediarios); o
     // jogo so ve o resultado depois do fim de render sinalizado abaixo.
     {
@@ -259,12 +289,7 @@ void pvr_start_render(Sh4Context* c) {
                          st.width, st.height, st.triangles, st.sprites, st.skipped,
                          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
     }
-    // Fim de render: o hardware nao documenta a duracao; mesma estimativa do Flycast
-    // (spg.cpp, scheduleRenderDone): min(450000 + bytes do TA * 100, 1500000) ciclos.
-    // Aproximacao. Depois disso, ISTNRM bits 0 (video), 1 (ISP) e 2 (TSP).
-    const uint64_t cost = std::min<uint64_t>(450000 + uint64_t(ta_bytes()) * 100, 1500000);
-    g_renderDue         = time_now(c) + cost;
-    time_provider().render_scheduled(g_renderDue);
+    startRenderDone(c, ta_bytes());
 }
 
 bool pvr_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {

@@ -15,6 +15,7 @@ inline constexpr const char* kTestVars[] = {
     "HH_KAMUI", "HH_KAMUI_CUSTO", "HH_MAPLE_FUNCAO", "HH_MAPLE_PORTS", "HH_PAD_MODO", "HH_PAD_CONTRATO",
     "HH_PROGRESSO_LIMITE", "HH_GDROM_TIMING", "HH_TMU_DIAG", "HH_VIDEO_DADOS", "HH_VK_ATRASO_MS", "HH_RENDER_SEQ",
     "HH_WW_DECLARAR", "HH_WW_VOLTAS", "HH_INPUT", "HH_INPUT_MAP", "HH_RENDER_SOFT_MUTACAO",
+    "HH_LISTA_NATIVA_MUTACAO",
 };
 
 // So observam (registros, traces, despejos, perfis) ou sao funcoes do usuario.

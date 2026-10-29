@@ -11,6 +11,7 @@
 #include "pvr/pvr_regs.h"
 #include "pvr/ta.h"
 #include "pvr/vram.h"
+#include "render/kamui/list_sink.h"
 #include "render/soft/soft_device.h"
 #include "render/vulkan/vk_device.h"
 #include "render_capture.h"
@@ -42,6 +43,8 @@ struct CaptureScene {
     std::vector<uint8_t> ram = std::vector<uint8_t>(16u << 20);
     Sh4Context           c{};
     rc::Stats            before;
+    // HH15.7b: os mesmos blocos no ListSink nativo; a captura o confere em cada render (expectClean)
+    hh::native::render::kamui::ListSink list;
 
     explicit CaptureScene(rc::Mode mode = rc::Mode::Check) {
         c.ram = ram.data();
@@ -61,16 +64,22 @@ struct CaptureScene {
         const uint32_t plane[3 + 3 * 4] = {0, 0, 0, 0, 0, 1, 0xFF102030, 32, 0, 1, 0xFF102030, 0, 32, 1, 0xFF102030};
         std::memcpy(vram_data(), plane, sizeof plane);
         reg(0x144, 0x80000000);
+        list.list_init();
         rc::install(mode);
+        rc::set_list_sink(&list);
         before = rc::stats();
     }
-    ~CaptureScene() { rc::install(rc::Mode::Off); }
+    ~CaptureScene() {
+        rc::set_list_sink(nullptr);
+        rc::install(rc::Mode::Off);
+    }
 
     void reg(uint32_t off, uint32_t v) { sh4_write32(&c, 0xA05F8000 + off, v); }
     void ta(std::initializer_list<uint32_t> words) {
         uint32_t d[8] = {};
         std::copy(words.begin(), words.end(), d);
         HH_CHECK(ta_fifo_write(&c, 0x10000000, d));
+        HH_CHECK(!list.feed(d).invalid);
     }
     void vtx(float x, float y, float z, uint32_t w4, uint32_t w5, uint32_t w6, bool end = false) {
         ta({0xE0000000u | (end ? 1u << 28 : 0), fb(x), fb(y), fb(z), w4, w5, w6, 0});
@@ -88,6 +97,8 @@ struct CaptureScene {
         HH_CHECK(s.texture_mismatch == before.texture_mismatch);
         HH_CHECK(s.soft_mismatch == before.soft_mismatch);  // HH15.7a: o software sobre a IR desenhou o mesmo
         HH_CHECK(s.soft_frames == before.soft_frames + 1);
+        HH_CHECK(s.list_checked == before.list_checked + 1);  // HH15.7b: o ListSink deu a mesma IR
+        HH_CHECK(s.list_mismatch == before.list_mismatch);
     }
 };
 
@@ -770,4 +781,69 @@ HH_TEST(soft_mode_failure_is_fatal_not_the_ta_rasterizer) {
     sh4_set_fatal_handler(nullptr);
     rc::inject_fault(rc::Fault::None);
     HH_CHECK(fatal);
+}
+
+// HH15.7b: o ListSink (as listas decodificadas direto, o caminho do produto) da a mesma IR da captura com estado
+// mudando no meio do strip, sprite, intensidade, volume modificador fechado e parametro de 64 bytes, e acusa um vertice
+// mudado (o comparador da captura)
+HH_TEST(list_sink_matches_the_capture_and_the_comparator_sees_a_change) {
+    namespace km = hh::native::render::kamui;
+    CaptureScene s;
+    s.ta({0x80020002u, kIspAlways, kTspOpaque, 0});  // recorte do usuario: dentro
+    s.ta({0x20000000u, 0, 0, 0, 0, 0, 0, 0});
+    s.vtx(0, 0, 1, 0, 0, 0xFFFF0000);
+    s.vtx(32, 0, 1, 0, 0, 0xFFFF0000);
+    s.vtx(0, 32, 1, 0, 0, 0xFFFF0000);
+    s.ta({0x20000000u, 0, 0, 0, 1, 1, 1, 1});  // muda o retangulo no meio do strip
+    s.vtx(32, 32, 1, 0, 0, 0xFF00FF00, true);
+    s.ta({0xA0000000u, kIspAlways, kTspOpaque, 0, 0xFF808080, 0});  // sprite
+    s.ta({0xF0000000u, fb(4), fb(4), fb(1), fb(28), fb(4), fb(1), fb(28)});
+    s.ta({fb(28), fb(1), fb(4), fb(28), 0, 0, 0, 0});
+    s.endList();
+    s.ta({0x81000000u | 0x40u, 1u << 29, 0, 0, 0, 0, 0, 0});  // volume modificador opaco, ultimo poligono (inclusao)
+    s.ta({0xF0000000u, fb(1), fb(1), fb(1), fb(30), fb(1), fb(1), fb(1)});
+    s.ta({fb(30), fb(1), 0, 0, 0, 0, 0, 0});
+    s.endList();
+    s.render();
+    s.expectClean();
+    km::ListFrame lf;
+    s.list.build(rc::last_frame().cl.frame, rc::last_frame().texture_stride, lf);
+    HH_CHECK(lf.sprites == 1 && lf.cl.modifiers.size() == 1 && lf.modifier_unclosed == 0);
+    HH_CHECK(lf.cl.draws.size() == rc::last_frame().cl.draws.size() && lf.cl.draws.size() == 4);
+    // o comparador ve uma lista diferente: as duas listas recomecam (TA_LIST_INIT do runtime e do ListSink), o mesmo
+    // strip vai as duas e um strip a mais so ao ListSink, antes do fim da lista
+    s.reg(0x144, 0x80000000);
+    s.list.list_init();
+    const rc::Stats before = rc::stats();
+    s.ta({0x80000002u, kIspAlways, kTspOpaque, 0});
+    s.vtx(2, 2, 1, 0, 0, 0xFFFF0000);
+    s.vtx(30, 2, 1, 0, 0, 0xFF00FF00);
+    s.vtx(2, 30, 1, 0, 0, 0xFF0000FF, true);
+    for (float y : {4.f, 20.f, 8.f}) {
+        uint32_t v[8] = {0xE0000000u | (y == 8.f ? 1u << 28 : 0), fb(y), fb(y), fb(1), 0, 0, 0xFFFFFFFF, 0};
+        s.list.feed(v);
+    }
+    s.endList();
+    s.render();
+    HH_CHECK(rc::stats().checked == before.checked + 1);  // a cena foi conferida (nao uma captura vazia)
+    HH_CHECK(rc::last_frame().cl.draws.size() == 1);
+    HH_CHECK(rc::stats().list_mismatch == before.list_mismatch + 1);
+}
+
+// HH15.7b (revisao Codex): um poligono de estado que a IR nao representa (textura VQ YUV, que o decodificador nao le)
+// e omitido nos dois decodificadores com a mesma contagem; o ListSink o conta em `unsupported` (o produto para com erro
+// explicito por ele) e o comparador confere essa contagem com os omitidos da captura
+HH_TEST(list_sink_counts_unsupported_like_the_capture) {
+    namespace km = hh::native::render::kamui;
+    CaptureScene s;
+    s.ta({0x80000008u, kIspAlways, kTspOpaque, (1u << 30) | (3u << 27) | (kTexA >> 3)});  // VQ, YUV422: sem suporte
+    s.vtx(2, 2, 1, fb(0), fb(0), 0xFFFFFFFF);
+    s.vtx(30, 2, 1, fb(1), fb(0), 0xFFFFFFFF);
+    s.vtx(2, 30, 1, fb(0), fb(1), 0xFFFFFFFF, true);
+    s.endList();
+    s.render();
+    s.expectClean();
+    km::ListFrame lf;
+    s.list.build(rc::last_frame().cl.frame, rc::last_frame().texture_stride, lf);
+    HH_CHECK(lf.unsupported == 3 && rc::last_frame().skipped_params == 3 && lf.cl.draws.empty());
 }

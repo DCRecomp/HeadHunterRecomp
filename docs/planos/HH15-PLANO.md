@@ -419,3 +419,35 @@ inicialização (`0x8C15FAC8`).
   render e o negativo), ctest 67/67.
 - Fica para o 7b: o produto ainda aceita `HH_RENDER_IR` (observacional; os modos de verificação com o caminho do TA;
   o `HH_KAMUI` já é recusado); o decodificador e o rasterizador sobre o TA continuam ligados até o ListSink.
+
+#### HH15.7b (concluído, 2026-10-29): ListSink
+
+- `native/render/kamui/list_sink` (portado do BS sem o fog, a sombra e os campos de fechamento de volume que o HH não
+  tem): divide os blocos da área 4 em parâmetros (a regra do `Params` do `kamui_device`) e decodifica direto para a IR
+  com as regras do Parser do `pvr_render` e da montagem da captura, num decodificador só; `draw_state` e `ir_vertex`
+  ficam nele, e a captura delega.
+- `kamui_device` (nativo): o ListSink no lugar do `Params`. No STARTRENDER, com a captura como o renderizador (o
+  software sobre a IR ou o Vulkan), `pvr_start_render_with` (a mesma contagem, gancho e prazo do fim de render pelos
+  bytes do ListSink) e o render pela IR do ListSink: parâmetros do quadro, listas decodificadas direto, o renderizador
+  da captura e a imagem no framebuffer. Vértices de estados que a IR não representa (textura que o decodificador não lê,
+  dois volumes) e render não desenhado são erro explícito. Nos modos de verificação (`HH_RENDER_IR`), o caminho do TA
+  sobre a cópia das mesmas listas, e a captura confere o ListSink com ele.
+- Comparador `check_list_sink` (em todo render do caminho do TA com o ListSink registrado: quadro, vértices, desenhos,
+  volumes, texturas e contagens); negativo `HH_LISTA_NATIVA_MUTACAO=vertice`. Portão K5 do `hh13_kamui` e a cena dos
+  unitários da captura alimentando também um ListSink (o `expectClean` exige a mesma IR em todas).
+- Rota da área 1: o padrão (o produto) desenha os 2 250 renders pela IR do ListSink, com os 94 hashes iguais à
+  referência do HH06; `conferir` no nativo: ListSink igual à captura nos 2 250 renders e o software sobre a IR igual
+  ao caminho do TA nos 2 250; com a mutação, 674 de 674 acusados.
+- Revisão Codex (`reviews/codex-hh15_7b.log`), quatro achados aceitos e corrigidos; sem diferença na divisão de 32/64
+  bytes, `TA_LIST_CONT`, fim de lista, ordem dos eventos, chaves de textura, prazo, fundo ou framebuffer:
+  - [MÉDIA] o render pela IR do ListSink decodificava no ambiente de ponto flutuante do guest (arredondamento para zero,
+    FTZ/DAZ), e o caminho do TA no padrão (`FpEnv` antes do Parser): o `renderList` instala o `FpEnv` antes dos
+    parâmetros do quadro e da decodificação;
+  - [BAIXA] o `HH_TA_DUMP` sumia no caminho nativo: o dump fica nos dois caminhos (os parâmetros pelo chamador);
+  - [BAIXA] o teste do comparador comparava com uma captura vazia: as duas listas recomeçam, um strip a mais só no
+    ListSink, e o teste exige a cena conferida;
+  - [BAIXA] o comparador não conferia a contagem de vértices sem suporte (a que para o produto): `unsupported` contra
+    os omitidos da captura, com o unitário `list_sink_counts_unsupported_like_the_capture`; as contagens sem uso saíram.
+- Regressão integral 14/14 com as correções (`analysis/hh15/regressao_7b.log`, com o K5), ctest 67/67.
+- A remoção do decodificador, do `ta` e da captura do link fica para depois dos cortes 7c e 7d (as funções de quadro,
+  fundo e framebuffer ainda leem o banco do PVR e a VRAM emprestados), com a catraca do mapa no fim, como no BS.

@@ -439,4 +439,13 @@ RenderStats pvr_render(Sh4Context* c) {
 
 bool pvr_render_take_fp_violation() { return soft::take_fp_violation(); }
 
+void pvr_write_framebuffer(std::span<const uint32_t> argb, uint32_t width, uint32_t height) {
+    soft::Image img;
+    img.width = width, img.height = height;
+    img.color.assign(argb.begin(), argb.end());
+    writeBack(img);
+}
+
+void pvr_check_region_sort(bool autosort) { checkRegionSortModes(autosort); }
+
 } // namespace hh

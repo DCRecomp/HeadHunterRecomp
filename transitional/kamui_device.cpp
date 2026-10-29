@@ -9,9 +9,12 @@
 #include "mods/mod_api.h"
 #include "pvr/holly_intc.h"
 #include "pvr/pvr_regs.h"
+#include "pvr/pvr_render.h"
 #include "pvr/pvr_video.h"
 #include "pvr/ta.h"
 #include "pvr/vram.h"
+#include "render/kamui/list_sink.h"
+#include "render_capture.h"
 
 #include <array>
 #include <cstdio>
@@ -33,70 +36,7 @@ constexpr uint32_t kIspBase = 0x128, kNextOpb = 0x134, kItpCurrent = 0x138, kNex
 constexpr uint32_t kListEndBit[5] = {1u << 7, 1u << 8, 1u << 9, 1u << 10, 1u << 21};  // ISTNRM, como pvr/ta.cpp
 constexpr uint32_t kBlock = 32;  // granularidade das marcas de memoria escrita
 
-// O fluxo de parametros do TA, dividido como pvr/ta.cpp (polygonFifo): parametros de 32 ou 64 bytes por lista. So a
-// divisao (a mesma regra), sem interrupcoes nem estado de hardware: e o formato.
-struct Params {
-    int                       list = -1;
-    bool                      vertex64 = false, pendingHalf = false;
-    std::array<uint32_t, 8>   half{};
-    uint32_t                  bytes = 0;  // recebidos desde o TA_LIST_INIT
-    int                       ended = -1;  // lista fechada pelo ultimo parametro (fim de lista), senao -1
-    std::vector<TaParam>      out;
-
-    static bool global64(uint32_t pcw) {
-        const uint32_t col = (pcw >> 4) & 3, tex = (pcw >> 3) & 1, off = (pcw >> 2) & 1, vol = (pcw >> 6) & 1;
-        return vol ? col == 2 : (col == 2 && tex && off);
-    }
-    static bool vertexIs64(uint32_t pcw) {
-        const uint32_t col = (pcw >> 4) & 3, tex = (pcw >> 3) & 1, vol = (pcw >> 6) & 1;
-        if (!tex) return false;
-        return vol ? true : col == 1;
-    }
-    void push(const uint32_t* w, uint32_t words) {
-        TaParam p;
-        p.list  = uint32_t(list < 0 ? 0 : list);
-        p.words = words;
-        std::memcpy(p.w, w, words * 4);
-        out.push_back(p);
-    }
-    void reset() { *this = Params{}; }
-    // 32 bytes; false se o tipo do parametro e invalido (o runtime para com erro fatal)
-    bool feed(const uint32_t* d) {
-        bytes += 32;
-        ended = -1;
-        if (pendingHalf) {
-            uint32_t w[16];
-            std::memcpy(w, half.data(), 32);
-            std::memcpy(w + 8, d, 32);
-            push(w, 16);
-            pendingHalf = false;
-            return true;
-        }
-        const uint32_t pcw = d[0], type = pcw >> 29;
-        if ((type == 4 || type == 5) && list < 0) list = int((pcw >> 24) & 7);
-        switch (type) {
-        case 0: ended = list, push(d, 8), list = -1; return true;  // fim de lista
-        case 1:
-        case 2: push(d, 8); return true;  // recorte do usuario, object list set
-        case 4: {
-            const bool modvol = list == 1 || list == 3;
-            vertex64          = modvol || vertexIs64(pcw);
-            if (!modvol && global64(pcw)) break;
-            push(d, 8);
-            return true;
-        }
-        case 5: vertex64 = true, push(d, 8); return true;
-        case 7:
-            if (vertex64) break;
-            push(d, 8);
-            return true;
-        default: return false;
-        }
-        std::memcpy(half.data(), d, 32);
-        pendingHalf = true;
-        return true;
-    }
-};
+namespace nk = native::render::kamui;
 
 struct State {
     Mode                                 mode = Mode::Off;
@@ -104,7 +44,10 @@ struct State {
     std::array<bool, kRegCount>          regSet{};
     std::vector<uint8_t>                 mem = std::vector<uint8_t>(kVramSize);
     std::vector<uint8_t>                 dirty = std::vector<uint8_t>(kVramSize / kBlock);  // blocos escritos pelos funis
-    Params                               params;
+    // HH15.7b: as listas que chegam ao TA, no destino nativo (divididas como o TA divide, decodificadas direto para a IR)
+    nk::ListSink                         list;
+    std::vector<TaParam>                 taCopy;  // as mesmas listas emprestadas ao caminho do TA (modos de verificacao)
+    uint32_t                             taBytes = 0;
     Stats                                stats;
 };
 
@@ -161,19 +104,21 @@ void compareAtStartRender() {
         }
     }
     const auto& rp = ta_params();
+    const auto& np = s.list.params();
     s.stats.paramsChecked += rp.size();
-    if (rp.size() != s.params.out.size()) {
+    if (rp.size() != np.size() || s.list.bytes() != ta_bytes()) {
         char b[96];
         std::snprintf(b, sizeof b, "parametros: nativo %zu (%u bytes), runtime %zu (%u bytes) (render %llu)",
-                      s.params.out.size(), s.params.bytes, rp.size(), ta_bytes(), (unsigned long long)s.stats.renders);
+                      np.size(), s.list.bytes(), rp.size(), ta_bytes(), (unsigned long long)s.stats.renders);
         if (std::getenv("HH_KAMUI_LOG") && s.stats.paramMismatch == 0) {  // diagnostico: as duas sequencias
-            for (const TaParam& p : s.params.out) std::fprintf(stderr, "[kamui] nativo  lista %u PCW %08X\n", p.list, p.w[0]);
+            for (const nk::ListParam& p : np) std::fprintf(stderr, "[kamui] nativo  lista %u PCW %08X\n", p.list, p.w[0]);
             for (const TaParam& p : rp) std::fprintf(stderr, "[kamui] runtime lista %u PCW %08X\n", p.list, p.w[0]);
         }
         mismatch(s.stats.paramMismatch, b);
     } else {
         for (size_t i = 0; i < rp.size(); ++i) {
-            const TaParam &a = s.params.out[i], &b = rp[i];
+            const nk::ListParam& a = np[i];
+            const TaParam&       b = rp[i];
             if (a.list != b.list || a.words != b.words || std::memcmp(a.w, b.w, a.words * 4) != 0) {
                 char m[160];
                 std::snprintf(m, sizeof m, "parametro %zu de %zu diferente (render %llu): nativo lista %u %u palavras PCW %08X, "
@@ -247,7 +192,7 @@ template <class F> void withNative(F&& fn) {
     for (uint32_t off = 0x0C8; off <= 0x0E0; off += 4) s.regs[off / 4] = pvr_reg(kRegBase + off);
     pvr_regs_set_override(s.regs.data());
     vram_set_override(s.mem.data());
-    ta_set_override(&s.params.out, &s.params.bytes);
+    ta_set_override(&s.taCopy, &s.taBytes);
     fn();
 }
 
@@ -311,6 +256,29 @@ template <class F> void runLoop(Sh4Context* c, const LoopShape& l, uint32_t n, F
     if (!c->redirect) c->pc = pc;
 }
 
+// HH15.7b: o render pela IR do ListSink no estado nativo emprestado (withNative): os parametros do quadro dos
+// registradores e do fundo, as listas decodificadas direto, o renderizador da captura e a imagem no framebuffer. Um
+// render que a IR nao representa inteiro, ou que o renderizador nao desenhou, e erro explicito.
+void renderList(Sh4Context* c) {
+    // o ambiente de ponto flutuante do render (o do guest, arredondamento para zero e FTZ/DAZ, nao vale nas contas do
+    // decodificador e do quadro), como no caminho do TA (revisao Codex)
+    const native::render::soft::FpEnv fpEnv;
+    State&                s    = st();
+    const uint32_t        clip = s.regs[0x13C / 4];  // TA_GLOB_TILE_CLIP
+    const uint32_t        w = ((clip & 0x3F) + 1) * 32, h = (((clip >> 16) & 0xF) + 1) * 32;
+    const native::render::FrameParams fp = render_capture::frame_params(w, h);
+    pvr_check_region_sort(fp.translucent_autosort);
+    nk::ListFrame lf;
+    s.list.build(fp, (s.regs[0x0E4 / 4] & 0x1F) * 32, lf);  // TEXT_CONTROL
+    if (lf.unsupported)
+        sh4_fatal(c, "render com vertices de estados que a IR nao representa (textura que o decodificador nao le ou dois volumes)",
+                  c->pc, lf.unsupported);
+    std::vector<uint32_t> image(size_t(w) * h, fp.clear_color);
+    if (!render_capture::draw_list(lf, w, h, image))
+        sh4_fatal(c, "render que o renderizador da IR nao desenhou (motivo no resumo [render-soft])", c->pc, 0);
+    pvr_write_framebuffer(image, w, h);
+}
+
 void fRegWriteNative(Sh4Context* c) {
     State&         s   = st();
     const uint32_t off = c->r[4], val = c->r[5];
@@ -321,18 +289,37 @@ void fRegWriteNative(Sh4Context* c) {
     if (off >= 0x0C8 && off <= 0x0E0) pvr_reg_write(c, kRegBase + off, 4, val);  // tempo do video (SPG): HH15
     if (off == kStartRender) {
         ++s.stats.nativeRenders;
-        withNative([&] { pvr_start_render(c); });
+        // HH15.7b: com a captura como o renderizador (Software ou Native), o render vem da IR do ListSink; nos modos de
+        // verificacao, o caminho do TA (decodificador do legado) sobre as mesmas listas emprestadas, e a captura confere
+        // o ListSink com ele
+        if (render_capture::draws_lists()) {
+            withNative([&] {
+                pvr_start_render_with(c, s.list.bytes(), s.list.params().size(), &renderList, [] {
+                    for (const nk::ListParam& p : st().list.params()) pvr_render_dump_param(p.list, p.w, p.words);
+                });
+            });
+        } else {
+            s.taCopy.clear();
+            for (const nk::ListParam& p : s.list.params()) {
+                TaParam t;
+                t.list = p.list, t.words = p.words;
+                std::memcpy(t.w, p.w, sizeof t.w);
+                s.taCopy.push_back(t);
+            }
+            s.taBytes = s.list.bytes();
+            withNative([&] { pvr_start_render(c); });
+        }
         return;
     }
     if (off == kListInit) {
         if (val & 0x80000000u) {
-            s.params.reset();
+            s.list.list_init();
             s.regs[kNextOpb / 4]    = s.regs[kNextOpbInit / 4];
             s.regs[kItpCurrent / 4] = s.regs[kIspBase / 4];
         }
         return;
     }
-    if (off == kListCont) s.params.list = -1;  // continua as listas atuais (como pvr/ta.cpp)
+    if (off == kListCont) s.list.list_continue();  // continua as listas atuais (como pvr/ta.cpp)
     if (off == kSoftReset || off == kSpgStatus || off == kId || off == kRevision || off == kYuvCount) return;
     s.regs[off / 4] = val;
 }
@@ -358,9 +345,10 @@ bool areaFourSink(Sh4Context* c, uint32_t target, const uint32_t* d) {
     const uint32_t p      = target & 0x1FFFFFFF;
     const uint32_t region = p & 0x01800000;
     if (region == 0) {
-        if (!s.params.feed(d)) sh4_fatal(c, "parametro do TA com tipo invalido (provedor nativo do Kamui)", c->pc, d[0]);
-        if (s.params.ended >= 0 && s.params.ended <= 4) {
-            holly_intc_raise(kListEndBit[s.params.ended]);  // fim de lista: entrega das interrupcoes ate o HH15
+        const nk::BlockResult r = s.list.feed(d);
+        if (r.invalid) sh4_fatal(c, "parametro do TA com tipo invalido (provedor nativo do Kamui)", c->pc, d[0]);
+        if (r.list_end >= 0) {
+            holly_intc_raise(kListEndBit[r.list_end]);  // fim de lista: entrega das interrupcoes ate o HH15
             ++s.stats.listEnds;
         }
         s.stats.taBytes += 32;
@@ -417,14 +405,15 @@ void fRegWrite(Sh4Context* c) {
     ++s.stats.regWrites;
     if (off < 0x400 && !(off & 3)) {
         if (off == kStartRender) compareAtStartRender();
-        if (off == kListInit) s.params.reset();
+        if (off == kListInit) s.list.list_init();
+        if (off == kListCont) s.list.list_continue();
         s.regs[off / 4] = val, s.regSet[off / 4] = true;
     }
     const uint32_t before = ta_bytes();
     callMeasured(c, kRegWrite, off, 0, 0);
     if ((off == kStartRender || off == kListInit) && ordemLeft())
         std::fprintf(stderr, "[kamui] ordem: %s (TA do runtime %u -> %u bytes; nativo %u)\n",
-                     off == kListInit ? "TA_LIST_INIT" : "STARTRENDER", before, ta_bytes(), s.params.bytes);
+                     off == kListInit ? "TA_LIST_INIT" : "STARTRENDER", before, ta_bytes(), s.list.bytes());
 }
 
 void fRegRead(Sh4Context* c) {
@@ -459,7 +448,7 @@ void fDma(Sh4Context* c) {
         for (uint32_t off = 0; off + 32 <= *len; off += 32) {
             for (int i = 0; i < 8; ++i) blk[i] = sh4_read32(c, *src + off + 4 * uint32_t(i));
             if (fifo) {
-                if (!s.params.feed(blk.data())) mismatch(s.stats.paramMismatch, "parametro do TA com tipo invalido");
+                if (s.list.feed(blk.data()).invalid) mismatch(s.stats.paramMismatch, "parametro do TA com tipo invalido");
             } else {
                 textureWrite(*dst + off, blk.data());
             }
@@ -471,7 +460,7 @@ void fDma(Sh4Context* c) {
     }
     if (ordemLeft())
         std::fprintf(stderr, "[kamui] ordem: DMA tipo %d %u bytes destino %08X (TA do runtime %u -> %u bytes; nativo %u)\n",
-                     type ? int(*type) : -1, len ? *len : 0, dst ? *dst : 0, before, ta_bytes(), s.params.bytes);
+                     type ? int(*type) : -1, len ? *len : 0, dst ? *dst : 0, before, ta_bytes(), s.list.bytes());
 }
 
 void fCopy(Sh4Context* c) {
@@ -524,6 +513,7 @@ void install(BoundaryRegistry& registry, Mode m) {
     std::memcpy(s.mem.data(), vram_data(), kVramSize);
     for (uint32_t i = 0; i < kRegCount; ++i) s.regs[i] = pvr_reg(kRegBase + 4 * i);
     if (m == Mode::Native) ta_set_sink(&areaFourSink);
+    render_capture::set_list_sink(&s.list);  // HH15.7b: a captura confere o ListSink com o caminho do TA
     const auto& fns = m == Mode::Native ? kNativeFns : kFns;
     for (const auto& [addr, fn] : fns) {
         registry.add(addr, dcmap::Subsystem::Render, "kamui");
@@ -536,6 +526,7 @@ void install(BoundaryRegistry& registry, Mode m) {
 void uninstall(BoundaryRegistry& registry) {
     for (const auto& [addr, fn] : kFns) registry.select(addr, Provider::Legacy);
     ta_set_sink(nullptr);
+    render_capture::set_list_sink(nullptr);
     writeCosts();
     st().mode = Mode::Off;
 }

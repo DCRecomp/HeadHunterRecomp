@@ -7,6 +7,7 @@
 #include "pvr/pvr_texture.h"
 #include "pvr/ta.h"
 #include "render/frame_prep.h"
+#include "render/kamui/list_sink.h"
 #include "render/render_ir.h"
 #include "render/soft/soft_device.h"
 #include "render/texture_convert.h"
@@ -29,6 +30,8 @@
 
 namespace hh::transitional::render_capture {
 namespace {
+
+namespace km = hh::native::render::kamui;
 
 constexpr uint32_t R(uint32_t off) { return 0x005F8000 + off; }
 
@@ -82,6 +85,7 @@ bool same_vertex(const PvrVertex& a, const PvrVertex& b) {
 nr::ITextureReplacements* g_replacements = nullptr;  // texturas HD (set_texture_replacements)
 Fault                     g_fault        = Fault::None;     // testes do recuo (inject_fault)
 float                     g_scale        = 1.f;             // resolucao interna (set_scale)
+const km::ListSink*       g_list         = nullptr;         // HH15.7b: o ListSink nativo (set_list_sink)
 
 class Capture final : public PvrCaptureSink {
 public:
@@ -196,12 +200,25 @@ public:
 
     bool renders() const override { return mode == Mode::Software || mode == Mode::Native; }
 
-    void end(const PvrFrame& used, std::span<const PvrTri> drawn, std::span<const uint32_t> image, uint32_t w,
-             uint32_t h) override {
-        frame.modifier_unclosed = frame.modifier_volumes - mod_closed_;
+    // HH15.7b (produto): a IR do ListSink (as listas do Kamui decodificadas direto) no lugar da montagem pelos retornos
+    // do decodificador do legado; o resto (dispositivo, texturas, estatisticas) e o mesmo
+    bool render_list(const km::ListFrame& lf, uint32_t w, uint32_t h, std::vector<uint32_t>& image) {
+        frame                   = {};
+        frame.cl                = lf.cl;
+        frame.textures          = lf.textures;
+        frame.texture_stride    = lf.texture_stride;
+        frame.modifier_params   = lf.modifier_params, frame.modifier_volumes = lf.modifier_volumes;
+        frame.modifier_unclosed = lf.modifier_unclosed, frame.skipped_params = lf.skipped_params;
+        frame.sprites           = lf.sprites;
+        stride_                 = lf.texture_stride;
+        const bool ok           = render(PvrFrame{}, w, h, image);
         st.modifier_unclosed += frame.modifier_unclosed;
         ++st.renders;
-        if (mode == Mode::Compare && vkOk_) compare(image, w, h);
+        account();
+        return ok;
+    }
+
+    void account() {
         st.draws += frame.cl.draws.size(), st.vertices += frame.cl.vertices.size(), st.sprites += frame.sprites;
         st.modifier_params += frame.modifier_params, st.modifier_volumes += frame.modifier_volumes;
         st.skipped_params += frame.skipped_params;
@@ -213,6 +230,62 @@ public:
             }
         }
         if (!frame.cl.modifiers.empty() && !st.modifier_first_render) st.modifier_first_render = st.renders;
+    }
+
+    // HH15.7b: com o ListSink nativo registrado (set_list_sink), as listas que ele juntou decodificadas direto tem de dar
+    // exatamente a IR que a captura montou dos retornos do decodificador do legado (em todo render que passou pelo
+    // caminho do TA). Negativo HH_LISTA_NATIVA_MUTACAO=vertice: o primeiro vertice do ListSink anda meio pixel
+    void check_list_sink() {
+        if (!g_list) return;
+        km::ListFrame lf;
+        g_list->build(frame.cl.frame, stride_, lf);
+        static const bool mutate = [] {
+            const char* m = std::getenv("HH_LISTA_NATIVA_MUTACAO");
+            return m && std::strcmp(m, "vertice") == 0;
+        }();
+        if (mutate && !lf.cl.vertices.empty()) lf.cl.vertices[0].x += 0.5f;
+        ++st.list_checked;
+        const nr::CommandList &a = lf.cl, &b = frame.cl;
+        std::string            why;
+        if (std::memcmp(&a.frame, &b.frame, sizeof a.frame) != 0) why = "quadro";
+        else if (a.vertices.size() != b.vertices.size() ||
+                 (!a.vertices.empty() && std::memcmp(a.vertices.data(), b.vertices.data(), a.vertices.size() * sizeof(nr::Vertex))))
+            why = "vertices (" + std::to_string(a.vertices.size()) + " x " + std::to_string(b.vertices.size()) + ")";
+        else if (a.draws.size() != b.draws.size())
+            why = "desenhos (" + std::to_string(a.draws.size()) + " x " + std::to_string(b.draws.size()) + ")";
+        else if (a.modifiers.size() != b.modifiers.size())
+            why = "volumes (" + std::to_string(a.modifiers.size()) + " x " + std::to_string(b.modifiers.size()) + ")";
+        else if (lf.textures != frame.textures)
+            why = "texturas (" + std::to_string(lf.textures.size()) + " x " + std::to_string(frame.textures.size()) + ")";
+        for (size_t i = 0; why.empty() && i < a.draws.size(); ++i)
+            if (!(a.draws[i].state == b.draws[i].state) || a.draws[i].first_vertex != b.draws[i].first_vertex ||
+                a.draws[i].vertex_count != b.draws[i].vertex_count)
+                why = "desenho " + std::to_string(i);
+        for (size_t i = 0; why.empty() && i < a.modifiers.size(); ++i) {
+            const nr::ModifierVolume &x = a.modifiers[i], &y = b.modifiers[i];
+            if (x.first_vertex != y.first_vertex || x.triangle_count != y.triangle_count || x.inclusion != y.inclusion ||
+                x.list != y.list)
+                why = "volume " + std::to_string(i);
+        }
+        if (why.empty() && (lf.modifier_params != frame.modifier_params || lf.modifier_volumes != frame.modifier_volumes ||
+                            lf.modifier_unclosed != frame.modifier_unclosed || lf.skipped_params != frame.skipped_params ||
+                            lf.sprites != frame.sprites || lf.texture_stride != frame.texture_stride ||
+                            lf.unsupported != frame.skipped_params))
+            why = "contagens do decodificador";
+        if (!why.empty()) {
+            ++st.list_mismatch;
+            if (st.list_error.empty()) st.list_error = "render " + std::to_string(st.renders) + ": " + why;
+        }
+    }
+
+    void end(const PvrFrame& used, std::span<const PvrTri> drawn, std::span<const uint32_t> image, uint32_t w,
+             uint32_t h) override {
+        frame.modifier_unclosed = frame.modifier_volumes - mod_closed_;
+        st.modifier_unclosed += frame.modifier_unclosed;
+        ++st.renders;
+        if (mode == Mode::Compare && vkOk_) compare(image, w, h);
+        account();
+        check_list_sink();
         // HH15.7a: em todo render do conferir (nao so nos amostrados), o software sobre a IR (o dispositivo, com as
         // texturas pelas conversoes nativas) desenha a mesma imagem que o rasterizador sobre o TA; uma falha dele e
         // contada a parte (soft_failures), nunca como imagem divergente
@@ -704,33 +777,7 @@ std::unique_ptr<Capture> g_cap;
 } // namespace
 
 nr::DrawState draw_state(const PvrTri& t, uint32_t texture_handle) {
-    nr::DrawState s;
-    s.list          = list_type(t.list);
-    s.texture.value = t.tex ? texture_handle : 0;
-    s.src           = nr::Blend(t.tsp >> 29);
-    s.dst           = nr::Blend((t.tsp >> 26) & 7);
-    s.depth         = nr::DepthTest(t.isp >> 29);
-    s.depth_write   = !((t.isp >> 26) & 1);
-    s.cull          = nr::Cull((t.isp >> 27) & 3);
-    s.filter = nr::Filter((t.tsp >> 13) & 3);
-    s.wrap_u = ((t.tsp >> 16) & 1) ? nr::Wrap::Clamp : (((t.tsp >> 18) & 1) ? nr::Wrap::Mirror : nr::Wrap::Repeat);
-    s.wrap_v = ((t.tsp >> 15) & 1) ? nr::Wrap::Clamp : (((t.tsp >> 17) & 1) ? nr::Wrap::Mirror : nr::Wrap::Repeat);
-    static constexpr nr::TexEnv kEnv[4] = {nr::TexEnv::Replace, nr::TexEnv::Modulate, nr::TexEnv::Decal,
-                                           nr::TexEnv::ModulateAlpha};  // decal, modulate, decal alpha, modulate alpha
-    s.env              = kEnv[(t.tsp >> 6) & 3];
-    s.fog              = nr::Fog((t.tsp >> 22) & 3);
-    s.gouraud          = t.gouraud;
-    s.use_alpha        = (t.tsp >> 20) & 1;
-    s.offset_color     = t.offset;
-    s.ignore_tex_alpha = (t.tsp >> 19) & 1;
-    s.color_clamp      = (t.tsp >> 21) & 1;
-    s.mip_bias         = uint8_t((t.tsp >> 8) & 0xF);
-    s.supersample      = (t.tsp >> 12) & 1;
-    s.src_select       = (t.tsp >> 25) & 1;
-    s.dst_select       = (t.tsp >> 24) & 1;
-    s.clip             = t.clipMode == 2 ? nr::Clip::Inside : (t.clipMode == 3 ? nr::Clip::Outside : nr::Clip::None);
-    if (s.clip != nr::Clip::None) s.clip_x0 = t.cx0, s.clip_y0 = t.cy0, s.clip_x1 = t.cx1, s.clip_y1 = t.cy1;
-    return s;
+    return km::draw_state(t, texture_handle);  // HH15.7b: as regras ficam no ListSink
 }
 
 PvrTri pvr_state(const nr::DrawState& s, const TextureKey* tex) {
@@ -760,12 +807,7 @@ PvrTri pvr_state(const nr::DrawState& s, const TextureKey* tex) {
     return t;
 }
 
-nr::Vertex vertex(const PvrVertex& v) {
-    nr::Vertex o;
-    o.x = v.x, o.y = v.y, o.inv_w = v.z, o.u = v.u, o.v = v.v;
-    o.color = pack(v.col), o.offset = pack(v.off);
-    return o;
-}
+nr::Vertex vertex(const PvrVertex& v) { return km::ir_vertex(v); }
 
 PvrVertex pvr_vertex(const nr::Vertex& v) {
     PvrVertex o;
@@ -986,6 +1028,14 @@ bool load_frame_dump(const std::string& path, nr::CommandList& cl, std::vector<D
 }
 void inject_fault(Fault f) { g_fault = f; }
 
+void set_list_sink(const native::render::kamui::ListSink* sink) { g_list = sink; }
+
+bool draws_lists() { return g_cap && (g_cap->mode == Mode::Software || g_cap->mode == Mode::Native); }
+
+bool draw_list(const native::render::kamui::ListFrame& lf, uint32_t width, uint32_t height, std::vector<uint32_t>& image) {
+    return draws_lists() && g_cap->render_list(lf, width, height, image);
+}
+
 void set_compare_dump(const std::string& dir, uint32_t every) {
     if (!g_cap) g_cap = std::make_unique<Capture>();
     g_cap->dumpDir = dir, g_cap->dumpEvery = every ? every : 300;
@@ -1063,6 +1113,14 @@ std::string summary() {
                       s.vk_error.empty() ? "" : "; ",
                       s.vk_error.c_str());
         out += v;
+    }
+    if (s.list_checked) {  // HH15.7b: o ListSink nativo contra a captura
+        char r[300];
+        std::snprintf(r, sizeof r, "[render-lista] ListSink conferido com a captura em %llu renders: divergentes %llu%s%s",
+                      (unsigned long long)s.list_checked, (unsigned long long)s.list_mismatch,
+                      s.list_error.empty() ? "" : "; primeira: ", s.list_error.c_str());
+        out += r;
+        out += '\n';
     }
     if (s.soft_frames || s.soft_failures || s.soft_mismatch) {  // HH15.7a: software sobre a IR
         char r[400];

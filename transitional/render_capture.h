@@ -30,6 +30,7 @@
 // texel a texel (contadas, nunca descartadas). O cache do backend refaz uma textura quando os bytes dela na VRAM
 // (ou a paleta) mudam.
 #include "pvr/pvr_render.h"
+#include "render/kamui/list_sink.h"
 #include "render/render.h"
 #include "render/texture_replacement.h"
 
@@ -46,10 +47,8 @@ namespace nr = hh::native::render;
 
 // O que identifica os texels de uma textura (a IR so guarda o handle): TCW (endereco, formato, paleta, modos),
 // tamanho do TSP e o stride linear (TEXT_CONTROL).
-struct TextureKey {
-    uint32_t tcw = 0, width = 0, height = 0, stride = 0;
-    bool     operator==(const TextureKey&) const = default;
-};
+// HH15.7b: a mesma chave do ListSink nativo (native/render/kamui/list_sink.h).
+using TextureKey = native::render::kamui::TextureKey;
 
 struct Frame {
     nr::CommandList         cl;
@@ -114,6 +113,9 @@ struct Stats {
     // HH15.7a: software sobre a IR (Mode::Software e o recuo do Native)
     uint64_t    soft_frames = 0, soft_failures = 0, soft_checked = 0, soft_mismatch = 0, soft_tex_uploads = 0, soft_tex_legacy = 0, soft_tex_evicted = 0;
     std::string soft_error;
+    // HH15.7b: o ListSink nativo contra a captura (renders conferidos; divergentes tem de ficar em 0)
+    uint64_t    list_checked = 0, list_mismatch = 0;
+    std::string list_error;
     std::string first_error;
 };
 
@@ -155,6 +157,16 @@ void         set_texture_replacements(nr::ITextureReplacements* provider);
 // Soft (HH15.7a): o proximo render do software sobre a IR falha.
 enum class Fault : uint8_t { None, Texture, Device, DeviceOnce, DeviceAgain, Soft };  // Device: falha permanente; DeviceOnce: transitoria
 void         inject_fault(Fault f);
+
+// HH15.7b: o ListSink nativo (transitional/kamui_device, modo nativo). Registrado, em todo render pelo caminho do TA a
+// captura confere a IR que ele decodifica direto com a montada dos retornos do decodificador do legado
+// (Stats::list_*); nullptr desliga.
+void set_list_sink(const native::render::kamui::ListSink* sink);
+// true: a captura esta instalada como o renderizador (Software ou Native), e o render vem da IR do ListSink
+bool draws_lists();
+// O render pela IR do ListSink (`image`: width x height, ja com o fundo): false = nao desenhado (sem captura no modo
+// de renderizador, ou falha do dispositivo; o chamador para com erro explicito).
+bool draw_list(const native::render::kamui::ListFrame& lf, uint32_t width, uint32_t height, std::vector<uint32_t>& image);
 
 // Diagnostico (HH_RENDER_IR_GUARDAR=<render>:<arquivo>): a IR inteira de um render (parametros, vertices, desenhos,
 // volumes e as texturas ja convertidas, na ordem dos handles do quadro) num arquivo binario, gravada ANTES de ir ao

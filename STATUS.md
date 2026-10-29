@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR concluído) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR e 7b ListSink concluídos) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -343,6 +343,15 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   todo render (negativo `HH_RENDER_SOFT_MUTACAO=textura`). Revisão Codex (`reviews/codex-hh15_7a.log`): aceitos [MÉDIA]
   R1 amostrado, [MÉDIA] falha do software caindo no caminho do TA em silêncio, [BAIXA] negativo sem distinguir falha
   de divergência; nenhum rejeitado. Regressão integral 14/14 (`analysis/hh15/regressao_7a.log`).
+- HH15.7b (concluído, 2026-10-29): `native/render/kamui/list_sink` divide as listas da área 4 e as decodifica direto
+  para a IR (as regras do Parser do `pvr_render` e da captura, num lugar só); com a captura como o renderizador, o
+  STARTRENDER nativo desenha pela IR do ListSink, sem o decodificador do legado nem o TA, com erro explícito para
+  vértice que a IR não representa ou render não desenhado; nos modos de verificação o caminho do TA é a referência e o
+  comparador confere o ListSink em todo render (negativo `HH_LISTA_NATIVA_MUTACAO=vertice`, portão K5). Rota da área 1:
+  2 250 renders pelo ListSink, 94 hashes iguais ao HH06, ListSink igual à captura em 2 250. Revisão Codex
+  (`reviews/codex-hh15_7b.log`): aceitos [MÉDIA] ambiente de ponto flutuante do guest na decodificação, [BAIXA]
+  `HH_TA_DUMP` no caminho nativo, [BAIXA] teste do comparador contra captura vazia, [BAIXA] contagem de vértices sem
+  suporte fora do comparador; nenhum rejeitado. Regressão integral 14/14 (`analysis/hh15/regressao_7b.log`).
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

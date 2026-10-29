@@ -28,6 +28,11 @@ RenderStats pvr_render(Sh4Context* c);
 // MXCSR diferente do padrao (o render deve isolar o ambiente de ponto flutuante).
 bool pvr_render_take_fp_violation();
 
+// HH15.7b: as partes do render que nao decodificam: a gravacao da imagem (ARGB8888 width x height) no framebuffer
+// (FB_W_SOF1, formato de FB_W_CTRL, FB_W_LINESTRIDE e clip) e o aviso do Region Array com modo de ordenacao por tile.
+void pvr_write_framebuffer(std::span<const uint32_t> argb, uint32_t width, uint32_t height);
+void pvr_check_region_sort(bool autosort);
+
 // ---- O que o decodificador das listas do TA produz (N7a: a mesma decodificacao alimenta o rasterizador e a captura
 // da IR de render; nenhum segundo parser) ----
 

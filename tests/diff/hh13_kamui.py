@@ -8,6 +8,9 @@ K2  nativo (HH_KAMUI=nativo, render em software): os 94 hashes iguais aos do cam
     (HH_AREA1_HASHES, quando definida); renders nativos = renders do provedor de tempo;
 K4  conferir (HH_RENDER_IR=conferir, 1 render a cada 5) com o provedor nativo: a IR do estado nativo descreve o que o
     rasterizador usou, render a render: 0 divergencias;
+K5  HH15.7b: o ListSink nativo (as listas decodificadas direto para a IR, o caminho do produto) igual a IR que a captura
+    monta do decodificador do legado em TODO render do conferir no nativo: 0 divergencias; negativo
+    HH_LISTA_NATIVA_MUTACAO=vertice acusado; e o nativo padrao (sem HH_RENDER_IR) desenha pela IR do ListSink;
 K3  sonda de hardware (HH_TA_FONTES) no nativo: nenhum byte no TA nem na VRAM do runtime; do PVR so os registradores de
     tempo do video (SPG, 0x0C8-0x0E0, e SPG_STATUS), que saem no HH15; os bytes da area 4 chegam ao destino nativo.
 
@@ -39,13 +42,13 @@ def check(name, cond, info=''):
     fails += not cond
 
 
-def run(kamui, extra=None):
+def run(kamui, extra=None, vblanks=None):
     env = dict(os.environ, HH_INPUT_SCRIPT=SCRIPT)
     for k in ('HH_RENDER_IR', 'HH_RENDER_IR_CADA', 'HH_RENDER_IR_BMP', 'HH_KAMUI', 'HH_TA_FONTES'):
         env.pop(k, None)
     env['HH_KAMUI'] = kamui
     env.update(extra or {})
-    p = subprocess.run([RUN, '--data', DATA, '--vblanks', str(VBLANKS), '--rtc', str(RTC), '--every', '50',
+    p = subprocess.run([RUN, '--data', DATA, '--vblanks', str(vblanks or VBLANKS), '--rtc', str(RTC), '--every', '50',
                         '--render', 'software'], capture_output=True, text=True, env=env)
     k = re.search(r'\[kamui\] [^\n]*', p.stderr)
     t = re.search(r'\[tempo\] [^\n]* render (\d+)', p.stderr)
@@ -111,6 +114,24 @@ check('K4: conferir no nativo executa (rc 0) e o Kamui nativo atende', c['rc'] =
 check('K4: renders conferidos com o estado nativo', (v4['conferidos'] or 0) >= 400, line)
 check('K4: IR igual ao rasterizador: 0 divergencias',
       all(v4[k] == 0 for k in ('invalida', 'tri', 'img', 'tex', 'quadros')), str(v4))
+
+
+def lista(err):
+    m = re.search(r'\[render-lista\] ListSink conferido com a captura em (\d+) renders: divergentes (\d+)', err)
+    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+
+renders_ir = num(line, r'renders (\d+)')
+lc, ld = lista(c['err'])
+check('K5: ListSink igual a captura em todo render do conferir no nativo', lc and lc == renders_ir and ld == 0,
+      '%s de %s renders, %s divergentes' % (lc, renders_ir, ld))
+mut = run('nativo', {'HH_RENDER_IR': 'conferir', 'HH_RENDER_IR_CADA': '5', 'HH_LISTA_NATIVA_MUTACAO': 'vertice'}, 1500)
+mc, md = lista(mut['err'])
+check('K5 negativo: vertice mudado no ListSink acusado', mut['rc'] == 0 and mc and md and md > 0, '%s de %s' % (md, mc))
+soft = re.search(r'\[render-soft\] quadros (\d+), falhas (\d+)', n['err'])
+check('K5: o nativo padrao desenha pela IR do ListSink em todo render (software sobre a IR, sem o caminho do TA)',
+      soft is not None and int(soft.group(1)) == nat and int(soft.group(2)) == 0 and '[render-lista]' not in n['err'],
+      soft.group(0) if soft else 'sem resumo [render-soft]')
 check('K3: sonda gravou acessos', bool(rows))
 check('K3: nada no TA nem na VRAM do runtime', not any(d.startswith(('ta_', 'vram_')) for d in destinos),
       sorted(d for d in destinos if d.startswith(('ta_', 'vram_'))))

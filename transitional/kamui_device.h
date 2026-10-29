@@ -16,10 +16,13 @@
 // Modo nativo (HH_KAMUI=nativo): os funis deixam de tocar o hardware do PVR. Registradores no banco nativo (com a mesma
 // semantica de comando do runtime: TA_LIST_INIT, TA_LIST_CONT, STARTRENDER, SOFTRESET); so os de tempo do video (SPG,
 // 0x0C8-0x0E0) continuam indo ao runtime, e SPG_STATUS e lido dele (tempo: HH15). O DMA original continua programando o
-// DMAC e o SB do Holly (HH15), mas os bytes que chegam a area 4 vao para o destino nativo (ta_set_sink): parametros
-// divididos como o TA divide, com as interrupcoes de fim de lista, e o caminho de textura na memoria nativa. Copia e
-// zeragem na VRAM so na memoria nativa. O render de STARTRENDER (decodificacao, IR, Vulkan ou software) e o quadro
-// exibido leem o estado nativo emprestado (pvr_regs_set_override, vram_set_override, ta_set_override).
+// DMAC e o SB do Holly (HH15), mas os bytes que chegam a area 4 vao para o destino nativo (ta_set_sink): as listas no
+// ListSink nativo (native/render/kamui/list_sink, HH15.7b: divididas como o TA divide, com as interrupcoes de fim de
+// lista) e o caminho de textura na memoria nativa. Copia e zeragem na VRAM so na memoria nativa. No STARTRENDER, com a
+// captura como o renderizador (render_capture::draws_lists: software sobre a IR ou Vulkan), o render vem da IR que o
+// ListSink decodifica direto (sem o decodificador do legado nem o TA); nos modos de verificacao, o caminho do TA sobre as
+// mesmas listas emprestadas, e a captura confere o ListSink com ele. O render e o quadro exibido leem o estado nativo
+// emprestado (pvr_regs_set_override, vram_set_override, ta_set_override).
 #include "boundary_registry.h"
 
 #include <cstdint>

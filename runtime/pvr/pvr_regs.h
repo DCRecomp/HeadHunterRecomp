@@ -44,6 +44,13 @@ void     pvr_render_done_take();
 
 // HH13.6: STARTRENDER (render das listas atuais + agendamento do fim do render), para o provedor nativo do Kamui.
 void pvr_start_render(Sh4Context* c);
+// HH15.7b: o STARTRENDER com outro render no lugar do pvr_render (o da IR do ListSink nativo): a mesma contagem, o
+// mesmo gancho e o mesmo prazo do fim de render, pelos bytes que o TA (ou o destino nativo) recebeu.
+// `params` e `dumpParams` servem o diagnostico HH_TA_DUMP (a contagem e as linhas dos parametros, por
+// pvr_render_dump_param).
+void pvr_start_render_with(Sh4Context* c, uint32_t taBytes, size_t params, void (*render)(Sh4Context*),
+                           void (*dumpParams)());
+void pvr_render_dump_param(uint32_t list, const uint32_t* w, uint32_t words);  // "[render]   L<lista> <palavras>"
 // HH13.6: banco de registradores emprestado (0x005F8000-0x005F9FFF, 2048 palavras) que o render, a paleta e o video leem no
 // lugar do banco do runtime; nullptr devolve o do runtime. So o provedor nativo do Kamui (o guest nao o ve).
 void pvr_regs_set_override(const uint32_t* words);
