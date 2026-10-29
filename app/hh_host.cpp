@@ -390,6 +390,7 @@ HostResult host_run(const HostOptions& opt) {
     if (transitional::pad::installed()) {
         std::fputs(transitional::pad::summary().c_str(), stderr);
         transitional::pad::uninstall(boundaries);
+        maple_reset();  // fim da sessao: a presenca do controle so muda com o barramento zerado
         maple_set_controller_present(true);
         transitional::input_bridge::install(nullptr);
     }

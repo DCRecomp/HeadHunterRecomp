@@ -200,6 +200,9 @@ void gdrom(Sh4Context* c) {
     const uint32_t r4 = c->r[4], r5 = c->r[5];
     switch (c->r[7]) {
     case kReqCmd:
+        // o comando e conferido no pedido, mesmo com o drive ocupado (revisao Codex: fora do contrato nunca em silencio)
+        if (r4 != kCmdDmaRead && r4 != kCmdInit && r4 != kCmdGetScd && r4 != kCmdGetVersion)
+            refuse(c, "GDROM comando", kGdrom, r4);
         if (g.status != kOk) {
             r0 = 0;
             break;

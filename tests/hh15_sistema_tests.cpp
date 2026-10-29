@@ -6,9 +6,13 @@
 
 #include "cpu/sh4_mem.h"
 #include "cpu/sh4_runtime.h"
+#include "gdrom/data_source.h"
+#include "gdrom/gdrom.h"
 #include "hle/bios.h"
 #include "system/syscall_service.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -93,7 +97,54 @@ HH_TEST(hh15_servico_nativo_igual_ao_hle_no_contrato) {
     const auto got = script(nat);
     HH_CHECK(got.size() == ref.size());
     for (size_t i = 0; i < ref.size() && i < got.size(); ++i) HH_CHECK(got[i] == ref[i]);
+    HH_CHECK(nat.ram == hle.ram);  // a RAM inteira depois do roteiro (revisao Codex)
     HH_CHECK(hh::syscall_service_stats().refused == 0);
+    hh::syscall_service_uninstall();
+    hh::bios_hle_install(&nat.c, true);
+    hh::sh4_set_fatal_handler(nullptr);
+}
+
+// Com os dados do disco (HH_DATA_DIR): as 6 leituras por DMA do boot (os FADs medidos com HH_HLE_LOG) e o GETSCD
+// depois delas, no HLE (gdrom_set_disc com a mesma fonte) e no servico: r0, estado do pedido e a RAM inteira iguais.
+HH_TEST(hh15_servico_nativo_le_setores_como_o_hle) {
+    const char* dir = std::getenv("HH_DATA_DIR");
+    if (!dir || !*dir) HH_SKIP("HH_DATA_DIR ausente");
+    hh::sh4_set_fatal_handler([](hh::Sh4Context*, const char* w, uint32_t, uint32_t) { throw Fatal(w); });
+    auto run = [&](Machine& m) {
+        std::vector<uint32_t> r0s;
+        r0s.push_back(m.sys(hh::kBiosVecGdrom, 0, 0, 0, 3));  // INIT_SYSTEM
+        uint32_t dest = 0x8C296220;
+        for (uint32_t fad : {0x385CDu, 0x385D0u, 0x385D4u, 0x385E0u, 0x385E1u, 0x385E2u}) {
+            hh::sh4_write32(&m.c, kParams, fad);
+            hh::sh4_write32(&m.c, kParams + 4, 1);
+            hh::sh4_write32(&m.c, kParams + 8, dest);
+            hh::sh4_write32(&m.c, kParams + 12, 0);
+            const uint32_t id = m.sys(hh::kBiosVecGdrom, 0x11, kParams, 0, 0);
+            m.sys(hh::kBiosVecGdrom, 0, 0, 0, 2);
+            r0s.push_back(id), r0s.push_back(m.sys(hh::kBiosVecGdrom, id, kStat, 0, 1));
+            dest += 0x800;
+        }
+        hh::sh4_write32(&m.c, kParams, 1), hh::sh4_write32(&m.c, kParams + 4, 14), hh::sh4_write32(&m.c, kParams + 8, kBuf);
+        const uint32_t id = m.sys(hh::kBiosVecGdrom, 0x22, kParams, 0, 0);
+        m.sys(hh::kBiosVecGdrom, 0, 0, 0, 2);
+        r0s.push_back(id), r0s.push_back(m.sys(hh::kBiosVecGdrom, id, kStat, 0, 1));
+        return r0s;
+    };
+    Machine hle;
+    hh::bios_hle_install(&hle.c, true);
+    hh::gdrom_set_disc(hh::open_runtime_data(dir, {}));
+    const auto ref = run(hle);
+    hh::gdrom_set_disc(nullptr);
+    Machine nat;
+    hh::bios_hle_install(&nat.c, true);
+    hh::syscall_service_install(&nat.c, dir);
+    const auto got = run(nat);
+    HH_CHECK(got == ref);
+    HH_CHECK(nat.ram == hle.ram);
+    HH_CHECK(hh::syscall_service_stats().sectors == 6 && hh::syscall_service_stats().refused == 0);
+    uint32_t w = 0;
+    std::memcpy(&w, &nat.ram[kBuf & 0xFFFFFF], 4);
+    HH_CHECK(w != 0);  // o GETSCD gravou o canal Q (nao so zeros iguais)
     hh::syscall_service_uninstall();
     hh::bios_hle_install(&nat.c, true);
     hh::sh4_set_fatal_handler(nullptr);
@@ -133,11 +184,19 @@ HH_TEST(hh15_servico_nativo_recusa_fora_do_contrato) {
         sh4_write32(&m.c, kParams, cmd == 0x22u ? 1u : 0x3BBA9u);
         sh4_write32(&m.c, kParams + 4, cmd == 0x22u ? 14u : 1u);
         sh4_write32(&m.c, kParams + 8, kBuf);
+        if (cmd == 0x10u || cmd == 0x13u) {  // fora do contrato: recusado ja no pedido (revisao Codex)
+            expectRefused(kBiosVecGdrom, cmd, kParams, 0, 0);
+            continue;
+        }
         HH_CHECK(m.sys(kBiosVecGdrom, cmd, kParams, 0, 0) != 0);
-        expectRefused(kBiosVecGdrom, 0, 0, 0, 2);  // EXEC_SERVER executa o comando fora do contrato
+        expectRefused(kBiosVecGdrom, 0, 0, 0, 2);  // EXEC_SERVER: GETSCD sem leitura e DMAREAD sem dados
     }
-    HH_CHECK(refused == 16);
-    HH_CHECK(hh::syscall_service_stats().refused == 15);  // o DMAREAD sem dados e instalacao incompleta, nao recusa
+    // comando fora do contrato com o drive ocupado: recusado no pedido, nao devolvido como "ocupado" (revisao Codex)
+    m.sys(kBiosVecGdrom, 0, 0, 0, 3);
+    HH_CHECK(m.sys(kBiosVecGdrom, 0x18, kParams, 0, 0) != 0);
+    expectRefused(kBiosVecGdrom, 0x10, kParams, 0, 0);
+    HH_CHECK(refused == 17);
+    HH_CHECK(hh::syscall_service_stats().refused == 16);  // o DMAREAD sem dados e instalacao incompleta, nao recusa
     hh::syscall_service_uninstall();
     hh::sh4_set_fatal_handler(nullptr);
 }

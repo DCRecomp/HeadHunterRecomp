@@ -295,7 +295,15 @@ void maple_vblank_in() {
         if (InputSource* in = input_source()) g_vblankSample = in->read(0, g_condSeq[0]);
     g_transitionArmed = true;
 }
-void          maple_set_controller_present(bool present) { g_controllerPresent = present; }
+// O modelo e o barramento guardam estados separados: a presenca so muda fora da sessao (antes do primeiro DMA depois
+// do reset), como o host faz na instalacao dos controles; no meio da sessao e erro explicito (revisao Codex).
+void maple_set_controller_present(bool present) {
+    if (present != g_controllerPresent && (g_counters.dmas || maple_bus_counters().dmas)) {
+        std::fprintf(stderr, "ERRO: presenca do controle do Maple trocada no meio da sessao (depois de um DMA)\n");
+        std::abort();
+    }
+    g_controllerPresent = present;
+}
 bool          maple_controller_present() { return g_controllerPresent; }
 MapleCounters maple_counters() { return g_controllerPresent ? g_counters : maple_bus_counters(); }
 void          maple_counters_reset() { g_counters = {}, maple_bus_counters_reset(); }

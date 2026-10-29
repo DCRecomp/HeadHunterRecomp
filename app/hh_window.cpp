@@ -4,26 +4,25 @@
 // quadro mais recente na frequencia do monitor, com area logica 4:3 e barras. Entrada (HH10,
 // --controles nativo, padrao): nucleo nativo (native/platform/input.h) com o teclado da janela e
 // os controles do SDL3 Gamepad (ou XInput, se o controles.toml pedir), mapa em controles.toml ao
-// lado do executavel; no legado, teclado + XInput do runtime. Com HH_INPUT_SCRIPT, so o roteiro
-// (modo espectador).
+// lado do executavel. Com HH_INPUT_SCRIPT, so o roteiro (modo espectador).
 //
 //   HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] [--log <arquivo> --hash-every K]
-//              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
-//              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo]
-//              [--audio legado|nativo] [--mods <pasta>]
+//              [--tempo legado|nativo|experimental] [--saves-pasta <pasta> | --saves-portatil] [--mods <pasta>]
+// HH15 (fim do legado no produto): --arquivos/--controles/--saves/--video/--audio legado exigem o hardware simulado
+// (drive, Maple, VMU, AICA) e sao recusados com saida 2; ficam no hh-run (verificacao). As opcoes "nativo" continuam
+// aceitas.
 // Tempo (HH15.1, --tempo experimental, padrao na janela): o tempo logico, sem ciclos estimados (cadencia B); as cargas
 // nao consomem tempo (D11 do BS). O --headless fica no estavel (--tempo nativo), salvo --tempo.
 // Audio (HH14, --audio nativo, padrao na janela): a reconstrucao do driver de som (transitional/audio_device) e o motor
-// nativo de canais, pelo XAudio2; o --headless fica no legado (roteiro de referencia, gravado com o som mudo), salvo
-// --audio nativo.
+// nativo de canais, pelo XAudio2 (no --headless, so o motor, sem dispositivo).
 // Render (HH13, --render nativo, padrao na janela): a IR do TA desenhada no Vulkan, igual ao software na rota de
 // referencia; sem Vulkan ou se o dispositivo cair, o software (o --headless fica no software, salvo --render nativo).
 // Filmes (HH12, --video nativo, padrao na janela): os MP4 que o Builder converteu dos 4X (data\video), com audio
-// pelo XAudio2 e mods em mods\video; o --headless fica no legado (roteiro de referencia), salvo --video nativo.
+// pelo XAudio2 e mods em mods\video (no --headless, sem audio no dispositivo).
 // Saves (HH11, --saves nativo, padrao na janela): Documentos\DC-Recomp\Head Hunter\saves (pasta Documentos do
 // Windows, que segue o redirecionamento), --saves-pasta <pasta> ou --saves-portatil (saves\ ao lado do
-// executavel). --headless (verificacao da instalacao contra o roteiro de referencia, gravado sem memory card)
-// usa o legado, salvo --saves nativo (entao um cartao temporario, sem tocar nos saves do usuario).
+// executavel). --headless (verificacao do produto, roteiro newgame_area1_nativo) usa um cartao temporario, sem tocar
+// nos saves do usuario.
 // Formato do Dreamcast (HH11.4; o arquivo do save e o arquivo da VMU, sem transformacao):
 //   --saves-exportar <pasta>                      cada save vira <pasta>\<NOME>.VMS
 //   --saves-importar <arquivo.vms> [--saves-nome <NOME>]  (padrao: o nome do arquivo, em maiusculas)
@@ -353,14 +352,21 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "ERRO: --arquivos legado exige o drive simulado, que nao existe no produto (use o hh-run)\n");
         return 2;
     }
-    if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
+    // HH15.4/HH15.5/HH15.6 (revisao Codex): os provedores legados de saves, filmes e audio dependem do hardware
+    // simulado (VMU pelo Maple, decodificador 4X com a AICA, AICA) e nao existem no produto (so no hh-run)
+    for (const auto& [legacy, what] : {std::pair{opt.saves == hh::SavesProvider::Legacy && savesSet, "--saves legado"},
+                                       std::pair{opt.video == hh::VideoProvider::Legacy && videoSet, "--video legado"},
+                                       std::pair{opt.audio == hh::AudioProvider::Legacy && audioSet, "--audio legado"}})
+        if (legacy) {
+            std::fprintf(stderr, "ERRO: %s exige o hardware simulado, que nao existe no produto (use o hh-run)\n", what);
+            return 2;
+        }
     // HH15.1: tempo logico (--tempo experimental) padrao na janela (portao hh15_tempo); o --headless fica no estavel
     if (!headless && !timeSet) opt.time = hh::TimeProvider::Experimental;
-    // o --headless (verificacao do Builder e roteiro de referencia, gravado com os filmes legados) fica no legado
-    if (headless && !videoSet) opt.video = hh::VideoProvider::Legacy;
+    // o --headless (verificacao do produto: o roteiro newgame_area1_nativo) usa os provedores nativos, com os saves num
+    // cartao temporario (abaixo), sem audio no dispositivo e o render por software (verificacao sem depender da GPU)
     if (headless && !renderSet) opt.render = hh::RenderProvider::Software;  // HH13: verificacao sem depender da GPU
     opt.videoAudio = !headless;  // HH12: audio dos filmes nativos so com a janela (headless: saida nula)
-    if (headless && !audioSet) opt.audio = hh::AudioProvider::Legacy;  // HH14: o roteiro de referencia e o legado
     opt.audioDevice = !headless;
     // modo portatil gravado pelo Recompiler (instalacao.toml ao lado do executavel; vale ao abrir o jogo direto)
     {

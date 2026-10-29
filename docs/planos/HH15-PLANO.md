@@ -245,3 +245,29 @@ barramento sem dispositivos com o mesmo efeito do modelo sem controle; o modelo 
 3. O produto compila `runtime/system/maple_ausente.cpp` (a API do modelo direto ao barramento) e recusa `--controles
    legado` (saída 2). `runtime/input` (roteiros, índice de transição, modo espectador) continua no produto: não é
    simulação de hardware. Catraca: o papel `perifericos` fora do mapa (negativo `com_maple`).
+4. **Revisão Codex da HH15.3/HH15.4** (`reviews/codex-hh15_34.log`), 4 achados, conferidos e corrigidos:
+   - [MEDIA] comando de GD-ROM fora do contrato com o drive ocupado era devolvido como "ocupado" em silêncio: o comando
+     é conferido já no REQ_CMD (recusa nos unitários);
+   - [MEDIA] trocar a presença do controle no meio da sessão separaria os estados do modelo e do barramento: a troca
+     depois de um DMA é erro explícito e o host zera o barramento no fim da sessão antes de restaurar a presença;
+   - [MEDIA] o produto aceitava `--saves legado` (e o `--headless` o escolhia): recusado, com o `--headless` nos saves
+     nativos num cartão temporário (HH15.5 abaixo);
+   - [BAIXA] cobertura: `hh15_servico_nativo_le_setores_como_o_hle` (os 6 DMAREAD do boot e o GETSCD, com os dados: r0
+     e a RAM inteira iguais ao HLE), a RAM inteira no teste do roteiro e `hh15_barramento_igual_ao_modelo_sem_dispositivo`
+     (buffers, prazo, MDST antes e depois do prazo, segundo disparo e contadores contra o modelo com o controle
+     desconectado; uma mutação de 1% no prazo reprova).
+
+### HH15.5 (em andamento)
+
+O vídeo legado não tem módulo próprio no runtime: é o decodificador 4X do código gerado sobre a AICA e o PVR
+simulados. O que o mantinha no produto era o `--headless` (verificação da instalação contra a rota do HH06, gravada com
+os filmes, o áudio e os saves legados). Precedente do N8.5/N8.6 do BS: o produto só com os provedores nativos e a
+verificação do produto rebaseada no caminho nativo; as rotas históricas ficam na verificação.
+
+1. O produto recusa `--saves legado`, `--video legado` e `--audio legado` (saída 2; além de `--arquivos` e
+   `--controles legado`); o `--headless` usa saves nativos num cartão temporário, filmes e áudio nativos (sem
+   dispositivo) e o render por software.
+2. Referência do produto: o roteiro `newgame_area1_nativo` com esses provedores, gravada pelo `hh-run`
+   (`regressao.py --gravar-produto`, `HH15_PRODUTO_HASHES`, privada em `snapshots/hh15`); a etapa `builder` da
+   regressão compara o produto instalado pelo Builder com ela. A rota histórica do HH06 continua na etapa
+   `roteiro_area1` (`hh-run`).

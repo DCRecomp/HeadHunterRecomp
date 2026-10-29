@@ -13,6 +13,7 @@ entrada alterada muda a chave e a etapa roda de novo. Nunca enfraquece uma etapa
   python -I tools/dev/regressao.py --novo          descarta o estado e recomeca
   python -I tools/dev/regressao.py --desde NOME    refaz a partir da etapa NOME
   python -I tools/dev/regressao.py --gravar-area1  grava a referencia do roteiro (HH_AREA1_HASHES)
+  python -I tools/dev/regressao.py --gravar-produto  grava a referencia do --headless do produto (HH15_PRODUTO_HASHES)
 Estado: %LOCALAPPDATA%\\HeadHunterRecomp\\regressao\\estado.json (fora do repositorio).
 Dados privados (sem eles as etapas que dependem deles falham com mensagem clara):
   HH_DATA_DIR      dados de execucao do disco 1 (hh-extract --runtime)
@@ -21,6 +22,7 @@ Dados privados (sem eles as etapas que dependem deles falham com mensagem clara)
   HH_AREA1_HASHES  hashes de referencia do roteiro newgame_area1
   HH07_BIN         1ST_READ.BIN do disco 1 (fechamento do HH07)
   HH07_SONDA       TSV da sonda do roteiro newgame_area1 (HH_HW_PROBE)
+  HH15_PRODUTO_HASHES  hashes do --headless do produto no roteiro newgame_area1_nativo (etapa do Builder)
   HH15_REF         referencias pre-corte do HH15 (tools/dev/hh15_referencias.py capturar; analysis/hh15/ref)"""
 import hashlib
 import json
@@ -145,12 +147,28 @@ def reference():
     return want
 
 
-def area1_hashes(exe, data):
-    """Hashes do roteiro newgame_area1 ("<vblank>: <hash>"). hh-run escreve no stdout; o
+def reference_produto():
+    ref = need('HH15_PRODUTO_HASHES')
+    if not os.path.exists(ref):
+        raise RuntimeError('referencia do produto ausente: gere com --gravar-produto')
+    want = [l for l in open(ref).read().splitlines() if l]
+    if len(want) != FRAMES:
+        raise RuntimeError('referencia do produto com %d quadros (esperado %d)' % (len(want), FRAMES))
+    return want
+
+
+# HH15.5: o --headless do produto usa os provedores nativos (o legado de saves, filmes e audio nao existe nele) no
+# roteiro newgame_area1_nativo; o hh-run reproduz os mesmos provedores para gravar a referencia
+SCRIPT_PRODUTO = os.path.join(ROOT, 'tools', 'dist', 'roteiros', 'newgame_area1_nativo.txt')
+HHRUN_PRODUTO = ['--saves', 'nativo', '--video', 'nativo', '--audio', 'nativo']
+
+
+def area1_hashes(exe, data, script=None, extra=()):
+    """Hashes do roteiro newgame_area1 ("<vblank>: <hash>"), ou de `script`. hh-run escreve no stdout; o
     HeadHunter.exe (--headless) escreve no --log."""
     if not os.path.exists(exe):
         raise RuntimeError('executavel ausente: ' + exe)
-    args = [exe, '--data', data, '--vblanks', '4700', '--rtc', '1700000000']
+    args = [exe, '--data', data, '--vblanks', '4700', '--rtc', '1700000000'] + list(extra)
     log = None
     if os.path.basename(exe).lower() == 'headhunter.exe':
         log = EXE('regressao_headhunter.log')
@@ -159,7 +177,7 @@ def area1_hashes(exe, data):
         args += ['--headless', '--log', log, '--hash-every', '50']
     else:
         args += ['--every', '50']
-    r = sh(args, env={'HH_INPUT_SCRIPT': SCRIPT})
+    r = sh(args, env={'HH_INPUT_SCRIPT': script or SCRIPT})
     if r.returncode != 0 or 'ok: limite de VBlanks atingido' not in r.stdout:
         raise RuntimeError('%s nao terminou pelo limite (rc=%d)' % (os.path.basename(exe), r.returncode))
     lines = open(log).read().splitlines() if log else r.stdout.splitlines()
@@ -315,7 +333,7 @@ def step_area1():
 
 
 def step_builder():
-    disc, disc2, want = need('HH_DISC1'), need('HH_DISC2'), reference()
+    disc, disc2, want = need('HH_DISC1'), need('HH_DISC2'), reference_produto()
     out = os.path.join(ROOT, 'build', 'regressao')  # fora de dist/ (so Builder e Preview, como no BS)
     inst = os.path.join(out, 'HeadHunter')
     build = lambda: sh([EXE('builder', 'Release', 'hh-builder.exe'), '--disc', disc, '--disc2', disc2, '--out', out],
@@ -340,8 +358,8 @@ def step_builder():
         p = os.path.join(inst, rel)
         if not os.path.isfile(p) or open(p, 'rb').read() != data:
             raise RuntimeError('reinstalacao perdeu dados do usuario: ' + rel)
-    # roteiro no executavel INSTALADO (HeadHunter.exe --headless), com os dados que vieram do CDI
-    if area1_hashes(os.path.join(inst, 'HeadHunter.exe'), os.path.join(inst, 'data')) != want:
+    # roteiro no executavel INSTALADO (HeadHunter.exe --headless, provedores nativos: HH15.5), com os dados do CDI
+    if area1_hashes(os.path.join(inst, 'HeadHunter.exe'), os.path.join(inst, 'data'), SCRIPT_PRODUTO) != want:
         raise RuntimeError('roteiro no HeadHunter.exe instalado difere da referencia')
 
 
@@ -359,7 +377,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
                                             'HH14_ORACULO']),
          ('portoes_hh15', step_gates_hh15, ['HH_DATA_DIR', 'HH15_REF']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
-         ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
+         ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH15_PRODUTO_HASHES'])]
 
 
 def step_key(name, private, src):
@@ -391,6 +409,13 @@ def main():
         ref = need('HH_AREA1_HASHES')
         open(ref, 'w').write('\n'.join(area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR'))) + '\n')
         print('referencia gravada em', ref)
+        return 0
+    if '--gravar-produto' in sys.argv:  # HH15.5: a referencia do --headless do produto (provedores nativos)
+        ref = need('HH15_PRODUTO_HASHES')
+        os.makedirs(os.path.dirname(ref) or '.', exist_ok=True)
+        got = area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR'), SCRIPT_PRODUTO, HHRUN_PRODUTO)
+        open(ref, 'w').write('\n'.join(got) + '\n')
+        print('referencia do produto gravada em', ref)
         return 0
     if '--desde' in sys.argv:
         start = sys.argv[sys.argv.index('--desde') + 1]

@@ -72,7 +72,7 @@ endif()
 
 # HH05: testes do runtime hibrido (setjmp/longjmp entre threads do guest, portado do Blue Stinger).
 add_executable(hh_runtime_tests unit/main.cpp unit/test_longjmp.cpp hh05_bios_exit_tests.cpp hh05_gdrom_getscd_tests.cpp hh06_service_hook_tests.cpp
-               hh15_sistema_tests.cpp)
+               hh15_sistema_tests.cpp hh15_maple_tests.cpp)
 target_include_directories(hh_runtime_tests PRIVATE unit)
 target_link_libraries(hh_runtime_tests PRIVATE hh_translator hh_runtime)
 add_test(NAME hh_runtime_tests COMMAND hh_runtime_tests)
