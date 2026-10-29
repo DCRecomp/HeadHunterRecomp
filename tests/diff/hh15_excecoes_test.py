@@ -41,4 +41,9 @@ sem_ret = dict(EXC, retornos=[])
 expect('SPC novo sem justificativa em [[retornos]]', check('c', REF, NEW, sem_ret), False)
 outro_vb = {'retornos': EXC['retornos'], 'excecao': [dict(EXC['excecao'][0], vblank=1)]}
 expect('VBlank diferente do listado', check('c', REF, NEW, outro_vb), False)
+DUP_REF = REF + 'I\t00000360\t8C09F91E\n'
+DUP_NEW = NEW + 'I\t00000360\t8C121964\n'
+expect('duas diferencas iguais com uma so excecao reprova', check('c', DUP_REF, DUP_NEW, EXC), False)
+expect('duas diferencas iguais com duas excecoes passa',
+       check('c', DUP_REF, DUP_NEW, dict(EXC, excecao=EXC['excecao'] * 2)), True)
 sys.exit(1 if fails else 0)

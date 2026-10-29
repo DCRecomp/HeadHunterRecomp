@@ -20,7 +20,8 @@ Dados privados (sem eles as etapas que dependem deles falham com mensagem clara)
   HH_DISC1         imagem CDI do disco 1 (etapa do Builder)
   HH_AREA1_HASHES  hashes de referencia do roteiro newgame_area1
   HH07_BIN         1ST_READ.BIN do disco 1 (fechamento do HH07)
-  HH07_SONDA       TSV da sonda do roteiro newgame_area1 (HH_HW_PROBE)"""
+  HH07_SONDA       TSV da sonda do roteiro newgame_area1 (HH_HW_PROBE)
+  HH15_REF         referencias pre-corte do HH15 (tools/dev/hh15_referencias.py capturar; analysis/hh15/ref)"""
 import hashlib
 import json
 import os
@@ -291,6 +292,23 @@ def step_gates_hh14():
         raise RuntimeError('unitarios de audio do HH14 falharam com os dados do disco 2')
 
 
+def step_gates_hh15():
+    # HH15.1: comparadores (sempre), promocao do tempo logico (T1-T6 estavel x logico) e as referencias pre-corte da
+    # HH15.0 (HH15_REF), com a lista fechada de SPCs da cadencia B
+    need('HH_DATA_DIR')
+    r = sh(['ctest', '--preset', 'vs-release', '-R', '^hh15_', '--no-tests=error', '--output-on-failure',
+            '--timeout', '7200'], timeout=14400)
+    passed = [n for n in ('hh15_excecoes_spc', 'hh15_tempo_comparadores', 'hh15_tempo')
+              if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != 3:
+        raise RuntimeError('portoes do HH15 falharam, foram ignorados ou nao rodaram')
+    r2 = sh([sys.executable, '-I', os.path.join(ROOT, 'tools', 'dev', 'hh15_referencias.py'), 'conferir',
+             EXE('app', 'Release', 'hh-run.exe'), need('HH15_REF'), '--excecoes',
+             os.path.join(ROOT, 'config', 'hh15_excecoes_spc.toml')], timeout=14400)
+    if r2.returncode != 0 or 'DIFERENTE' in r2.stdout:
+        raise RuntimeError('referencias pre-corte do HH15 diferentes (fora da lista fechada)')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -339,6 +357,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh13', step_gates_hh13, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('portoes_hh14', step_gates_hh14, ['HH_DATA_DIR', 'HH14_STREAMS', 'HH14_REVERB', 'HH14_STREAMS2', 'HH14_REVERB2',
                                             'HH14_ORACULO']),
+         ('portoes_hh15', step_gates_hh15, ['HH_DATA_DIR', 'HH15_REF']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH_AREA1_HASHES'])]
 

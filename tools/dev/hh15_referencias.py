@@ -106,9 +106,10 @@ def order_with_exceptions(case, ref, new, exc):
     if len(a) != len(b):
         return ['tamanho %d != %d linhas (deslocamento de posicao nao tem excecao)' % (len(a), len(b))]
     allowed = {int(r['spc'], 16) for r in exc.get('retornos', [])}
-    listed = {(e['vblank'], int(e['intevt'], 16), int(e['spc_ref'], 16), int(e['spc_novo'], 16))
-              for e in exc.get('excecao', []) if e['caso'] == case}
-    seen, bad, vblank = set(), [], 0
+    from collections import Counter  # cada entrada vale para uma unica diferenca (multiplicidade, revisao Codex)
+    listed = Counter((e['vblank'], int(e['intevt'], 16), int(e['spc_ref'], 16), int(e['spc_novo'], 16))
+                     for e in exc.get('excecao', []) if e['caso'] == case)
+    seen, bad, vblank = Counter(), [], 0
     for i, (x, y) in enumerate(zip(a, b)):
         if x.startswith('V\t'):
             vblank = int(x.split('\t')[1], 16)
@@ -119,12 +120,12 @@ def order_with_exceptions(case, ref, new, exc):
             bad.append('linha %d: %r != %r (so o SPC de uma entrega pode mudar)' % (i + 1, x, y))
             continue
         key = (vblank, int(fx[1], 16), int(fx[2], 16), int(fy[2], 16))
-        if key not in listed:
+        if seen[key] >= listed[key]:
             bad.append('linha %d: entrega %03X no VBlank %d, SPC %s -> %s fora da lista' % (i + 1, key[1], vblank, fx[2], fy[2]))
         elif key[3] not in allowed:
             bad.append('linha %d: SPC novo %s sem justificativa em [[retornos]]' % (i + 1, fy[2]))
-        seen.add(key)
-    for k in sorted(listed - seen):
+        seen[key] += 1
+    for k in sorted((listed - seen).elements()):
         bad.append('excecao listada nao apareceu: VBlank %d, %03X, %08X -> %08X' % k)
     return bad
 

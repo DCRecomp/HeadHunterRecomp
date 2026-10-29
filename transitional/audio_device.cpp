@@ -380,6 +380,15 @@ void fHostCommand(Sh4Context* c) {
     advance(c);
     uint8_t k[16];
     for (uint32_t i = 0; i < 16; ++i) k[i] = sh4_read8(c, c->r[4] + i);
+    // diagnostico (HH15.1, promocao do tempo logico): HH_AUDIO_CMDS=<arquivo> grava a sequencia de comandos ao driver
+    // (VBlank e os 16 bytes do pacote), para comparar a ordem entre modos de tempo
+    static std::FILE* cmdLog = [] { const char* v = std::getenv("HH_AUDIO_CMDS"); return v && *v ? std::fopen(v, "w") : nullptr; }();
+    if (cmdLog) {
+        std::fprintf(cmdLog, "%llu\t", static_cast<unsigned long long>(holly_vblank_count()));
+        for (uint8_t b : k) std::fprintf(cmdLog, "%02X", b);
+        std::fputc('\n', cmdLog);
+        std::fflush(cmdLog);
+    }
     command(c, k);
     // efeitos do original na RAM do SH-4: contador de comandos e indice de escrita da fila (modulo 32)
     sh4_write32(c, kSlotCounter, sh4_read32(c, kSlotCounter) + 1);

@@ -88,6 +88,7 @@ bool deliverOne(Sh4Context* c) {
 } // namespace
 
 uint64_t sh4_irq_taken_count() { return g_taken; }
+uint32_t sh4_irq_intevt() { return g_intevt; }
 
 void sh4_intc_adopt(uint16_t icr, const uint16_t ipr[3]) {
     g_icr = icr;

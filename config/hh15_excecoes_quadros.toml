@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: MIT
+# HH15.1 (promocao do tempo logico, tests/diff/hh15_tempo.py T2): lista fechada dos trechos em que as trocas de quadro
+# diferem entre o tempo estavel (--tempo nativo) e o logico (--tempo experimental) na rota newgame_area1_nativo, ate o
+# pulo do ultimo filme. Fora deles as trocas tem de ser iguais e na mesma ordem; cada trecho listado tem de aparecer
+# exatamente como descrito (VBlanks e trocas dos dois lados; sem logico_de, nada no logico). Modelo: N2b2 do Blue Stinger (D11, o trabalho
+# nao consome tempo logico; la a unica excecao era o quadro intermediario do boot).
+
+[[trecho]]
+nome = "boot"
+estavel_de = 111
+estavel_ate = 117
+estavel_trocas = 4
+logico_de = 5
+logico_ate = 15
+logico_trocas = 5
+motivo = """Entrada do primeiro logo durante o trabalho do boot. No estavel o boot gasta cerca de 100 VBlanks de ciclos \
+estimados (cargas V90-V98 e o processamento depois delas) e o logo entra em V111; no logico a carga nao consome tempo \
+e ele entra em V5. As trocas sao amostras diferentes da mesma entrada; a primeira troca seguinte e comum."""
+
+[[trecho]]
+nome = "tela de carga"
+estavel_de = 3888
+estavel_ate = 3925
+estavel_trocas = 8
+logico_trocas = 0
+motivo = """Tela de carga antes da cena de abertura (anuncio do jogo, entrada em degraus a cada 4 VBlanks). No estavel \
+ela aparece enquanto a carga dura (leituras de arquivo de V3874 a V3923, tempo cobrado em ciclos estimados da \
+descompressao; o provedor nativo de arquivos entrega os dados na hora); no logico a carga e instantanea e a tela nao \
+chega a ser desenhada. Nenhum dos dois modos reproduz a duracao real do GD-ROM."""

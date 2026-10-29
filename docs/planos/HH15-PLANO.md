@@ -110,7 +110,7 @@ No gerado: 67 093 `HH_CYCLES`, 2 571 `HH_POLL`, 22 704 `HH_CALL` (cada um com `H
   em 5 VBlanks, SHA-256 do áudio e resumo. Casos `estavel` (saves nativos) e `experimental`; referências em
   `analysis/hh15/ref`, reproduzidas duas vezes (6/6 por caso). Inventário na seção 3.
 
-### HH15.1 (em andamento)
+### HH15.1 (concluída, 2026-10-29)
 
 1. **Espera do `bu`** (`0x8C118346`, `[native] esperas`): `f_8C118334` repete enquanto o status `0x8C1603DC` devolve
    −1; a operação conclui na passada do servidor `bu`, chamada pela camada `per` a cada fim de DMA do Maple. Sem a
@@ -131,3 +131,39 @@ No gerado: 67 093 `HH_CYCLES`, 2 571 `HH_POLL`, 22 704 `HH_CALL` (cada um com `H
      --excecoes` (todas as listadas têm de aparecer); comparador com 8 negativos sintéticos (`hh15_excecoes_spc`).
    - Independência dos ciclos (`HH_CICLOS_RUIDO=5000`): experimental 12/12 iguais com as mesmas exceções; estável
      (controle) diverge em todos os artefatos.
+4. **Serviços do tempo lógico** (`runtime/memory/sys_logical`): TMU canal 0 (contrato de `0x8C15E830`: TOCR = 0,
+   TSTR &= ~1, TCR0 = 2, TCOR0 = TCNT0 = 0xFFFFFFFF, TSTR |= 1; leituras de TCNT0), CCN não gráfico (CCR, array de
+   endereços do cache de operandos), PDTRA, ICR/IPR do boot e o INTEVT lido pelo tratador `0x8C00FA00`. Fora do
+   contrato o modelo assume com o estado (`*_adopt`) e o acesso é contado. Na rota: 0 fora do contrato. Negativo:
+   `HH_TMU_MUTACAO=parado` faz relógios e RAM divergirem na conferência. A entrega das interrupções (contrato do
+   tratador: INTEVT, SSR/SPC/SGR, `rte` conferido) continua em `sh4_intc.cpp`; a separação física do modelo de
+   registradores fica para a HH15.2.
+5. **Promoção do tempo lógico na janela** (`tests/diff/hh15_tempo.py`, modelo N2b2 do BS; as cargas não consomem
+   tempo lógico, D11, então se compara conteúdo e ordem, não o instante), estável × lógico na rota nativa:
+   - T1 leituras: os 5 205 blocos do estável (arquivo, deslocamento, SHA-256) idênticos e na mesma ordem no lógico,
+     que lê 18 a mais no fim (o stream da música adiante);
+   - T2 quadros: 1 779 trocas iguais até o pulo do último filme, fora da lista fechada
+     `config/hh15_excecoes_quadros.toml` — a entrada do primeiro logo durante o trabalho do boot (estável V111–V117) e
+     a tela de carga antes da cena de abertura (estável V3888–V3925: o anúncio do jogo, desenhado enquanto a carga
+     cobra ciclos estimados; no lógico a carga é instantânea e a tela não aparece) — e de uma sobra no fim (24 quadros
+     a mais do filme no lógico: o START do roteiro é a n-ésima leitura do controle e cai noutro ponto do filme);
+   - T3 áudio: os 2 594 primeiros comandos ao driver idênticos, do boot até depois do pulo;
+   - T4 vivacidade nos dois modos; T6 desempenho: lógico 18,4 s contra 45,9 s do estável;
+   - negativo: bloco corrompido reprova T1; comparadores com 13 casos sintéticos (`hh15_tempo_comparadores`).
+   - `--tempo experimental` passa a ser o padrão da janela; o `--headless` continua no estável. Janela: a rota inteira
+     com Vulkan, XAudio2 e saves nativos, 0 entregas pelo quantum, 0 acessos fora do contrato.
+   - Regressão: etapa `portoes_hh15` (os três testes `hh15_*` e a conferência das referências com `HH15_REF`).
+6. **Despertar no `rte` com desvio** (`sh4_rte_redirect`: troca de thread, continuação, thread nova): o SR restaurado pode
+   desmascarar um nível pendente e esse caminho não tem `HH_IRQ_CHECK`; o atendimento é pedido para o próximo poll.
+   Referências iguais (18/18).
+7. **Revisão Codex** (`reviews/codex-hh15_1.log`; a primeira tentativa caiu por falta de capacidade do modelo), 6
+   achados, todos conferidos no código, aceitos e corrigidos, com contraexemplo nos testes sintéticos:
+   - [MEDIA] T1 aceitava o lógico com leituras a menos: agora o estável tem de ser prefixo do lógico;
+   - [MEDIA] T2 só fixava o lado estável dos trechos e aceitava qualquer sobra no fim: os VBlanks do lado lógico entram
+     na lista, e a sobra tem de ser do lado cujo último filme durou mais, dentro do intervalo do filme, com no máximo
+     metade da diferença de duração + 2 trocas (na rota: 24, limite 26);
+   - [MEDIA] T3 aceitava igualdade só até o VBlank do corte: agora exige comandos iguais depois dele;
+   - [MEDIA] uma entrada da lista de SPCs cobria diferenças repetidas: conta por multiplicidade;
+   - [MEDIA] acessos aos arrays do cache fora da faixa do contrato iam ao modelo sem contar: o serviço cobre
+     `0xF0000000–0xF7FFFFFF` (só as escritas no array de endereços do cache de operandos no contrato);
+   - [BAIXA] os laços nativos de cópia/zeragem do Kamui ignoravam o tick de vivacidade: usam a condição do `HH_POLL`.

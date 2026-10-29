@@ -301,9 +301,9 @@ template <class F> void runLoop(Sh4Context* c, const LoopShape& l, uint32_t n, F
         body(i);
         if (i + 1 < iters) {
             ++c->polls;
-            if (c->cycles >= c->next_event) {
+            if (c->cycles >= c->next_event || c->polls >= c->next_poll) {  // a mesma condicao do HH_POLL (HH15.1)
                 c->pc = l.resume;
-                sh4_service(c);
+                sh4_poll_slow(c);
             }
         }
     }

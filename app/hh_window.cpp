@@ -11,6 +11,8 @@
 //              [--arquivos legado|nativo] [--tempo legado|nativo|experimental] [--controles legado|nativo]
 //              [--saves legado|nativo] [--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo]
 //              [--audio legado|nativo] [--mods <pasta>]
+// Tempo (HH15.1, --tempo experimental, padrao na janela): o tempo logico, sem ciclos estimados (cadencia B); as cargas
+// nao consomem tempo (D11 do BS). O --headless fica no estavel (--tempo nativo), salvo --tempo.
 // Audio (HH14, --audio nativo, padrao na janela): a reconstrucao do driver de som (transitional/audio_device) e o motor
 // nativo de canais, pelo XAudio2; o --headless fica no legado (roteiro de referencia, gravado com o som mudo), salvo
 // --audio nativo.
@@ -220,6 +222,7 @@ int main(int argc, char** argv) {
     uint64_t        hashEvery = 0;
     bool            headless  = false;
     bool            savesSet = false, savesPortable = false, videoSet = false, renderSet = false, audioSet = false;
+    bool            timeSet = false;
     fs::path        vmsExport, vmsImport;
     std::string     vmsName;
     opt.realtime = true;
@@ -243,6 +246,7 @@ int main(int argc, char** argv) {
                  (std::string(argv[i + 1]) == "legado" || std::string(argv[i + 1]) == "nativo" ||
                   std::string(argv[i + 1]) == "experimental")) {
             const std::string t = argv[++i];
+            timeSet = true;
             opt.time = t == "nativo" ? hh::TimeProvider::Native
                        : t == "experimental" ? hh::TimeProvider::Experimental : hh::TimeProvider::Legacy;
         }
@@ -340,6 +344,8 @@ int main(int argc, char** argv) {
     }
     TempSaves tempSaves;
     if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
+    // HH15.1: tempo logico (--tempo experimental) padrao na janela (portao hh15_tempo); o --headless fica no estavel
+    if (!headless && !timeSet) opt.time = hh::TimeProvider::Experimental;
     // o --headless (verificacao do Builder e roteiro de referencia, gravado com os filmes legados) fica no legado
     if (headless && !videoSet) opt.video = hh::VideoProvider::Legacy;
     if (headless && !renderSet) opt.render = hh::RenderProvider::Software;  // HH13: verificacao sem depender da GPU

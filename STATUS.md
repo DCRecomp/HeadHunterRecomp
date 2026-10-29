@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0 concluída: referências pré-corte; HH15.1 em curso: cadência B e serviços do tempo lógico, 0 entregas pelo quantum de ciclos) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0 e HH15.1 concluídas: referências pré-corte; tempo lógico sem ciclos, padrão da janela; próximo HH15.2) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -292,7 +292,19 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   do contrato. Estável idêntico; experimental idêntico fora de 7 SPCs da interrupção da AICA (lista fechada
   `config/hh15_excecoes_spc.toml`, comparador com negativos); ruído de ciclos sem efeito no experimental (o estável
   diverge, controle); TMU parado é acusado.
-- Pendente na HH15.1: promoção do tempo lógico na janela (critérios B do HH09), ponte de interrupções separada do modelo.
+- HH15.1 concluída (2026-10-29): INTEVT também pelo serviço (INTC 30 191 acessos, 0 fora do contrato); despertar no
+  `rte` com desvio; **tempo lógico padrão da janela** (`--headless` no estável) pelo portão `tests/diff/hh15_tempo.py`
+  (modelo N2b2 do BS): T1 os 5 205 blocos lidos iguais em ordem; T2 1 779 trocas de quadro iguais até o pulo do último
+  filme, fora da lista fechada `config/hh15_excecoes_quadros.toml` (entrada do logo no boot; tela de carga que só o
+  estável desenha, porque a carga cobra ciclos estimados) e da sobra do filme; T3 2 594 comandos de áudio iguais; T6
+  lógico 18,4 s contra 45,9 s. Janela: rota inteira no tempo lógico, Vulkan, XAudio2, saves nativos. Etapa de regressão
+  `portoes_hh15`.
+- Revisão Codex (`reviews/codex-hh15_1.log`), 6 achados, todos aceitos e corrigidos com contraexemplo nos testes
+  sintéticos: T1 na direção errada, T2 sem fixar o lado lógico e com sobra ilimitada, T3 aceitando igualdade só até o
+  corte, multiplicidade das exceções de SPC, arrays do cache fora da faixa do contrato, laços nativos do Kamui sem o
+  tick de vivacidade.
+- Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
+  a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 
 ### HH14 (2026-10-27, concluída)
 

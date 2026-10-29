@@ -117,6 +117,9 @@ add_test(NAME hh_gate_comparators
 # HH15.1: comparador da lista fechada de excecoes de SPC (cadencia B), sem o jogo (positivo e negativos).
 add_test(NAME hh15_excecoes_spc
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_excecoes_test.py ${PROJECT_SOURCE_DIR})
+# HH15.1: comparadores do portao hh15_tempo (lista fechada de trechos de quadros, prefixos, audio), sem o jogo.
+add_test(NAME hh15_tempo_comparadores
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_tempo_test.py ${PROJECT_SOURCE_DIR})
 
 # HH07.5: interfaces nativas compilam sozinhas e nao dependem do Dreamcast (com caso negativo).
 add_test(NAME hh07_native_api COMMAND hh_native_api_check)
@@ -311,4 +314,9 @@ if(HH_GENERATED_DIR)
   add_test(NAME hh14_audio
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh14_audio.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh14_audio PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
+  # HH15.1: promocao do tempo logico (T1 leituras, T2 quadros, T3 audio, T4 vivacidade, T6 desempenho; HH_DATA_DIR,
+  # senao SKIP).
+  add_test(NAME hh15_tempo
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_tempo.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh15_tempo PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
 endif()

@@ -9,7 +9,8 @@
 //  - CCN nao grafico: CCR (ICI/OCI leem 0) e escritas no array de enderecos do cache de operandos (sem efeito no host;
 //    o valor lido so formaria o endereco de um ocbi);
 //  - porta do cabo: PDTRA (pinos 8-9 = tipo de cabo, PCTRA em 0);
-//  - INTC: ICR e IPRA-IPRC escritos uma vez no boot (0x8C15FAC8) e nunca lidos (a entrega so usa o nivel IRL do Holly).
+//  - INTC: ICR e IPRA-IPRC escritos uma vez no boot (0x8C15FAC8) e nunca lidos (a entrega so usa o nivel IRL do Holly);
+//    INTEVT lido pelo tratador do SDK 0x8C00FA00 (o codigo que a entrega gravou).
 // Fora do contrato (outro canal, registrador, tamanho ou valor; leitura de ICR/IPR) o acesso volta ao modelo com o
 // estado transferido (*_adopt) e e contado: na HH15.2 isso vira erro explicito no produto. So ativo no tempo logico
 // (sh4_logical_cadence); no tempo por ciclos os modelos atendem tudo, como antes.

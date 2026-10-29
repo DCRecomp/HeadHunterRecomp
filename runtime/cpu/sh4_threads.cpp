@@ -170,6 +170,9 @@ bool sh4_threads_shutdown() {
 void sh4_rte_redirect(Sh4Context* c, uint32_t pc, uint32_t target) {
     ensureMain(c);
     g_ctx = c;
+    // HH15.1 (cadencia B): o SR restaurado pelo rte pode desmascarar um nivel pendente; sem HH_IRQ_CHECK neste caminho,
+    // o atendimento e pedido para o proximo poll (no tempo por ciclos, sem efeito)
+    sh4_irq_wakeup();
     const uint32_t sp = c->r[15];
     if (debugOn())
         std::fprintf(stderr, "[rte] em %08X para %08X r15=%08X (esperado %08X r15=%08X) thread=%zu\n", pc, target, sp,

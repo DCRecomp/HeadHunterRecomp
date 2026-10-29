@@ -23,8 +23,10 @@ constexpr uint64_t kTicksDivider = 4 * 64;  // ciclos de 200 MHz por tick de P/6
 constexpr uint32_t kCcr = 0xFF00001C;
 constexpr uint32_t kCcrWriteOnly = (1u << 11) | (1u << 3);  // ICI, OCI
 constexpr uint32_t kOcAddrArray = 0xF4000000, kOcAddrArrayEnd = 0xF5000000;  // array de enderecos do cache de operandos
+constexpr uint32_t kCacheArrays = 0xF0000000, kCacheArraysEnd = 0xF8000000;  // todos os arrays (o modelo atende a faixa)
 constexpr uint32_t kPctra = 0x1F80002C, kPdtra = 0x1F800030;
 constexpr uint32_t kIcr = 0xFFD00000, kIpra = 0xFFD00004, kIprc = 0xFFD0000C;
+constexpr uint32_t kIntevt = 0xFF000028;
 
 struct Tmu {
     bool     on = true;  // false: fora do contrato uma vez, o modelo atende dali em diante
@@ -116,7 +118,7 @@ bool sys_logical_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
         v = g.ccr, ++g.stats.ccn;
         return true;
     }
-    if (a >= kOcAddrArray && a < kOcAddrArrayEnd && g.ccnOn) {  // so escritas no contrato
+    if (a >= kCacheArrays && a < kCacheArraysEnd && g.ccnOn) {  // leitura de array: fora do contrato (so escritas)
         outside("CCN", a, size, false, 0), sh4_ccn_adopt(g.ccr), g.ccnOn = false;
         return false;
     }
@@ -127,6 +129,14 @@ bool sys_logical_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
         }
         v = uint16_t(0x0300 & (uint32_t(sh4_port_cable()) << 8));  // PCTRA = 0: todos os pinos de entrada
         ++g.stats.port;
+        return true;
+    }
+    if (a == kIntevt && g.intcOn) {  // o tratador 0x8C00FA00 le o codigo da interrupcao aceita
+        if (size != 4) {
+            outside("INTC", a, size, false, 0), sh4_intc_adopt(g.icr, g.ipr), g.intcOn = false;
+            return false;
+        }
+        v = sh4_irq_intevt(), ++g.stats.intc;
         return true;
     }
     if (a >= kIcr && a <= kIprc && g.intcOn) {  // ICR/IPR nunca sao lidos no contrato
@@ -147,8 +157,8 @@ bool sys_logical_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
         g.ccr = v & ~kCcrWriteOnly, ++g.stats.ccn;
         return true;
     }
-    if (a >= kOcAddrArray && a < kOcAddrArrayEnd && g.ccnOn) {
-        if (size != 4) {
+    if (a >= kCacheArrays && a < kCacheArraysEnd && g.ccnOn) {
+        if (a < kOcAddrArray || a >= kOcAddrArrayEnd || size != 4) {  // so o array de enderecos do cache de operandos
             outside("CCN", a, size, true, v), sh4_ccn_adopt(g.ccr), g.ccnOn = false;
             return false;
         }
@@ -157,6 +167,10 @@ bool sys_logical_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
     }
     if (const uint32_t p = portCanon(a); (p == kPctra || p == kPdtra) && g.portOn) {
         outside("porta", a, size, true, v), g.portOn = false;
+        return false;
+    }
+    if (a == kIntevt && g.intcOn) {  // escrita no INTEVT: fora do contrato (o jogo so le)
+        outside("INTC", a, size, true, v), sh4_intc_adopt(g.icr, g.ipr), g.intcOn = false;
         return false;
     }
     if (a >= kIcr && a <= kIprc && g.intcOn) {
