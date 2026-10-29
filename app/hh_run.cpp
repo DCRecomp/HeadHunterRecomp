@@ -61,7 +61,7 @@ int usage() {
     std::fprintf(stderr, "uso: hh-run --data <pasta> [--vblanks N] [--capture <pasta> [--every K]] [--rtc <segundos Unix>]"
                          " [--watch <endereco>]... [--arquivos legado|nativo] [--tempo legado|nativo|experimental]"
                          " [--controles legado|nativo] [--saves legado|nativo [--saves-pasta <pasta>]] [--video legado|nativo] [--audio legado|nativo]"
-                         " [--render software|nativo]"
+                         " [--render software|nativo] [--sistema hle|nativo]"
                          " [--mods <pasta>]\n");
     return 2;
 }
@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
     opt.vblankLimit = 600;
     fs::path capture;
     uint64_t every = 0;
+    bool     systemSet = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> const char* { return i + 1 < argc ? argv[++i] : nullptr; };
@@ -102,8 +103,14 @@ int main(int argc, char** argv) {
             opt.audio = std::string(v) == "nativo" ? hh::AudioProvider::Native : hh::AudioProvider::Legacy;
         else if (a == "--render" && (v = next()) && (std::string(v) == "software" || std::string(v) == "nativo"))
             opt.render = std::string(v) == "nativo" ? hh::RenderProvider::Native : hh::RenderProvider::Software;
+        else if (a == "--sistema" && (v = next()) && (std::string(v) == "hle" || std::string(v) == "nativo"))
+            opt.system = std::string(v) == "nativo" ? hh::SystemProvider::Native : hh::SystemProvider::Hle, systemSet = true;
         else return usage();
     }
+    // HH15.3: o BIOS HLE fica implicito com o que so ele atende (o gdFs original le setores pelo drive simulado; o perfil
+    // de tempo do drive), salvo --sistema explicito
+    if (!systemSet && (opt.files == hh::FileProvider::Legacy || std::getenv("HH_GDROM_TIMING")))
+        opt.system = hh::SystemProvider::Hle;
     if (opt.data.empty()) return usage();
     // HH11: sem --saves-pasta, um cartao vazio e temporario do processo (apagado no fim): nenhum teste le ou
     // grava os saves do usuario

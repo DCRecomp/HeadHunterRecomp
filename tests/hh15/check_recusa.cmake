@@ -1,11 +1,23 @@
 # SPDX-License-Identifier: MIT
 # HH15.2: o produto recusa as variaveis de teste (sonda, ruido de ciclos, mutacoes) com saida 2 e mensagem, antes de
-# qualquer dado; sem elas a mesma chamada nao sai com 2. Uso: cmake -DEXE=<HeadHunter.exe> -P check_recusa.cmake
+# qualquer dado; sem elas a mesma chamada nao sai com 2. Todas as de kTestVars (runtime/debug/validacao_vars.h).
+# Uso: cmake -DEXE=<HeadHunter.exe> -DVARS=<validacao_vars.h> -P check_recusa.cmake
 if(NOT EXISTS "${EXE}")
   message(FATAL_ERROR "executavel ausente: ${EXE}")
 endif()
+file(READ "${VARS}" hdr)
+string(FIND "${hdr}" "kTestVars" at)
+string(SUBSTRING "${hdr}" ${at} -1 block)
+string(FIND "${block}" "};" end)
+string(SUBSTRING "${block}" 0 ${end} block)
+string(REGEX MATCHALL "\"HH_[A-Z0-9_]+\"" names "${block}")
+string(REPLACE "\"" "" names "${names}")
+list(LENGTH names n)
+if(n LESS 10)
+  message(FATAL_ERROR "lista kTestVars nao encontrada em ${VARS} (${n} nomes)")
+endif()
 set(bad "")
-foreach(var HH_HW_PROBE HH_CICLOS_RUIDO HH_CADENCIA HH_TEMPO_MUTACAO HH_ARQUIVOS_MUTACAO HH_TMU_MUTACAO)
+foreach(var IN LISTS names)
   execute_process(COMMAND ${CMAKE_COMMAND} -E env ${var}=1 "${EXE}" --headless --data hh15_sem_dados
                   RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err TIMEOUT 60)
   if(NOT rc EQUAL 2 OR NOT "${out}${err}" MATCHES "${var} e uma variavel de teste")
@@ -20,4 +32,4 @@ if(bad)
   string(REPLACE ";" "\n  " text "${bad}")
   message(FATAL_ERROR "o produto nao recusa as variaveis de teste:\n  ${text}")
 endif()
-message(STATUS "produto recusa as variaveis de teste")
+message(STATUS "produto recusa as ${n} variaveis de teste")

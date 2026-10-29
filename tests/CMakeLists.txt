@@ -71,7 +71,8 @@ if(HH_GENERATED_DIR)
 endif()
 
 # HH05: testes do runtime hibrido (setjmp/longjmp entre threads do guest, portado do Blue Stinger).
-add_executable(hh_runtime_tests unit/main.cpp unit/test_longjmp.cpp hh05_bios_exit_tests.cpp hh05_gdrom_getscd_tests.cpp hh06_service_hook_tests.cpp)
+add_executable(hh_runtime_tests unit/main.cpp unit/test_longjmp.cpp hh05_bios_exit_tests.cpp hh05_gdrom_getscd_tests.cpp hh06_service_hook_tests.cpp
+               hh15_sistema_tests.cpp)
 target_include_directories(hh_runtime_tests PRIVATE unit)
 target_link_libraries(hh_runtime_tests PRIVATE hh_translator hh_runtime)
 add_test(NAME hh_runtime_tests COMMAND hh_runtime_tests)
@@ -118,6 +119,8 @@ add_test(NAME hh_gate_comparators
 add_test(NAME hh15_excecoes_spc
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_excecoes_test.py ${PROJECT_SOURCE_DIR})
 # HH15.1: comparadores do portao hh15_tempo (lista fechada de trechos de quadros, prefixos, audio), sem o jogo.
+add_test(NAME hh15_variaveis_classificadas
+  COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_variaveis.py ${PROJECT_SOURCE_DIR})
 add_test(NAME hh15_tempo_comparadores
   COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_tempo_test.py ${PROJECT_SOURCE_DIR})
 
@@ -174,17 +177,28 @@ if(TARGET HeadHunter AND MSVC)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh07/check_product_map.cmake)
   # HH15.2: papeis do runtime no produto (manifesto x mapa do linker), com negativos por mutacao do mapa, e a recusa
   # das variaveis de teste pelo produto
-  set(hh15_papeis_args -DMAP=$<TARGET_FILE_DIR:HeadHunter>/HeadHunter.map -DMANIFEST=${CMAKE_BINARY_DIR}/runtime_papeis.tsv)
+  set(hh15_papeis_args -DMAP=$<TARGET_FILE_DIR:HeadHunter>/HeadHunter.map -DMANIFEST=${CMAKE_BINARY_DIR}/runtime_papeis.tsv
+                       -DSRC=${PROJECT_SOURCE_DIR}/runtime -DEXE=$<TARGET_FILE:HeadHunter>)
   add_test(NAME hh15_produto_papeis
-    COMMAND ${CMAKE_COMMAND} ${hh15_papeis_args} -DEXE=$<TARGET_FILE:HeadHunter>
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_papeis.cmake)
-  foreach(m sem_objeto com_sonda objeto_extra)
+    COMMAND ${CMAKE_COMMAND} ${hh15_papeis_args} -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_papeis.cmake)
+  # cada negativo tem de reprovar pelo motivo do caso (a mensagem), nao por qualquer erro (revisao Codex)
+  set(hh15_neg_sem_objeto "objeto do papel nativo ausente do mapa: sys_logical")
+  set(hh15_neg_com_sonda "objeto do papel validacao .so verificacao e ferramentas. no produto: hw_probe")
+  set(hh15_neg_com_hle "objeto do papel hle .so verificacao e ferramentas. no produto: gdrom")
+  set(hh15_neg_com_maple "objeto do papel perifericos .so verificacao e ferramentas. no produto: maple")
+  set(hh15_neg_objeto_extra "objeto do hh_runtime fora do manifesto: desconhecido")
+  set(hh15_neg_sem_stub "o stub validacao_stubs.obj")
+  set(hh15_neg_outra_biblioteca "objeto de outra biblioteca com o nome do runtime")
+  set(hh15_neg_fonte_fora "fonte do runtime fora do manifesto: pvr/pvr_video.cpp")
+  set(hh15_neg_mapa_velho "o mapa e de outro link")
+  foreach(m sem_objeto com_sonda com_hle com_maple objeto_extra sem_stub outra_biblioteca fonte_fora mapa_velho)
     add_test(NAME hh15_produto_papeis_negativo_${m}
       COMMAND ${CMAKE_COMMAND} ${hh15_papeis_args} -DMUTAR=${m} -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_papeis.cmake)
-    set_tests_properties(hh15_produto_papeis_negativo_${m} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(hh15_produto_papeis_negativo_${m} PROPERTIES PASS_REGULAR_EXPRESSION "${hh15_neg_${m}}")
   endforeach()
   add_test(NAME hh15_produto_recusa
-    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:HeadHunter> -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa.cmake)
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:HeadHunter> -DVARS=${PROJECT_SOURCE_DIR}/runtime/debug/validacao_vars.h
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa.cmake)
 endif()
 
 # HH07.7: ordem de eventos (VBlank, interrupcao, threads, longjmp) identica em duas execucoes do

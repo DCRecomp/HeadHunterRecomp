@@ -31,6 +31,7 @@
 #include "cpu/sh4_runtime.h"
 #include "input/input.h"
 #include "pvr/holly_intc.h"
+#include "system/maple_bus.h"
 
 #include <array>
 #include <cstdio>
@@ -231,7 +232,10 @@ void runDma(Sh4Context* c) {
 
 } // namespace
 
+// HH15.4: sem controle (--controles nativo, o caminho do produto) nenhum dispositivo responde: o barramento sem
+// dispositivos (system/maple_bus) atende, com o mesmo efeito; o modelo so serve o controle do --controles legado.
 void maple_reset() {
+    maple_bus_reset();
     g_regs.fill(0);
     g_due = 0;
     time_provider().maple_cancel();
@@ -245,6 +249,7 @@ void maple_reset() {
 void maple_set_controller(const MapleControllerState& s) { g_pad = s; }
 
 bool maple_read(Sh4Context* c, uint32_t a, uint32_t& v) {
+    if (!g_controllerPresent) return maple_bus_read(c, a, v);
     const uint32_t p = a < 0xE0000000 ? (a & 0x1FFFFFFF) : 0;
     if (p < kBase || p >= kBase + kSize) return false;
     v = reg(p);
@@ -257,6 +262,7 @@ bool maple_read(Sh4Context* c, uint32_t a, uint32_t& v) {
 }
 
 bool maple_write(Sh4Context* c, uint32_t a, uint32_t v) {
+    if (!g_controllerPresent) return maple_bus_write(c, a, v);
     const uint32_t p = a < 0xE0000000 ? (a & 0x1FFFFFFF) : 0;
     if (p < kBase || p >= kBase + kSize) return false;
     if (p == kMdtsel && (v & 1)) {
@@ -282,6 +288,7 @@ bool maple_write(Sh4Context* c, uint32_t a, uint32_t v) {
 }
 
 void maple_vblank_in() {
+    if (!g_controllerPresent) return maple_bus_vblank_in();
     // amostra_vblank_in (negativo do N3-0): guarda a amostra na entrega do VBlank-In. A transicao
     // dos roteiros "indice transicao" so acontece depois, no primeiro acesso ao MDST (maple_read)
     if (padDiag().sampleAtVblank && g_controllerPresent)
@@ -290,11 +297,14 @@ void maple_vblank_in() {
 }
 void          maple_set_controller_present(bool present) { g_controllerPresent = present; }
 bool          maple_controller_present() { return g_controllerPresent; }
-MapleCounters maple_counters() { return g_counters; }
-void          maple_counters_reset() { g_counters = {}; }
-uint64_t maple_dma_due() { return g_due; }
+MapleCounters maple_counters() { return g_controllerPresent ? g_counters : maple_bus_counters(); }
+void          maple_counters_reset() { g_counters = {}, maple_bus_counters_reset(); }
+uint64_t maple_dma_due() { return g_controllerPresent ? g_due : maple_bus_dma_due(); }
 uint64_t maple_cond_seq(int port) { return port >= 0 && port < 4 ? g_condSeq[port] : 0; }
 
-void maple_dma_take() { g_due = 0; }
+void maple_dma_take() {
+    if (!g_controllerPresent) return maple_bus_dma_take();
+    g_due = 0;
+}
 
 } // namespace hh

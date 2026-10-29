@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0 e HH15.1 concluídas: referências pré-corte; tempo lógico sem ciclos, padrão da janela; próximo HH15.2) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0 e HH15.1 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -303,6 +303,17 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   sintéticos: T1 na direção errada, T2 sem fixar o lado lógico e com sobra ilimitada, T3 aceitando igualdade só até o
   corte, multiplicidade das exceções de SPC, arrays do cache fora da faixa do contrato, laços nativos do Kamui sem o
   tick de vivacidade.
+- HH15.2: ponte de interrupções separada do modelo do INTC; runtime por papel (manifesto `runtime_papeis.tsv`);
+  sonda, ruído, cadência de referência e mutações só no `hh-run` (o produto compila stubs e recusa as 32 variáveis de
+  teste, classificação fechada em `runtime/debug/validacao_vars.h` conferida por varredura do código); catraca
+  `hh15_produto_papeis` (manifesto, inventário das fontes, mapa do linker por campo, carimbo PE) com 9 negativos.
+  Revisão Codex: 5 achados, todos corrigidos.
+- HH15.3: serviço nativo das syscalls (`runtime/system/syscall_service`: GDROM, FLASHROM da partição 2 volátil,
+  SYSINFO, fim do jogo; fora do contrato erro explícito); `--sistema hle|nativo` no `hh-run`; BIOS HLE, flash e drive
+  fora do produto (papel `hle`). Referências 18/18 com o serviço; unitários de equivalência com o HLE e de recusas.
+- HH15.4: barramento sem dispositivos (`runtime/system/maple_bus`) com o efeito do modelo sem controle; modelo do Maple
+  fora do produto (papel `perifericos`); o produto recusa `--arquivos legado` e `--controles legado`.
+- Regressão integral depois da HH15.4: 14/14 (`analysis/hh15/regressao.log`), inclusive `portoes_hh15`.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

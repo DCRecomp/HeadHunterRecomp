@@ -343,6 +343,16 @@ int main(int argc, char** argv) {
         return 2;
     }
     TempSaves tempSaves;
+    // HH15.4: o modelo do Maple com o controle nao existe no produto (barramento sem dispositivos; so no hh-run)
+    if (opt.controls == hh::ControlsProvider::Legacy) {
+        std::fprintf(stderr, "ERRO: --controles legado exige o modelo do Maple, que nao existe no produto (use o hh-run)\n");
+        return 2;
+    }
+    // HH15.3: o gdFs original le setores pelo drive simulado, que nao existe no produto (so no hh-run, --sistema hle)
+    if (opt.files == hh::FileProvider::Legacy) {
+        std::fprintf(stderr, "ERRO: --arquivos legado exige o drive simulado, que nao existe no produto (use o hh-run)\n");
+        return 2;
+    }
     if (headless && !savesSet) opt.saves = hh::SavesProvider::Legacy;
     // HH15.1: tempo logico (--tempo experimental) padrao na janela (portao hh15_tempo); o --headless fica no estavel
     if (!headless && !timeSet) opt.time = hh::TimeProvider::Experimental;

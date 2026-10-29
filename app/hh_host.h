@@ -49,6 +49,9 @@ enum class RenderProvider { Software, Native };
 // roda sem som). Nativo: a RAM de som e os comandos ao driver atendidos pela reconstrucao do AUDIO64.DRV
 // (transitional/audio_device + native/audio/aica_channels), som pelo relogio logico.
 enum class AudioProvider { Legacy, Native };
+// HH15.3: syscalls do BIOS. Hle: o BIOS HLE com o drive de GD-ROM e a flash simulados (runtime/hle, runtime/gdrom; so na
+// verificacao: o produto nao os liga). Nativo: o servico do contrato medido (runtime/system/syscall_service).
+enum class SystemProvider { Hle, Native };
 
 struct HostOptions {
     std::filesystem::path data;           // dados de execucao (hh-extract --runtime)
@@ -66,6 +69,7 @@ struct HostOptions {
     bool                  videoAudio = false;  // audio dos filmes nativos no dispositivo (false: saida nula, headless)
     RenderProvider        render = RenderProvider::Software;  // --render software|nativo (HH13)
     AudioProvider         audio  = AudioProvider::Legacy;     // --audio legado|nativo (HH14)
+    SystemProvider        system = SystemProvider::Native;    // --sistema hle|nativo (HH15.3); --arquivos legado exige hle
     bool                  audioDevice = false;  // audio do jogo no dispositivo (false: so o motor, headless)
     // HH08: mods de recursos (mesma arvore de data\disc; qualquer tamanho), so no provedor
     // nativo. Vazio ou inexistente = sem mods; mod invalido = erro com o caminho e o motivo.

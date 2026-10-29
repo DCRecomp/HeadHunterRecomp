@@ -190,3 +190,58 @@ variável; só as mutações e sondas exclusivas de teste saem do produto.
    stub presente, nenhum objeto do `hh_runtime` fora do manifesto, mapa não anterior ao executável. Negativos por
    mutação do mapa (`sem_objeto`, `com_sonda`, `objeto_extra`) reprovam pelo motivo certo. `hh15_produto_recusa`: o
    produto sai com 2 para cada variável de teste, e sem ela não.
+5. **Revisão Codex da HH15.2** (`reviews/codex-hh15_2.log`), 5 achados, conferidos e corrigidos:
+   - [MEDIA] o produto aceitava variáveis de teste fora da lista (`HH_STOP_ON_STARTRENDER`, `HH_AUDIO_SEM_DSP`):
+     classificação fechada em `runtime/debug/validacao_vars.h` (32 de teste, recusadas; 52 observacionais) e o teste
+     `hh15_variaveis_classificadas`, que varre o código e reprova leitura de `HH_*` sem classificação; o teste de
+     recusa cobre as 32;
+   - [MEDIA] a catraca não detectava manifesto incompleto: inventário independente das fontes de `runtime/` (toda fonte
+     no manifesto ou na lista fechada do que não é do `hh_runtime`) e fonte duplicada ou inexistente;
+   - [MEDIA] objetos com o mesmo nome contavam como um: nome repetido no manifesto reprova;
+   - [BAIXA] busca por trecho de texto: comparação por campo do mapa (objeto precedido de espaço; biblioteca com outro
+     nome reprova; os stubs como objetos do próprio produto);
+   - [BAIXA] mapa velho e negativos frouxos: o carimbo `Timestamp is` do mapa tem de ser o `TimeDateStamp` do PE; cada
+     negativo exige a mensagem do caso (`PASS_REGULAR_EXPRESSION`), agora 8.
+
+### HH15.3 (em andamento)
+
+Inventário (`HH_HLE_LOG`, rota nativa, 4 700 VBlanks; `analysis/hh15/hle_uso.txt`): o jogo só usa
+- GDROM com r6 = 0: REQ_CMD (comandos INIT 0x18, GET_VERSION 0x28, 6 DMAREAD 0x11 de 1 setor no boot, LBA 0x385CD a
+  0x385E2, e 781 GETSCD 0x22 formato 1), GET_CMD_STAT, EXEC_SERVER (5 492), INIT_SYSTEM e GET_DRV_STAT;
+- FLASHROM só na partição 2: INFO, READ de `0x1C000` e `0x1FFC0` (0x40 bytes), WRITE e DELETE de `0x1C000`;
+- SYSINFO INIT e ID; MISC 1/3 e o bootstrap (fim do jogo).
+
+Precedente do N8.3 do BS (opção A, decisão do mantenedor): serviço nativo na própria fronteira das syscalls, fora do
+contrato erro explícito, flash volátil, HLE só na verificação e nas ferramentas.
+
+1. **`runtime/system/syscall_service`** (papel `nativo`): os mesmos endereços dos vetores (registrados de novo depois do
+   `boot_prepare`), o mesmo efeito em r0 e na RAM do HLE no perfil instantâneo; setores do `RuntimeDisc` com o mesmo
+   registro de leituras (origem `gdrom`); flash da partição 2 em memória, em branco a cada sessão; o resto é
+   componente removido (`sh4_fatal`, contado). Setor ilegível é instalação incompleta (erro), nunca setor em branco.
+2. **Seleção**: `--sistema hle|nativo` no `hh-run` (padrão nativo; o HLE fica implícito com `--arquivos legado` e
+   `HH_GDROM_TIMING`); o produto não tem a escolha e recusa `--arquivos legado` (saída 2).
+3. **Produto sem o HLE**: papel `hle` (`bios`, `flashrom`, `gdrom`, `data_source`) só na verificação e nas ferramentas;
+   o `HeadHunter.exe` compila `runtime/system/hle_ausente.cpp`, que define os seis símbolos que o boot, o host e o poll
+   referenciam, e o linker não puxa o HLE. A catraca exige o papel `hle` fora do mapa (negativo `com_hle`).
+4. **Equivalência**: as referências da HH15.0 (capturadas com o HLE) dão 18/18 com o serviço nativo; unitários
+   `hh15_servico_nativo_igual_ao_hle_no_contrato` (o roteiro do contrato no HLE e no serviço: r0 e RAM iguais; uma
+   mutação no texto da versão do GDROM reprova) e `hh15_servico_nativo_recusa_fora_do_contrato` (16 recusas).
+
+### HH15.4 (em andamento)
+
+No HH o modelo do Maple nunca teve VMU (M4) e, com os controles nativos (HH10, padrão do produto), fica também sem o
+controle da porta A: no caminho do produto ele só respondia "nenhum dispositivo" à sondagem da camada `per` e agendava
+o fim do DMA, que solta a passada dela (servidor `bu` nativo, espera `0x8C118346`). Precedente do N8.4 do BS:
+barramento sem dispositivos com o mesmo efeito do modelo sem controle; o modelo só na verificação.
+
+1. **`runtime/system/maple_bus`** (papel `nativo`): registradores, DMA que segue a tabela até o LAST e grava
+   `0xFFFFFFFF` em cada buffer de recepção, fim em 100 ciclos de 200 MHz por bit (o do modelo), ISTNRM bit 12, os
+   mesmos contadores e a transição injetada dos roteiros no primeiro acesso ao MDST depois do VBlank-In. Fora do
+   contrato (padrão de transferência ≠ 0, tabela sem LAST, DMA fora da RAM, disparo por VBlank `MDTSEL=1`, que o jogo
+   nunca pede) é erro explícito.
+2. O modelo (`maple/maple.cpp`, papel `perifericos`, só na verificação) encaminha ao barramento quando não há
+   controle, então as referências do `hh-run` (controles nativos) exercitam o código do produto; com `--controles
+   legado` ele continua servindo o controle.
+3. O produto compila `runtime/system/maple_ausente.cpp` (a API do modelo direto ao barramento) e recusa `--controles
+   legado` (saída 2). `runtime/input` (roteiros, índice de transição, modo espectador) continua no produto: não é
+   simulação de hardware. Catraca: o papel `perifericos` fora do mapa (negativo `com_maple`).

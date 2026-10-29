@@ -4,6 +4,7 @@
 // 2: um portao nunca passa no vazio com o executavel do produto.
 #include "debug/hw_probe.h"
 #include "debug/validacao.h"
+#include "debug/validacao_vars.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -11,15 +12,8 @@
 namespace hh {
 namespace {
 
-// Variaveis exclusivas da validacao (sondas, provas e mutacoes dos testes negativos).
-constexpr const char* kRefused[] = {
-    "HH_HW_PROBE",      "HH_CICLOS_RUIDO",        "HH_CADENCIA",       "HH_TMU_MUTACAO",       "HH_IRQ_QUANTUM",
-    "HH_RENDER_PROBE",  "HH_TEMPO_MUTACAO",       "HH_ARQUIVOS_MUTACAO", "HH_BU_MUTACAO",      "HH_AICA_MUTACAO",
-    "HH_PAD_MUTACAO",   "HH_PAD_NATIVO_MUTACAO",  "HH_PAD_CONTRATO_MUTACAO", "HH_SB_MUTACAO",
-};
-
 const bool g_checked = [] {
-    for (const char* n : kRefused)
+    for (const char* n : validation_vars::kTestVars)
         if (const char* v = std::getenv(n); v && *v) {
             std::fprintf(stderr, "ERRO: %s e uma variavel de teste e o executavel do produto nao a aceita (use o hh-run)\n", n);
             std::exit(2);

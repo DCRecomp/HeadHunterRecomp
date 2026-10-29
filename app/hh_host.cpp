@@ -8,6 +8,7 @@
 #include "cpu/sh4_runtime.h"
 #include "cpu/sh4_threads.h"
 #include "memory/sys_logical.h"
+#include "system/syscall_service.h"
 #include "debug/call_trace.h"
 #include "mods/mod_api.h"
 #include "gdfs_adapter.h"
@@ -206,6 +207,7 @@ HostResult host_run(const HostOptions& opt) {
     try {
         sh4_set_fatal_handler(onFatal);
         bios_set_exit_hook([](Sh4Context*, uint32_t code) { throw GameExit{code}; });
+        syscall_service_set_exit_hook([](Sh4Context*, uint32_t code) { throw GameExit{code}; });  // HH15.3
         // Relogio fixo (testes deterministicos) ou hora local; 7305 dias = 1950 -> 1970.
         const uint32_t rtc = opt.rtcUnix >= 0 ? uint32_t(opt.rtcUnix + 7305ll * 86400) : boot_rtc_now();
         const BootFiles boot = boot_read_data(opt.data);  // versao pelo SHA-256 do executavel de boot
@@ -226,7 +228,12 @@ HostResult host_run(const HostOptions& opt) {
         }
         boot_prepare(c, boot, rtc);
         sh4_set_session_context(&c);  // HH15.1: despertar da cadencia B (depois do reset do contexto)
-        gdrom_set_disc(open_runtime_data(opt.data, {}));
+        // HH15.3: syscalls pelo servico nativo (o produto) ou pelo BIOS HLE com o drive simulado (verificacao; o gdFs
+        // original do --arquivos legado le setores pelo drive)
+        if (opt.files == FileProvider::Legacy && opt.system == SystemProvider::Native)
+            throw std::runtime_error("--arquivos legado le setores pelo drive simulado: exige --sistema hle");
+        if (opt.system == SystemProvider::Native) syscall_service_install(&c, opt.data);
+        else gdrom_set_disc(open_runtime_data(opt.data, {}));
         if (opt.files == FileProvider::Native) {
             // data\disc e o que o Builder extraiu do disco; nada de setor nem de disc_meta
             files = std::make_unique<native::files::DataFileSystem>(opt.data / "disc", opt.modsDir);
@@ -439,7 +446,9 @@ HostResult host_run(const HostOptions& opt) {
         verified.reset();
         files.reset();
     }
-    gdrom_set_disc(nullptr);
+    std::fputs(syscall_service_summary().c_str(), stderr);  // HH15.3 (vazio com o HLE)
+    syscall_service_uninstall();
+    if (opt.system == SystemProvider::Hle) gdrom_set_disc(nullptr);
     return res;
 }
 
