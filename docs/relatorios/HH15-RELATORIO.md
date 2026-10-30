@@ -123,7 +123,9 @@ executável.
 
 ## 9. Próximos passos
 
-Pendente a decisão D-HH15-1 (a etapa fica `BLOQUEADA_DECISAO`):
+**Decidido pelo mantenedor em 2026-10-30: opção B.** Este relatório fecha a parte 1; a HH15 continua com a parte 2
+(remoção do substrato AOT, `docs/planos/HH15-PLANO.md` seção 7), que terá relatório próprio no fechamento. Texto da
+decisão apresentada:
 
 ```text
 DECISAO_NECESSARIA — HH15

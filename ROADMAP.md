@@ -231,6 +231,11 @@ Entregáveis:
 
 Critério de saída: V3 passa antes e depois da remoção; build do produto falha se qualquer biblioteca legada for religada.
 
+**D-HH15-1 (mantenedor, 2026-10-30): opção B.** O substrato AOT (código gerado, RAM guest, `Sh4Context`, despacho e
+fibras) sai do produto já na HH15, e não na HH17 como no BS (D-N8-1). A elevação dos sistemas do jogo para
+`native/game` é antecipada para a HH15 (parte 2, `docs/planos/HH15-PLANO.md` seção 7); o código gerado fica só na
+verificação, como referência de cada função elevada. A HH16 (campanha) passa a rodar sobre o produto nativo.
+
 ## HH16 — Campanha completa
 
 Entregáveis:
@@ -263,7 +268,8 @@ equivalente às referências; nenhuma camada legada removida no HH15 volta.
 
 Entregáveis:
 
-- elevar progressivamente câmera, movimento, combate, IA, HUD, inventário e fluxo do jogo para `native/game`;
+- elevar progressivamente câmera, movimento, combate, IA, HUD, inventário e fluxo do jogo para `native/game`
+  (antecipado para a HH15 pela D-HH15-1; aqui ficam o refinamento de nomes e estruturas e o que depender dos mods);
 - nomes, estruturas e contratos sustentados por evidência;
 - API/versionamento de mods, assets substituíveis e exemplos sem conteúdo proprietário;
 - projeto C++ exportável, recompilável offline e inspecionável.

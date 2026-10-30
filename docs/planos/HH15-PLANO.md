@@ -665,3 +665,44 @@ rota do produto chega aos 94 hashes); catraca do mapa sem `pvr_*`, `ta`, `vram`,
 - HH15.2–HH15.4 concluídas com os portões (relatório, seção 3). Regressão integral V3 pós-corte 14/14
   (`analysis/hh15/regressao_hh15_8.log`), ctest 92/92. Relatório `docs/relatorios/HH15-RELATORIO.md`.
 - **D-HH15-1** apresentada (relatório, seção 9): a etapa fica `BLOQUEADA_DECISAO`.
+
+## 7. Parte 2: remoção do substrato AOT (D-HH15-1 = B)
+
+**Decisão do mantenedor (2026-10-30):** o substrato AOT sai do produto nesta etapa ("começa agora a remoção e deixar
+totalmente nativo"). A HH15 volta para `EM_ANDAMENTO`; a parte 1 (HH15.0–HH15.8: tempo guest, simulação de hardware e
+provedores legados fora do produto) está concluída e provada (`docs/relatorios/HH15-RELATORIO.md`). Critério de saída
+da parte 2: o critério operacional final do `ARCHITECTURE.md` no `HeadHunter.exe` (sem `Sh4Context`, despacho por
+endereço, RAM guest nem código gerado), com a Preview jogável e equivalente às referências em cada passo.
+
+### 7.1 Medição de partida (2026-10-30, `analysis/hh15e/`)
+
+- Código gerado: 4 699 funções por disco (mesmos endereços nos dois discos; os binários diferem em dados), cerca de
+  1,1 milhão de linhas de C++ por disco, 45 380 chamadas diretas e 2 214 despachos indiretos.
+- Pelas fronteiras já nomeadas (`config/fronteiras.toml`), o código do jogo fica abaixo de `0x8C1586A8` (3 521
+  funções, com bolsões de som e do runtime C) e o SDK acima (1 178: CRI, Kamui, Shinobi, BIOS).
+- Rota `newgame_area1_nativo` (4 700 VBlanks, `HH_FN_PERFIL`): 1 428 funções do jogo e 433 do SDK executadas.
+
+### 7.2 Método (o do N10 do BS, sem precedente executado lá)
+
+- Elevação por sistema, não por função: módulos nomeados em `native/game` (e o SDK substituído em `native/sdk`), com
+  nomes e estruturas sustentados por duas evidências (regra do projeto).
+- O código do SDK já substituído por serviço nativo e o código morto são descartados, não elevados; a meta é a ausência
+  de dependência operacional, não 100% das funções.
+- Cada função ou sistema elevado entra pelo slot da função gerada (`mods::replace`, o mesmo mecanismo dos mods); na
+  verificação, um modo de conferência roda a função gerada sobre uma cópia do estado e compara o estado de saída (RAM,
+  registradores do contrato, chamadas aos serviços) em cada chamada da rota, com negativo por mutação.
+- Fase intermediária: a função elevada ainda lê e escreve a RAM guest por acessores tipados (equivalência provável por
+  comparação direta). Fase final: as estruturas do jogo migram para memória nativa e a RAM guest, o `Sh4Context`, o
+  despacho e as fibras saem; a catraca proíbe `hh_generated` e `hh_runtime_cpu` no produto.
+- Cobertura: as funções fora da rota da área 1 precisam de outros roteiros (campanha) ou de testes diferenciais
+  sintéticos; nenhuma função entra no produto sem conferência registrada.
+
+### 7.3 Subetapas
+
+| ID | Entrega | Portão |
+|---|---|---|
+| HH15.9 | Inventário da elevação: mapa função → biblioteca/sistema, grafo de chamadas, executadas por rota, dados globais tocados, ordem por dependência | inventário reproduzível; classificação com evidência |
+| HH15.10 | Infraestrutura: `native/game`, registro das funções elevadas pelo slot, modo de conferência na verificação, negativos | uma função elevada conferida em toda chamada da rota; mutação reprova |
+| HH15.11 | SDK: runtime C, Shinobi, CRI, Kamui e som substituídos ou descartados | conferência das funções do SDK na rota; zero chamadas do jogo ao SDK gerado |
+| HH15.12+ | Sistemas do jogo, um por subetapa (laço principal e tarefas, cenário e carga, jogador, câmera, colisão, inimigos e IA, HUD e menus, eventos e scripts, saves) | conferência por sistema; referências da HH15 iguais |
+| HH15.F | Dados nativos, remoção da RAM guest, do `Sh4Context`, do despacho e das fibras; fechamento V3 | critério operacional final; V3 |
