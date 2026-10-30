@@ -175,6 +175,12 @@ target_include_directories(hh07_transitional_tests PRIVATE unit)
 target_link_libraries(hh07_transitional_tests PRIVATE hh_transitional)
 add_test(NAME hh07_transitional_tests COMMAND hh07_transitional_tests)
 
+# HH15.10: infraestrutura da elevacao (slot, modo ativo, conferencia e os negativos do comparador)
+add_executable(hh15_elevacao_tests unit/main.cpp unit/test_hh15_elevacao.cpp)
+target_include_directories(hh15_elevacao_tests PRIVATE unit)
+target_link_libraries(hh15_elevacao_tests PRIVATE hh_transitional)
+add_test(NAME hh15_elevacao_tests COMMAND hh15_elevacao_tests)
+
 # HH08.2: sistema de arquivos nativo (data\disc + mods\assets).
 add_executable(hh08_files_tests unit/main.cpp unit/test_hh08_files.cpp)
 target_include_directories(hh08_files_tests PRIVATE unit)

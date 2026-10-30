@@ -171,6 +171,10 @@ slots = [
   0x8C122440, 0x8C122784, 0x8C122602, 0x8C12250E, 0x8C1226AC, 0x8C12271C, 0x8C12234C,
   0x8C123564,  # inicio do DMA do G2 para a AICA (fila de acTransfer): unico escritor dos registradores ADST* (HH14)
   0x8C120610,  # acDigiGetCurrentReadPosition: le o ponteiro da tabela de posicoes direto da RAM de som (sonda no nativo)
+  # HH15.10 (D-HH15-1 = B): funcoes do jogo elevadas (transitional/elevadas_jogo.cpp; a instalacao recusa uma elevada
+  # sem slot)
+  0x8C06F62C,  # normalizar_angulo
+  0x8C073980,  # ler_global_8C14B61C
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

@@ -27,6 +27,7 @@ Dados privados (sem eles as etapas que dependem deles falham com mensagem clara)
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -332,6 +333,26 @@ def step_area1():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
 
 
+def step_elevacao():
+    # HH15.10 (D-HH15-1 = B): as funcoes elevadas conferidas contra as geradas em cada chamada do roteiro
+    # (HH_ELEVACAO=conferir: custo, registradores do contrato, escritas; a RAM inteira numa amostra), sem divergencia
+    # e com os mesmos hashes da referencia
+    exe = EXE('app', 'Release', 'hh-run.exe')
+    r = sh([exe, '--data', need('HH_DATA_DIR'), '--vblanks', '4700', '--rtc', '1700000000', '--every', '50'],
+           env={'HH_INPUT_SCRIPT': SCRIPT, 'HH_ELEVACAO': 'conferir'})
+    if r.returncode != 0 or 'ok: limite de VBlanks atingido' not in r.stdout:
+        raise RuntimeError('a conferencia das elevadas parou (rc=%d)' % r.returncode)
+    m = re.search(r'\[elevacao\] conferir: (\d+) funcoes; chamadas (\d+), conferidas (\d+) \(completas (\d+)\)', r.stderr)
+    if not m or int(m.group(3)) == 0 or int(m.group(4)) == 0:
+        raise RuntimeError('a conferencia das elevadas nao conferiu nada')
+    por = re.findall(r'\[elevacao\]   ([0-9A-F]{8}) \S+: chamadas \d+, conferidas (\d+) \(completas (\d+)\)', r.stderr)
+    if len(por) != int(m.group(1)) or any(int(k) == 0 or int(f) == 0 for _, k, f in por):
+        raise RuntimeError('elevada sem conferencia no roteiro: %s' % ', '.join(a for a, k, f in por if int(k) == 0 or int(f) == 0))
+    got = [' '.join(l.split()[1:5:3]) for l in r.stdout.splitlines() if l.startswith('quadro ')]
+    if got != reference():
+        raise RuntimeError('hashes do roteiro com a conferencia das elevadas diferentes da referencia')
+
+
 def step_builder():
     disc, disc2, want = need('HH_DISC1'), need('HH_DISC2'), reference_produto()
     out = os.path.join(ROOT, 'build', 'regressao')  # fora de dist/ (so Builder e Preview, como no BS)
@@ -377,6 +398,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
                                             'HH14_ORACULO']),
          ('portoes_hh15', step_gates_hh15, ['HH_DATA_DIR', 'HH15_REF']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
+         ('elevacao', step_elevacao, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH15_PRODUTO_HASHES'])]
 
 

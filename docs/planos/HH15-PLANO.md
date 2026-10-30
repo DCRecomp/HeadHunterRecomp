@@ -712,3 +712,39 @@ endereço, RAM guest nem código gerado), com a Preview jogável e equivalente �
 | HH15.11 | SDK: runtime C, Shinobi, CRI, Kamui e som substituídos ou descartados | conferência das funções do SDK na rota; zero chamadas do jogo ao SDK gerado |
 | HH15.12+ | Sistemas do jogo, um por subetapa (laço principal e tarefas, cenário e carga, jogador, câmera, colisão, inimigos e IA, HUD e menus, eventos e scripts, saves) | conferência por sistema; referências da HH15 iguais |
 | HH15.F | Dados nativos, remoção da RAM guest, do `Sh4Context`, do despacho e das fibras; fechamento V3 | critério operacional final; V3 |
+
+### HH15.9 (concluída, 2026-10-30): inventário da elevação
+
+`tools/dev/hh15_elevacao_inventario.py` (seção 7.1): classificação do `hh-hwscan`, grafo de chamadas diretas, perfis de
+execução por rota, superfície do SDK chamada pelo jogo e níveis do grafo. A ordem por sistema sai daqui em cada
+subetapa; novas rotas entram como novos perfis.
+
+### HH15.10 (concluída, 2026-10-30): infraestrutura da elevação
+
+- `native/game/` (lógica nativa; o primeiro módulo é `angulo.h`) e `transitional/elevacao` com
+  `transitional/elevadas_jogo.cpp`: cada elevada entra pelo slot da gerada (o endereço vai para `[native] slots` do
+  config e o gerador passa a chamá-la pelo slot; regeneração conferida idêntica antes da mudança). O adaptador da fase
+  intermediária reproduz o caminho original na ordem observável (ciclos e back-edges da gerada, escritas antes de cada
+  back-edge) e declara as premissas (palavras do literal pool que ele embute), conferidas antes da entrada do jogo e em
+  cada chamada da conferência. A instalação recusa elevada sem slot ou que não é função gerada; as elevadas são
+  instaladas antes dos mods do usuário (um mod continua valendo).
+- `HH_ELEVACAO=gerado|ativo|conferir` (só na verificação; o produto recusa a variável e fica no ativo). Conferir: a
+  elevada roda num ensaio (escritas num diário desfeito, back-edges só contados, guarda que encerra o ensaio mesmo com
+  erro), a gerada roda de verdade (trajetória de referência) e são comparados custo (ciclos e back-edges), `r8`-`r15`,
+  bancos inativos, `pr`, `sr`, `gbr`/`vbr`/`ssr`/`spc`/`sgr`/`dbr`, `mach`/`macl`, `fpscr`, `fr12`-`fr15`, `xf`,
+  retorno e o valor final de cada escrita da elevada; nas 256 primeiras chamadas de cada elevada e depois em uma a cada
+  1 024, a RAM inteira menos a pilha morta abaixo do `r15` de entrada. Chamada em que a gerada foi atendida só conta; se
+  só a elevada teria sido atendida, é divergência.
+- Primeiras elevadas: `8C06F62C` (normaliza um ângulo para [-π, π], 112 mil chamadas na rota) e `8C073980` (lê um
+  global, 72 chamadores). Rota da área 1 no modo conferir: 333 228 chamadas, 333 227 conferidas (837 com a RAM inteira),
+  1 com atendimento, hashes iguais à referência; produto e rota no modo ativo: 94 hashes iguais.
+- Testes `tests/unit/test_hh15_elevacao.cpp` (slot, modo ativo com o custo, premissas, e o comparador acusando pelo
+  motivo certo escrita a mais, outro valor, ciclos, back-edges, retorno, `macl`, atendimento só da elevada, premissa
+  alterada no meio; erro no meio do ensaio o encerra). Passo `elevacao` da regressão integral: a rota no modo conferir,
+  com conferência em cada elevada e os hashes da referência.
+- Revisão Codex (`reviews/codex-hh15_10.log`): 6 achados; aceitos a ordem dos polls e das escritas, a divergência
+  tomada por atendimento, as constantes do pool (premissas), o ensaio sem guarda, parte dos pontos cegos (`mach`/`macl`,
+  `xf`, `rbank`, `vbr`/`ssr`/`spc`/`sgr`/`dbr`) e os testes/portão por elevada; rejeitados `t` e `fpul` (voláteis na
+  convenção) e a exclusão da memória abaixo do `r15` de entrada (morta depois do retorno pela ABI). Segunda passada
+  (`reviews/codex-hh15_10b.log`): aceito, a instalação passava por cima dos mods do usuário (corrigido: antes deles).
+  Regressão integral 15/15 (`analysis/hh15e/regressao_10.log`), ctest 93/93.

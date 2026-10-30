@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`, HH15.9 inventário) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário e HH15.10 infraestrutura concluídos, HH15.11 SDK em curso) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -425,6 +425,13 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - (histórico) DECISAO_NECESSARIA — HH15 (D-HH15-1): o substrato AOT (código gerado, RAM guest, `Sh4Context`, despacho e
   fibras) fica no produto até a HH17, como no BS (D-N8-1), ou sai agora, como o texto do ROADMAP pede? Recomendação:
   manter até a HH17 e corrigir ROADMAP/ARCHITECTURE. Detalhes, opções e custos: relatório, seção 9.
+- HH15.9 (concluída, 2026-10-30): inventário da elevação (`tools/dev/hh15_elevacao_inventario.py`).
+- HH15.10 (concluída, 2026-10-30): infraestrutura da elevação: `native/game`, `transitional/elevacao` (elevadas pelo
+  slot da gerada, custo do caminho original, premissas do literal pool, `HH_ELEVACAO=gerado|ativo|conferir` só na
+  verificação) e as duas primeiras elevadas (`8C06F62C`, `8C073980`). Conferência na rota: 333 227 chamadas conferidas,
+  0 divergências, hashes iguais; produto: 94 hashes iguais. Revisão Codex (`reviews/codex-hh15_10.log`,
+  `codex-hh15_10b.log`): 7 achados aceitos e corrigidos, parte de 1 rejeitada (`t`, `fpul`, pilha morta). Regressão
+  integral 15/15 com o passo novo `elevacao` (`analysis/hh15e/regressao_10.log`), ctest 93/93.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

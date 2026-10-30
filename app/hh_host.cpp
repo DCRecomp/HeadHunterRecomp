@@ -21,6 +21,7 @@
 #include "video_adapter.h"
 #include "render_capture.h"
 #include "kamui_device.h"
+#include "elevacao.h"
 #include "platform/saves.h"
 #include "input_bridge.h"
 #include "hh_verified_files.h"
@@ -197,6 +198,17 @@ HostResult host_run(const HostOptions& opt) {
     // HH18: mods em C++ do projeto exportado (HH_MOD, compilados com HH_MODS e HH_MODS_DIR): ativados depois do
     // registro das funcoes geradas, antes do boot (sem mods compilados, nada muda)
     hh::mods::reset();
+    // HH15.10 (D-HH15-1 = B): as funcoes do jogo elevadas entram pelo slot das geradas. HH_ELEVACAO=gerado|ativo|conferir
+    // so na verificacao (o produto recusa a variavel e fica no ativo). Antes dos mods do usuario: um mod que troca uma
+    // elevada continua valendo (revisao Codex)
+    {
+        using transitional::elevacao::Modo;
+        const char*       ev = std::getenv("HH_ELEVACAO");
+        const std::string v  = ev ? ev : "";
+        if (!v.empty() && v != "gerado" && v != "ativo" && v != "conferir")
+            throw std::runtime_error("HH_ELEVACAO=gerado|ativo|conferir");
+        transitional::elevacao::install(v == "gerado" ? Modo::Gerado : v == "conferir" ? Modo::Conferir : Modo::Ativo);
+    }
     hh::mods::init_all();
     for (const std::string& m : hh::mods::registered()) std::fprintf(stderr, "[mods] ativo: %s\n", m.c_str());
     std::vector<uint8_t> ram(16u << 20);
@@ -349,6 +361,7 @@ HostResult host_run(const HostOptions& opt) {
         if (!opt.watch.empty() || g_fnProfile) sh4_set_trace(onTrace);
         const Sh4Func entry = sh4_lookup(c.pc);
         if (!entry) throw std::runtime_error("entrada do jogo sem codigo recompilado");
+        transitional::elevacao::verificar_premissas(&c);  // HH15.10: o executavel carregado e o que as elevadas supoem
         entry(&c);
         res.end   = HostEnd::Error;
         res.error = "a funcao de entrada do jogo retornou";
@@ -428,6 +441,9 @@ HostResult host_run(const HostOptions& opt) {
     else if (opt.render == RenderProvider::Native || transitional::render_capture::renderer_stats().renders)
         std::fputs(transitional::render_capture::renderer_summary().c_str(), stderr);
     transitional::render_capture::install(transitional::render_capture::Mode::Off);  // sempre (revisao Codex do BS)
+    if (transitional::elevacao::modo() == transitional::elevacao::Modo::Conferir)
+        std::fputs(transitional::elevacao::summary().c_str(), stderr);
+    transitional::elevacao::install(transitional::elevacao::Modo::Gerado);
     transitional::render_capture::install_renderer(transitional::render_capture::Mode::Off);
     if (transitional::time::installed()) {
         transitional::time::uninstall();

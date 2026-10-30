@@ -18,6 +18,8 @@ inline constexpr const char* kTestVars[] = {
     "HH_LISTA_NATIVA_MUTACAO", "HH_KAMUI_NATIVO_MUTACAO", "HH_EVENT_STATUS_MUTACAO",
     // HH15.7d4c: os modos da captura da IR (o produto nao tem a captura)
     "HH_RENDER_IR", "HH_RENDER_IR_CADA", "HH_RENDER_IR_BMP", "HH_RENDER_IR_BMP_CADA", "HH_RENDER_IR_BMP_DIFF",
+    // HH15.10: escolha e conferencia das funcoes elevadas
+    "HH_ELEVACAO",
 };
 
 // So observam (registros, traces, despejos, perfis) ou sao funcoes do usuario.
