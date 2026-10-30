@@ -9,15 +9,19 @@
 #      fechada de objetos sem chamador no executavel (o linker nao os puxa da biblioteca estatica);
 #   3. um objeto dos papeis validacao, hle (HH15.3: BIOS HLE, flash e drive simulados), perifericos (HH15.4: modelo do
 #      Maple), aica (HH15.6: modelo da AICA), sb (HH15.7d: modelos do system block e do DMAC) ou intc (HH15.7d2: o
-#      controlador de interrupcoes anterior) esta no mapa, ou falta um dos objetos do proprio produto no lugar deles
-#      (validacao_stubs, hle_ausente, maple_ausente, aica_ausente, sb_ausente, dmac_ausente, event_bus);
+#      controlador de interrupcoes anterior) ou grafico (HH15.7d4c: os modelos graficos) esta no mapa, ou falta um dos
+#      objetos do proprio produto no lugar deles (validacao_stubs, hle_ausente, maple_ausente, aica_ausente, sb_ausente,
+#      dmac_ausente, event_bus, pvr_ausente);
+#   3b. HH15.7d4c: a captura da IR (transitional/render_capture, de qualquer biblioteca) esta no mapa, ou falta o lugar
+#      dela (render_capture_ausente) ou o renderizador do produto (hh_transitional:render_devices);
 #   4. o mapa tem um objeto do hh_runtime que nao esta no manifesto;
 #   5. o carimbo de link do mapa (Timestamp is) nao e o do cabecalho PE do executavel (mapa de outro link).
 # A comparacao e por campo do mapa (objeto precedido de espaco), nao por trecho de texto.
 # Uso: cmake -DMAP=<map> -DMANIFEST=<tsv> -DSRC=<runtime/> [-DEXE=<exe>] [-DMUTAR=<negativo>] -P check_papeis.cmake
 # MUTAR (negativos; cada um tem de reprovar com a mensagem do caso): sem_objeto, com_sonda, com_hle, com_maple, com_aica,
 # aica_solto e aica_outra_biblioteca (o modelo sem biblioteca ou de outra), objeto_extra, sem_stub, sem_stub_aica,
-# com_sb, sem_stub_sb, com_intc, sem_event_bus, outra_biblioteca, fonte_fora (uma fonte do runtime some do manifesto), mapa_velho.
+# com_sb, sem_stub_sb, com_intc, sem_event_bus, com_grafico, sem_stub_pvr, com_captura, sem_stub_captura,
+# sem_render_devices, outra_biblioteca, fonte_fora (uma fonte do runtime some do manifesto), mapa_velho.
 foreach(v MAP MANIFEST SRC)
   if(NOT EXISTS "${${v}}")
     message(FATAL_ERROR "${v} ausente: ${${v}}")
@@ -25,11 +29,11 @@ foreach(v MAP MANIFEST SRC)
 endforeach()
 file(READ "${MAP}" map)
 file(STRINGS "${MANIFEST}" rows)
-set(fora_do_produto validacao hle perifericos aica sb intc)      # papeis so da verificacao e das ferramentas
+set(fora_do_produto validacao hle perifericos aica sb intc grafico)  # papeis so da verificacao e das ferramentas
 set(no_caller snapshot)                                   # diagnostico sem chamador no produto (como no BS)
 set(not_runtime cpu/sh4_context.cpp cpu/sh4_runtime.cpp mods/mod_api.cpp cpu/sh4_hw_m3.cpp debug/validacao_stubs.cpp
                 system/hle_ausente.cpp system/maple_ausente.cpp system/aica_ausente.cpp system/sb_ausente.cpp
-                system/dmac_ausente.cpp system/event_bus.cpp)
+                system/dmac_ausente.cpp system/event_bus.cpp system/pvr_ausente.cpp)
 if(MUTAR STREQUAL "sem_objeto")
   string(REPLACE " hh_runtime:sys_logical.obj" " hh_runtime:removido.obj" map "${map}")
 elseif(MUTAR STREQUAL "com_sonda")
@@ -52,6 +56,18 @@ elseif(MUTAR STREQUAL "com_intc")
   string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_runtime:holly_intc.obj\n")
 elseif(MUTAR STREQUAL "sem_event_bus")
   string(REPLACE "   event_bus.obj" "   hh_runtime:event_bus.obj" map "${map}")
+elseif(MUTAR STREQUAL "com_grafico")
+  string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_runtime:vram.obj\n")
+elseif(MUTAR STREQUAL "sem_stub_pvr")
+  # tambem as linhas das inline ("f i <obj>", um espaco so)
+  string(REGEX REPLACE "([ \t])pvr_ausente\\.obj" "\\1hh_runtime:pvr_ausente.obj" map "${map}")
+elseif(MUTAR STREQUAL "com_captura")
+  string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_transitional:render_capture.obj\n")
+elseif(MUTAR STREQUAL "sem_stub_captura")
+  # tambem as linhas das inline ("f i <obj>", um espaco so)
+  string(REGEX REPLACE "([ \t])render_capture_ausente\\.obj" "\\1hh_transitional:render_capture_ausente.obj" map "${map}")
+elseif(MUTAR STREQUAL "sem_render_devices")
+  string(REPLACE " hh_transitional:render_devices.obj" " hh_transitional:removido.obj" map "${map}")
 elseif(MUTAR STREQUAL "objeto_extra")
   string(APPEND map "\n 0001:00000000 ?x@@ 0 f   hh_runtime:desconhecido.obj\n")
 elseif(MUTAR STREQUAL "sem_stub")
@@ -107,12 +123,22 @@ foreach(t IN LISTS tree)
     list(APPEND bad "fonte do runtime fora do manifesto: ${t}")
   endif()
 endforeach()
-foreach(s validacao_stubs hle_ausente maple_ausente aica_ausente sb_ausente dmac_ausente event_bus)
+foreach(s validacao_stubs hle_ausente maple_ausente aica_ausente sb_ausente dmac_ausente event_bus pvr_ausente
+          render_capture_ausente)
   string(REGEX MATCH "[ \t]${s}\\.obj" stub "${map}")
   if(NOT stub)
     list(APPEND bad "o stub ${s}.obj (objeto do proprio produto) nao esta no mapa")
   endif()
 endforeach()
+# HH15.7d4c: a captura da IR (so verificacao) fora, de qualquer biblioteca; o renderizador do produto dentro
+string(REGEX MATCH "[ \t:]render_capture\\.obj" cap "${map}")
+if(cap)
+  list(APPEND bad "captura da IR (so verificacao) no produto: render_capture")
+endif()
+string(REGEX MATCH "[ \t]hh_transitional:render_devices\\.obj" dev "${map}")
+if(NOT dev)
+  list(APPEND bad "renderizador do produto ausente do mapa: render_devices")
+endif()
 string(REGEX MATCHALL "[ \t][A-Za-z0-9_]*hh_runtime:[A-Za-z0-9_]+\\.obj" in_map "${map}")
 set(objs "")
 foreach(m IN LISTS in_map)

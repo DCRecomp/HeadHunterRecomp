@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink, 7c estado nativo do quadro, 7d1 DMA/system block, 7d2 banco de interrupções e 7d3 SPG nativos concluídos; 7d4a pedido de render e VBlank como serviços, 7d4b desenho separado da captura) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5, HH15.6 e HH15.7 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 concluída: software sobre a IR, ListSink, estado nativo do quadro, DMA/system block, banco de interrupções e SPG nativos, desenho separado da captura, modelos gráficos e captura fora do produto; HH15.8 fechamento em curso) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -401,6 +401,16 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   o caminho do TA (verificação), sobre os mesmos dispositivos com os texels do runtime. Teste
   `tests/unit/test_hh15_render_devices.cpp`. Revisão Codex (`reviews/codex-hh15_7d4b.log`): sem achados. Rota da área
   1 e produto: 94 hashes iguais. Regressão integral 14/14 (`analysis/hh15/regressao_7d4b.log`), ctest 73/73.
+- HH15.7d4c (concluído, 2026-10-30): os modelos gráficos no papel `grafico` (só verificação); o produto compila
+  `runtime/system/pvr_ausente.cpp` (só o SPG atendido, banco do boot para a instalação do Kamui, sem VRAM; o resto erro
+  explícito, inclusive a área 4 pela store queue) e `transitional/render_capture_ausente.cpp`; `HH_RENDER_IR` e as
+  variantes de comparação recusadas no produto. Catraca com o papel, os substitutos, `render_capture` proibido e
+  `render_devices` obrigatório, e cinco negativos novos. Teste `tests/hh15_pvr_ausente_tests.cpp`. Revisão Codex
+  (`reviews/codex-hh15_7d4c.log`): aceito, escrita em `SPG_STATUS` ignorada como no modelo (corrigido, com teste);
+  rejeitado, `HH_RENDER_IR_GUARDAR` (observacional, do renderizador do produto). Rota da área 1 e produto: 94 hashes
+  iguais. Regressão integral 14/14 (`analysis/hh15/regressao_7d4c.log`), ctest 79/79.
+- HH15.7 concluída (2026-10-30): mapa do `HeadHunter.exe` sem `pvr_*`, `ta`, `vram`, `holly_intc`, `sh4_dmac` e
+  `render_capture`; R1–R5 e K1–K4 do HH13 e as referências da HH15 na regressão integral.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

@@ -326,7 +326,7 @@ porque no HH o provedor nativo de áudio tem a sua e o SDK não a toca pela CPU.
 Resultado: regressão integral 14/14 (`analysis/hh15/regressao3.log`, 2026-10-29, antes da revisão; as correções mudam
 só as recusas de opções, testes e a catraca), ctest 67/67, `hh_runtime_tests` 16 ok e 1 sem dados.
 
-### HH15.7 (em andamento): plano
+### HH15.7 (concluída, 2026-10-30): plano
 
 Ponto de partida, diferente do BS no N8.7: o HH13.6 já intercepta os cinco funis do Kamui (`0x8C1793E0` escrita e
 `0x8C1793EA` leitura de registrador, `0x8C17C600` DMA, `0x8C159820` cópia e `0x8C159874` zeragem), com slots
@@ -587,7 +587,7 @@ inicialização (`0x8C15FAC8`).
     esses diagnósticos continuam no caminho do guest pela memória.
 - Regressão integral 14/14 (`analysis/hh15/regressao_7d3.log`), ctest 73/73.
 
-#### HH15.7d4 (em andamento): modelos gráficos fora do produto
+#### HH15.7d4 (concluído, 2026-10-30): modelos gráficos fora do produto
 
 Medição (mapa do `HeadHunter.exe` em ba0a110): ainda entram `pvr_regs`, `pvr_render`, `pvr_texture`, `pvr_video`, `ta`,
 `vram`, `sh4_sq` e `render_capture` (729 símbolos). O BS deixou o `render_capture` no produto; o portão desta etapa o
@@ -619,3 +619,28 @@ substitutos do produto (só o contrato medido do guest, o SPG, atendido; o resto
   dispositivo direto, contagens e resumo, sem memória nativa o render falha, com ela os texels vêm dela, instalação).
   Rota da área 1 e produto: 94 hashes iguais; ctest 73/73. Revisão Codex (`reviews/codex-hh15_7d4b.log`): sem achados.
   Regressão integral 14/14 (`analysis/hh15/regressao_7d4b.log`).
+- 7d4c (2026-10-30): os modelos gráficos (`pvr_regs`, `pvr_render`, `pvr_video`, `pvr_texture`, `vram`, `ta`) viram o
+  papel `grafico` do runtime, só da verificação e das ferramentas. O produto compila `runtime/system/pvr_ausente.cpp`
+  no lugar: só o SPG é atendido (pelo `spg_bus`; a escrita em `SPG_STATUS`, só leitura, é ignorada como no modelo), o
+  banco que o boot deixa fica guardado só para a instalação do provedor nativo do Kamui, `vram_data()` devolve nulo (a
+  memória das texturas parte zerada, como a VRAM depois do reset) e o resto do banco, a VRAM (área 1), a área 4 pela
+  store queue, o STARTRENDER pelo caminho do TA, a saída de vídeo do modelo e os empréstimos da verificação são erro
+  explícito. E `transitional/render_capture_ausente.cpp`: os modos da captura lançam erro; `HH_RENDER_IR` e as
+  variantes de comparação passam a variáveis de teste, recusadas na partida do produto (saída 2;
+  `HH_RENDER_IR_GUARDAR` fica observacional, é do renderizador do produto). Catraca: `grafico` fora do produto, os dois
+  substitutos obrigatórios, `render_capture` proibido de qualquer biblioteca e `hh_transitional:render_devices`
+  obrigatório, com os negativos `com_grafico`, `sem_stub_pvr`, `com_captura`, `sem_stub_captura` e
+  `sem_render_devices` (as mutações dos substitutos trocam também as linhas das funções inline, `f i <obj>`). Teste
+  `tests/hh15_pvr_ausente_tests.cpp` (executável `hh15_produto_pvr_tests`, com o substituto como no produto: só o SPG,
+  banco do boot, só 32 bits, fora do contrato fatal, sem VRAM, área 4 pela store queue fatal). Mapa do
+  `HeadHunter.exe`: nenhum objeto `pvr_*`, `ta`, `vram`, `holly_intc`, `sh4_dmac` ou `render_capture`. Rota da área 1 e
+  produto: 94 hashes iguais; ctest 79/79. Revisão Codex (`reviews/codex-hh15_7d4c.log`): aceito, a escrita em
+  `SPG_STATUS` dava erro no substituto e o modelo a ignora (corrigido, com teste); rejeitado, `HH_RENDER_IR_GUARDAR`
+  continuar aceito no produto (só grava o arquivo da IR do próprio renderizador do produto, classificação
+  observacional). Regressão integral 14/14 (`analysis/hh15/regressao_7d4c.log`).
+
+Fechamento do HH15.7: portão atendido. R1–R5 do HH13 e K1–K4 com o caminho novo (`portoes_hh13` da regressão
+integral); referências da HH15 (`portoes_hh15` e `roteiro_area1`); o produto não tem PVR, VRAM, TA, DMAC nem SB
+gráfico (os substitutos param com erro explícito em qualquer acesso fora do SPG e do contrato do DMA/SB nativos, e a
+rota do produto chega aos 94 hashes); catraca do mapa sem `pvr_*`, `ta`, `vram`, `holly_intc`, `sh4_dmac` e
+`render_capture`.

@@ -557,8 +557,9 @@ void install(BoundaryRegistry& registry, Mode m) {
     State& s = st();
     s        = State{};
     s.mode   = m;
-    // o estado nativo parte do atual (o que o BIOS deixou na VRAM e nos registradores)
-    std::memcpy(s.heap.data(), vram_data(), kVramSize);
+    // o estado nativo parte do atual (o que o BIOS deixou na VRAM e nos registradores); sem VRAM (produto, HH15.7d4c), a
+    // memoria das texturas parte zerada, como a VRAM depois do reset
+    if (const uint8_t* v = vram_data()) std::memcpy(s.heap.data(), v, kVramSize);
     std::array<uint32_t, kRegCount> bank{};
     for (uint32_t i = 0; i < kRegCount; ++i) bank[i] = pvr_reg(kRegBase + 4 * i);
     s.fs.load(bank.data());

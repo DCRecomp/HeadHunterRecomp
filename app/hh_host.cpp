@@ -140,7 +140,8 @@ void onVblank(void*) {
             if (std::strtoull(list.c_str() + i, nullptr, 10) == r.vblanks) {
                 const std::string n = std::to_string(r.vblanks);
                 if (std::FILE* f = std::fopen((dir + "/ram_" + n + ".bin").c_str(), "wb")) std::fwrite(g_ram, 1, 16u << 20, f), std::fclose(f);
-                if (std::FILE* f = std::fopen((dir + "/vram_" + n + ".bin").c_str(), "wb")) std::fwrite(vram_data(), 1, 8u << 20, f), std::fclose(f);
+                if (vram_data())  // sem VRAM no produto (HH15.7d4c)
+                    if (std::FILE* f = std::fopen((dir + "/vram_" + n + ".bin").c_str(), "wb")) std::fwrite(vram_data(), 1, 8u << 20, f), std::fclose(f);
             }
             if (j == std::string::npos) break;
             i = j + 1;
