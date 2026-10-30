@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5, HH15.6 e HH15.7 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 concluída: software sobre a IR, ListSink, estado nativo do quadro, DMA/system block, banco de interrupções e SPG nativos, desenho separado da captura, modelos gráficos e captura fora do produto; HH15.8 fechamento em curso) |
+| HH15 | BLOQUEADA_DECISAO | `docs/relatorios/HH15-RELATORIO.md` (HH15.0–HH15.8 concluídas: tempo lógico sem ciclos, runtime por papel com catraca, syscalls, Maple, som e render por serviços nativos, toda a simulação de hardware e os provedores legados fora do produto, provas de mapa, imports, strings e sonda, V3 pós-corte 14/14; pendente D-HH15-1: substrato AOT até a HH17) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -280,7 +280,7 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
-### HH15 (2026-10-28, em andamento)
+### HH15 (2026-10-28, BLOQUEADA_DECISAO em 2026-10-30)
 
 - Plano `docs/planos/HH15-PLANO.md` (modelo: N2c + N8 do BS). Inventário (sonda na rota nativa): store queues, CCN
   (QACR, INTEVT), TMU, Holly INTC/SB, DMAC ch2, G2 (trava do RTC), Maple, RTC da AICA e SPG ainda alcançados; AICA não.
@@ -411,6 +411,16 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   iguais. Regressão integral 14/14 (`analysis/hh15/regressao_7d4c.log`), ctest 79/79.
 - HH15.7 concluída (2026-10-30): mapa do `HeadHunter.exe` sem `pvr_*`, `ta`, `vram`, `holly_intc`, `sh4_dmac` e
   `render_capture`; R1–R5 e K1–K4 do HH13 e as referências da HH15 na regressão integral.
+- HH15.8 (concluída, 2026-10-30): prova de imports e strings `tests/hh15/check_fechamento.py` (imports e delay-load
+  na lista fechada; nenhum dos 517 literais exclusivos das fontes fora do produto no executável, mínimo por grupo;
+  negativos `dll_extra`, `sem_imports`, `string_<grupo>` e autoteste sintético); sonda pós-corte com as regiões do
+  HH15.0, só o contrato medido e atendido por serviços nativos (PVR só SPG, DMAC só canal 2, sem VRAM nem área 4).
+  Revisão Codex (`reviews/codex-hh15_8.log`, `codex-hh15_8b.log`): 7 achados aceitos e corrigidos, nenhum rejeitado.
+  HH15.2–HH15.4 concluídas com os portões. Regressão integral V3 pós-corte 14/14 (`analysis/hh15/regressao_hh15_8.log`),
+  ctest 92/92. Relatório `docs/relatorios/HH15-RELATORIO.md`.
+- **DECISAO_NECESSARIA — HH15 (D-HH15-1):** o substrato AOT (código gerado, RAM guest, `Sh4Context`, despacho e
+  fibras) fica no produto até a HH17, como no BS (D-N8-1), ou sai agora, como o texto do ROADMAP pede? Recomendação:
+  manter até a HH17 e corrigir ROADMAP/ARCHITECTURE. Detalhes, opções e custos: relatório, seção 9.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

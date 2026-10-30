@@ -168,7 +168,7 @@ No gerado: 67 093 `HH_CYCLES`, 2 571 `HH_POLL`, 22 704 `HH_CALL` (cada um com `H
      `0xF0000000–0xF7FFFFFF` (só as escritas no array de endereços do cache de operandos no contrato);
    - [BAIXA] os laços nativos de cópia/zeragem do Kamui ignoravam o tick de vivacidade: usam a condição do `HH_POLL`.
 
-### HH15.2 (em andamento)
+### HH15.2 (concluída, 2026-10-30, no fechamento V3 da HH15.8)
 
 Precedentes do N8.2 do BS adotados (decisões do mantenedor no projeto de referência, 2026-10-26): o tempo estável fica
 nos dois executáveis (CLI e headless históricos); a instrumentação das referências fica no produto, inerte sem a
@@ -203,7 +203,7 @@ variável; só as mutações e sondas exclusivas de teste saem do produto.
    - [BAIXA] mapa velho e negativos frouxos: o carimbo `Timestamp is` do mapa tem de ser o `TimeDateStamp` do PE; cada
      negativo exige a mensagem do caso (`PASS_REGULAR_EXPRESSION`), agora 8.
 
-### HH15.3 (em andamento)
+### HH15.3 (concluída, 2026-10-30, no fechamento V3 da HH15.8)
 
 Inventário (`HH_HLE_LOG`, rota nativa, 4 700 VBlanks; `analysis/hh15/hle_uso.txt`): o jogo só usa
 - GDROM com r6 = 0: REQ_CMD (comandos INIT 0x18, GET_VERSION 0x28, 6 DMAREAD 0x11 de 1 setor no boot, LBA 0x385CD a
@@ -227,7 +227,7 @@ contrato erro explícito, flash volátil, HLE só na verificação e nas ferrame
    `hh15_servico_nativo_igual_ao_hle_no_contrato` (o roteiro do contrato no HLE e no serviço: r0 e RAM iguais; uma
    mutação no texto da versão do GDROM reprova) e `hh15_servico_nativo_recusa_fora_do_contrato` (16 recusas).
 
-### HH15.4 (em andamento)
+### HH15.4 (concluída, 2026-10-30, no fechamento V3 da HH15.8)
 
 No HH o modelo do Maple nunca teve VMU (M4) e, com os controles nativos (HH10, padrão do produto), fica também sem o
 controle da porta A: no caminho do produto ele só respondia "nenhum dispositivo" à sondagem da camada `per` e agendava
@@ -644,3 +644,24 @@ integral); referências da HH15 (`portoes_hh15` e `roteiro_area1`); o produto n�
 gráfico (os substitutos param com erro explícito em qualquer acesso fora do SPG e do contrato do DMA/SB nativos, e a
 rota do produto chega aos 94 hashes); catraca do mapa sem `pvr_*`, `ta`, `vram`, `holly_intc`, `sh4_dmac` e
 `render_capture`.
+
+### HH15.8 (concluída, 2026-10-30): fechamento
+
+- **Prova de imports e strings** `tests/hh15/check_fechamento.py` (testes `hh15_produto_fechamento*`): as DLLs das
+  tabelas de imports e de delay-load do PE (parser próprio, limitado aos dados das seções) na lista fechada do produto
+  (CRT do MSVC, Win32, Media Foundation, Direct2D/DirectWrite, `winmm`, `xinput1_4`), com as obrigatórias presentes;
+  nenhum dos 517 literais exclusivos das fontes fora do produto (lexer de C++; mínimo de 3 por grupo: os sete papéis só
+  da verificação, a captura da IR e o tradutor com o interpretador) nos bytes do executável. Negativos: `dll_extra`,
+  `sem_imports` e `string_<grupo>` para os nove grupos; autoteste sintético do parser e do lexer (reprova as mutações
+  sem delay-load, cauda virtual, sem comentário de bloco e sem raw string). Controle: no `hh-run` a prova acusa os oito
+  grupos do runtime.
+- **Sonda pós-corte** (`analysis/hh15/sonda_fech_{legado,experimental}.tsv`): as mesmas regiões das sondas do HH15.0;
+  PVR só o SPG, DMAC só o canal 2, SB só o DMA do canal 2, `SB_FFST` e a inicialização, nenhum acesso à VRAM ou à
+  área 4, todos atendidos por serviços nativos.
+- **Revisão Codex** (`reviews/codex-hh15_8.log`): 5 achados aceitos e corrigidos (imports vazios passariam, lexer
+  ingênuo, piso só global, delay-load ignorado, RVA na cauda virtual); segunda passada (`reviews/codex-hh15_8b.log`):
+  os 5 corrigidos, 2 achados novos aceitos (testes sem o delay-load e os limites de RVA; lexer sem teste sintético),
+  resolvidos com o autoteste.
+- HH15.2–HH15.4 concluídas com os portões (relatório, seção 3). Regressão integral V3 pós-corte 14/14
+  (`analysis/hh15/regressao_hh15_8.log`), ctest 92/92. Relatório `docs/relatorios/HH15-RELATORIO.md`.
+- **D-HH15-1** apresentada (relatório, seção 9): a etapa fica `BLOQUEADA_DECISAO`.

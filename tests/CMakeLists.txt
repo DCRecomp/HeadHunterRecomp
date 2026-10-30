@@ -237,6 +237,29 @@ if(TARGET HeadHunter AND MSVC)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa.cmake)
   add_test(NAME hh15_produto_recusa_legado
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:HeadHunter> -P ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_recusa_legado.cmake)
+  # HH15.8: ausencia operacional por duas provas independentes do mapa (imports do PE numa lista fechada; nenhum
+  # literal exclusivo das fontes fora do produto nos bytes do executavel), com negativos por mutacao
+  set(hh15_fech_cmd ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/hh15/check_fechamento.py
+                    $<TARGET_FILE:HeadHunter> ${PROJECT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/runtime_papeis.tsv)
+  add_test(NAME hh15_produto_fechamento COMMAND ${hh15_fech_cmd})
+  # o parser do PE (imports, delay-load, limites dos dados das secoes) e o lexer dos literais sobre entradas sinteticas
+  add_test(NAME hh15_produto_fechamento_autoteste
+    COMMAND ${CMAKE_COMMAND} -E env HH15_FECHAMENTO_MUTAR=autoteste ${hh15_fech_cmd})
+  add_test(NAME hh15_produto_fechamento_negativo_dll_extra
+    COMMAND ${CMAKE_COMMAND} -E env HH15_FECHAMENTO_MUTAR=dll_extra ${hh15_fech_cmd})
+  set_tests_properties(hh15_produto_fechamento_negativo_dll_extra PROPERTIES
+                       PASS_REGULAR_EXPRESSION "import fora da lista do produto: flycast.dll")
+  add_test(NAME hh15_produto_fechamento_negativo_sem_imports
+    COMMAND ${CMAKE_COMMAND} -E env HH15_FECHAMENTO_MUTAR=sem_imports ${hh15_fech_cmd})
+  set_tests_properties(hh15_produto_fechamento_negativo_sem_imports PROPERTIES
+                       PASS_REGULAR_EXPRESSION "import obrigatorio ausente .parser ou executavel errado.: kernel32.dll")
+  # um literal exclusivo de cada grupo de fontes fora do produto, acrescentado aos bytes lidos, reprova pelo grupo
+  foreach(g validacao hle perifericos aica sb intc grafico captura tradutor)
+    add_test(NAME hh15_produto_fechamento_negativo_string_${g}
+      COMMAND ${CMAKE_COMMAND} -E env HH15_FECHAMENTO_MUTAR=string_extra:${g} ${hh15_fech_cmd})
+    set_tests_properties(hh15_produto_fechamento_negativo_string_${g} PROPERTIES
+                         PASS_REGULAR_EXPRESSION "literal do grupo ${g} .[^)]+. no executavel")
+  endforeach()
 endif()
 
 # HH07.7: ordem de eventos (VBlank, interrupcao, threads, longjmp) identica em duas execucoes do
