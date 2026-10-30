@@ -556,3 +556,33 @@ inicialização (`0x8C15FAC8`).
     consumo dos prazos, apresentação). Esses efeitos ficam no teste dirigido acima, nas duas versões, e na rota do
     produto do passo `builder`; a comparação por operação continua só do banco, como no BS.
 - Regressão integral 14/14 (`analysis/hh15/regressao_7d2.log`), ctest 73/73.
+
+#### HH15.7d3 (concluído, 2026-10-29): temporização do vídeo (SPG) como serviço nativo
+
+- `native/render/kamui/spg_timing` (novo): as contas do SPG movidas de `pvr/pvr_regs.cpp` sem mudança (fase do feixe
+  pelo SPG_STATUS do boot, cruzamentos e próximo cruzamento de linha, próxima troca de linha, posição e SPG_STATUS;
+  guarda 0x0C8-0x0E0). `runtime/system/spg_bus` (papel `nativo`, no produto): a instância com o campo
+  `kCompatTicksPerField`; SPG_STATUS no instante atual (com o clock_log); SPG_LOAD e SPG_VBLANK_INT entregam os eventos
+  vencidos com a configuração anterior (`holly_intc_sync`) antes do valor novo e avisam o provedor de tempo depois.
+- Fonte única do SPG: o tempo (`cpu/time_legacy`, `transitional/time_adapter`) usa `spg_*`; o provedor nativo do Kamui
+  escreve e lê o SPG pelo serviço (antes pelo modelo dos registradores); `pvr/pvr_regs.cpp` delega ao serviço `reg()` em
+  0x0C8-0x0E0 (também com o banco emprestado, que tinha a mesma cópia), as escritas, o SPG_STATUS, o banco impresso, o
+  reset e o estado do boot. Saem do `pvr_regs.h`: `pvr_spg_*`, `pvr_vblank_*_line`, `SpgPos`, `kSpgNever`.
+- Testes (`tests/hh15_spg_tests.cpp`, no `hh_runtime_tests` e no `hh15_produto_sb_tests`): as contas contra uma cópia
+  das fórmulas anteriores numa grade (4 campos, 5 SPG_LOAD, 5 SPG_STATUS, 3 SPG_VBLANK, entrelaçado ou não; 8 instantes,
+  8 linhas, 5 intervalos), valores fixos num campo de conta exata e o contrato pela API (delegação, só leitura, dump,
+  boot, `spg_changed` só em reset/load/SPG_LOAD/SPG_VBLANK_INT, eventos vencidos avaliados com o valor anterior).
+  Mutações manuais conferidas: arredondamento da fase (reprova a grade) e `holly_intc_sync` depois do valor novo
+  (reprova o contrato).
+- Rota da área 1 (`hh-run`): 94 hashes iguais ao HH06 (o 3800 aparece partido por um diagnóstico do stderr no mesmo
+  log, mesmo valor); sombra do banco de status: 83 990 operações, 0 diferentes. Produto (`HeadHunter.exe --headless`):
+  94 hashes iguais à referência do produto. ctest 73/73.
+- Revisão Codex (`reviews/codex-hh15_7d3.log`), sem diferença de valores, arredondamento, fase, instantes ou contagem
+  de `spg_changed` apontada:
+  - [MÉDIA] aceito: o teste do contrato não via a chamada nem a ordem de `holly_intc_sync` (o provedor devolvia 0 e o
+    teste só olhava o valor guardado). O provedor do teste agora guarda o SPG visto em cada avaliação dos eventos
+    vencidos; conferido pela mutação acima;
+  - [BAIXA] aceito como limitação: as escritas e leituras do SPG pelo funil do Kamui não passam mais pelos diagnósticos
+    do modelo (`HH_TA_FONTES`, `HH_PVR_DEBUG`, `HH_PVR_WATCH`), que só existem nele; o modelo sai do produto no 7d4 e
+    esses diagnósticos continuam no caminho do guest pela memória.
+- Regressão integral 14/14 (`analysis/hh15/regressao_7d3.log`), ctest 73/73.

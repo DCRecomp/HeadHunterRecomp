@@ -6,7 +6,7 @@
 // provedor nativo (transitional/time_adapter); docs/N2-PLANO.md, N2a.
 #include "cpu/time_hooks.h"
 
-#include "pvr/pvr_regs.h"
+#include "system/spg_bus.h"
 
 namespace hh {
 namespace {
@@ -26,8 +26,8 @@ public:
 
     uint32_t holly_due(uint64_t now) override {
         uint32_t due = 0;
-        if (pvr_spg_crossed(last_, now, pvr_vblank_in_line())) due |= kDueVblankIn;
-        if (pvr_spg_crossed(last_, now, pvr_vblank_out_line())) due |= kDueVblankOut;
+        if (spg_crossed(last_, now, spg_vblank_in_line())) due |= kDueVblankIn;
+        if (spg_crossed(last_, now, spg_vblank_out_line())) due |= kDueVblankOut;
         if (renderDue_ && now >= renderDue_) {
             due |= kDueRender;
             renderDue_ = 0;

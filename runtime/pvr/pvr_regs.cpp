@@ -17,15 +17,17 @@
 // Modelo de tempo (aproximado, R1 do ARCHITECTURE.md): o campo dura 1/59.94 s de
 // CPU a 200 MHz, dividido igualmente entre as linhas. O bit 13 de SPG_STATUS fica
 // ligado de vstart ate vbend (o mesmo que o Flycast faz). Os ciclos do codigo gerado
-// sao estimados, entao a fase exata nunca coincide com o Flycast.
+// sao estimados, entao a fase exata nunca coincide com o Flycast. HH15.7d3: essas contas
+// estao no servico nativo system/spg_bus (native/render/kamui/spg_timing), a quem este
+// modelo delega 0x0C8-0x0E0 e o SPG_STATUS.
 #include "pvr/pvr_regs.h"
 #include "cpu/time_hooks.h"
-#include "debug/clock_log.h"
 
 #include "pvr/holly_intc.h"
 #include "pvr/pvr_render.h"
 #include "pvr/ta.h"
 #include "cpu/sh4_runtime.h"
+#include "system/spg_bus.h"
 
 #include <algorithm>
 #include <array>
@@ -40,10 +42,6 @@ constexpr uint32_t kBase      = 0x005F8000;
 constexpr uint32_t kSize      = 0x2000;
 constexpr uint32_t kId          = 0x005F8000;
 constexpr uint32_t kRevision    = 0x005F8004;
-constexpr uint32_t kSpgVblankInt = 0x005F80CC;
-constexpr uint32_t kSpgVblank = 0x005F80DC;
-constexpr uint32_t kSpgControl = 0x005F80D0;
-constexpr uint32_t kSpgLoad   = 0x005F80D8;
 constexpr uint32_t kSpgStatus = 0x005F810C;
 constexpr uint32_t kSoftReset  = 0x005F8008;  // comando: nao guarda o valor escrito
 constexpr uint32_t kStartRender = 0x005F8014; // comando: nao guarda o valor escrito
@@ -57,90 +55,30 @@ constexpr uint32_t kTaNextOpbInit = 0x005F8164;
 constexpr uint32_t kTaListInit = 0x005F8144;  // bit 31: inicia listas novas (comando)
 constexpr uint32_t kTaListCont = 0x005F8160;  // bit 31: continua as listas
 
-// campo NTSC 59.94 Hz na base de tempo de compatibilidade (cpu/time_hooks.h)
-constexpr uint64_t kFieldCycles    = kCompatTicksPerField;
-constexpr uint32_t kDefaultLines   = 263;                    // NTSC nao entrelacado
-
 std::array<uint32_t, kSize / 4> g_regs{};
 std::array<bool, kSize / 4>     g_reported{};
-// Fase do feixe no ciclo 0 (em ciclos de CPU, dentro de dois campos): vem do SPG_STATUS
-// deixado pelo BIOS (linha + campo), carregado com o banco de registradores.
-uint64_t                        g_phase = 0;
 PvrStartRenderHook              g_startHook = nullptr;
 uint64_t                        g_renderDue = 0;  // ciclo do fim de render pendente (0: nenhum)
 int                             g_startCount = 0;
 
 const uint32_t* g_regOverride = nullptr;  // HH13.6: registradores do provedor nativo do Kamui (render e video)
-uint32_t reg(uint32_t a) { return g_regOverride ? g_regOverride[(a - kBase) / 4] : g_regs[(a - kBase) / 4]; }
+// a temporizacao do video (0x0C8-0x0E0) e sempre a do servico (a copia emprestada pelo provedor nativo e a mesma)
+uint32_t reg(uint32_t a) {
+    if (spg_bus_holds(a - kBase)) return spg_bus_reg(a - kBase);
+    return g_regOverride ? g_regOverride[(a - kBase) / 4] : g_regs[(a - kBase) / 4];
+}
 
 // Area 0 vista por P0-P3 (o jogo usa P2, 0xA05F....).
 uint32_t canon(uint32_t a) { return a < 0xE0000000 ? (a & 0x1FFFFFFF) : 0; }
-
-uint32_t fieldLines() {
-    const uint32_t lines = ((reg(kSpgLoad) >> 16) & 0x3FF) + 1;
-    return lines < 2 ? kDefaultLines : lines;
-}
 
 } // namespace
 
 void pvr_regs_reset() {
     g_regs.fill(0);
-    g_phase = 0;
     g_renderDue = 0;
     g_reported.fill(false);
     time_provider().render_scheduled(0);  // nenhum fim de render pendente
-    time_provider().spg_changed();
-}
-
-uint32_t pvr_vblank_in_line() { return reg(kSpgVblankInt) & 0x3FF; }
-uint32_t pvr_vblank_out_line() { return (reg(kSpgVblankInt) >> 16) & 0x3FF; }
-
-bool pvr_spg_crossed(uint64_t from, uint64_t to, uint32_t line) {
-    if (to <= from) return false;
-    from += g_phase;
-    to += g_phase;
-    const uint32_t lines = fieldLines();
-    if (line >= lines) return false;  // linha que o campo nunca alcanca
-    const uint64_t off = uint64_t(line) * kFieldCycles / lines;
-    // eventos em off + k*campo; existe algum em (from, to]?
-    auto count = [&](uint64_t t) { return t < off ? 0ull : (t - off) / kFieldCycles + 1; };
-    return count(to) > count(from);
-}
-
-uint64_t pvr_spg_next_crossing(uint64_t after, uint32_t line) {
-    const uint32_t lines = fieldLines();
-    if (line >= lines) return kSpgNever;
-    const uint64_t off = uint64_t(line) * kFieldCycles / lines;
-    // mesma conta de pvr_spg_crossed: eventos em t com t + fase = off + k*campo, k >= 0
-    const uint64_t x = after + g_phase;
-    if (x < off) return off - g_phase;
-    const uint64_t k = (x - off) / kFieldCycles + 1;
-    return off + k * kFieldCycles - g_phase;
-}
-
-uint64_t pvr_spg_next_line_change(uint64_t after) {
-    // a mesma conta de pvr_spg_position: a linha muda na primeira posicao do campo com
-    // (posicao * linhas / campo) >= linha + 1, ou seja, em teto((linha + 1) * campo / linhas). (O
-    // inicio de linha de pvr_spg_next_crossing e truncado: no limite, a linha ainda nao mudou.)
-    const uint32_t lines = fieldLines();
-    const uint64_t x     = after + g_phase;
-    const uint64_t base  = x - x % kFieldCycles;
-    const uint32_t line  = uint32_t((x % kFieldCycles) * lines / kFieldCycles);
-    const uint64_t next  = line + 1 >= lines ? kFieldCycles : (uint64_t(line + 1) * kFieldCycles + lines - 1) / lines;
-    return base + next - g_phase;
-}
-
-SpgPos pvr_spg_position(uint64_t cycles) {
-    cycles += g_phase;
-    const uint32_t lines   = fieldLines();
-    const uint32_t vbstart = reg(kSpgVblank) & 0x3FF;
-    const uint32_t vbend   = (reg(kSpgVblank) >> 16) & 0x3FF;
-
-    SpgPos p;
-    p.line  = uint32_t((cycles % kFieldCycles) * lines / kFieldCycles);
-    p.vsync = vbstart > vbend ? (p.line >= vbstart || p.line < vbend) : (p.line >= vbstart && p.line < vbend);
-    p.blank = p.vsync;
-    return p;
+    spg_bus_reset();
 }
 
 bool pvr_reg_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
@@ -164,14 +102,7 @@ bool pvr_reg_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
         return true;
     }
     if (p == kSpgStatus) {
-        const uint64_t now = time_now(c);
-        const SpgPos   s   = pvr_spg_position(now);
-        // bit 10: campo (alterna a cada campo com SPG_CONTROL.interlace, bit 4); bit 11
-        // nunca aceso no Flycast
-        const bool interlace = reg(kSpgControl) & 0x10;
-        const bool field     = interlace && (((now + g_phase) / kFieldCycles) & 1);
-        v = (s.line & 0x3FF) | (field ? 1u << 10 : 0) | (s.vsync ? 1u << 13 : 0);
-        if (g_clock_log) clock_log_read(ClockRead::Spg, v);
+        v = spg_bus_read(c, kSpgStatusOff);  // tempo do video: servico nativo (HH15.7d3)
         return true;
     }
     v = reg(p);
@@ -209,18 +140,14 @@ void     pvr_render_done_take() { g_renderDue = 0; }
 
 void pvr_regs_load(const uint32_t* words) {
     for (uint32_t i = 0; i < kSize / 4; ++i) g_regs[i] = words[i];
-    const uint32_t status = words[(kSpgStatus - kBase) / 4];
-    const uint32_t lines  = fieldLines();
-    const uint32_t line   = std::min<uint32_t>(status & 0x3FF, lines - 1);
-    g_phase = ((status >> 10) & 1) * kFieldCycles + (uint64_t(line) * kFieldCycles + lines - 1) / lines;
-    time_provider().spg_changed();
+    spg_bus_load(words);  // a temporizacao e a fase do feixe deixadas pelo boot
 }
 
 void pvr_regs_dump(Sh4Context* c, uint32_t* out) {
     for (uint32_t i = 0; i < kSize / 4; ++i) {
         const uint32_t p = kBase + 4 * i;
         if (p == kId || p == kRevision || p == kSpgStatus) pvr_reg_read(c, p, 4, out[i]);
-        else out[i] = g_regs[i];  // sem o registro de "leitura sem modelo"
+        else out[i] = spg_bus_holds(4 * i) ? spg_bus_reg(4 * i) : g_regs[i];  // sem "leitura sem modelo"
     }
 }
 
@@ -315,7 +242,10 @@ bool pvr_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
                      (unsigned long long)c->cycles);
     // Testes de integracao: HH_STOP_ON_STARTRENDER=<n> para na n-esima escrita em STARTRENDER
     if (p == 0x005F8014) pvr_start_render(c);
-    if (p == kSpgLoad || p == kSpgVblankInt) holly_intc_sync(time_now(c));
+    if (spg_bus_holds(p - kBase)) {  // tempo do video: servico nativo (HH15.7d3)
+        spg_bus_write(c, p - kBase, v);
+        return true;
+    }
     if (p == kTaListInit && (v & 0x80000000)) {
         ta_list_init();
         // o TA recomeca nos ponteiros iniciais; o jogo le TA_ITP_CURRENT para saber onde
@@ -329,7 +259,6 @@ bool pvr_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {
     const bool command = p == kTaListInit || p == kStartRender || p == kSoftReset;
     const bool readOnly = p == kSpgStatus || p == kId || p == kRevision || p == kTaYuvTexCnt;
     if (!command && !readOnly) g_regs[(p - kBase) / 4] = v;
-    if (p == kSpgLoad || p == kSpgVblankInt) time_provider().spg_changed();  // nova temporizacao do SPG
     if (p == kTaYuvTexBase || p == kTaYuvTexCtrl) ta_yuv_reset(reg(kTaYuvTexBase), reg(kTaYuvTexCtrl));
     return true;
 }

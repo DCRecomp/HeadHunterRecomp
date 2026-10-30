@@ -11,7 +11,7 @@
 #include "platform/event_queue.h"
 #include "platform/progress.h"
 #include "pvr/holly_intc.h"
-#include "pvr/pvr_regs.h"
+#include "system/spg_bus.h"
 
 #include <array>
 #include <chrono>
@@ -436,7 +436,7 @@ private:
         if (const auto n = disc_.next_due()) target = std::min(target, n->ticks);
         bool line = false;
         if (kind == WaitKind::SpgLine) {
-            const uint64_t l = pvr_spg_next_line_change(now);
+            const uint64_t l = spg_next_line_change(now);
             if (l != kSpgNever && l < target) target = l, line = true;
         }
         if (target == kNoTarget) {
@@ -508,9 +508,9 @@ private:
             if (fuseVblank_ && mutate) {  // o proximo VBlank cai junto com o seguinte: um so atendimento
                 const auto ev = display_.pending(vbIn_) ? vbIn_ : nt::EventId{};
                 if (ev) {
-                    const uint32_t line = pvr_vblank_in_line();
-                    const uint64_t next = pvr_spg_next_crossing(e.due.ticks, line);
-                    const uint64_t next2 = pvr_spg_next_crossing(next, line);
+                    const uint32_t line = spg_vblank_in_line();
+                    const uint64_t next = spg_next_crossing(e.due.ticks, line);
+                    const uint64_t next2 = spg_next_crossing(next, line);
                     display_.reschedule(ev, nt::Instant{next2});
                     post(display_, nt::EventKind::VBlankIn, next2, 1);
                 }
@@ -555,8 +555,8 @@ private:
     // proximo cruzamento da linha de VBlank-In/Out depois de `after` (sem evento se a linha
     // esta fora do campo)
     nt::EventId postCrossing(nt::EventKind k, uint64_t after) {
-        const uint32_t line = k == nt::EventKind::VBlankIn ? pvr_vblank_in_line() : pvr_vblank_out_line();
-        const uint64_t at   = pvr_spg_next_crossing(after, line);
+        const uint32_t line = k == nt::EventKind::VBlankIn ? spg_vblank_in_line() : spg_vblank_out_line();
+        const uint64_t at   = spg_next_crossing(after, line);
         if (at == kSpgNever) return {};
         if (drift_ && k == nt::EventKind::VBlankIn) driftTotal_ += kMutationDrift;  // mutacao
         return post(display_, k, at + (k == nt::EventKind::VBlankIn ? driftTotal_ : 0));
@@ -587,11 +587,11 @@ private:
         ++stats.delivered[static_cast<size_t>(e.kind)];
         if (!trace_) return;
         // criterio A2: o devido de um VBlank tem de ser o cruzamento da linha do SPG, conferido
-        // com a conta do legado (pvr_spg_crossed), independente de pvr_spg_next_crossing
+        // com a conta do legado (spg_crossed), independente de spg_next_crossing
         const char* line = "-";
         if ((e.kind == nt::EventKind::VBlankIn || e.kind == nt::EventKind::VBlankOut) && e.payload == 0) {
-            const uint32_t l = e.kind == nt::EventKind::VBlankIn ? pvr_vblank_in_line() : pvr_vblank_out_line();
-            line = e.due.ticks > 0 && pvr_spg_crossed(e.due.ticks - 1, e.due.ticks, l) ? "1" : "0";
+            const uint32_t l = e.kind == nt::EventKind::VBlankIn ? spg_vblank_in_line() : spg_vblank_out_line();
+            line = e.due.ticks > 0 && spg_crossed(e.due.ticks - 1, e.due.ticks, l) ? "1" : "0";
         }
         std::fprintf(trace_, "%llu\t%s\t%llu\t%llu\t%s\n", ull(traceSeq_++), nt::event_kind_name(e.kind),
                      ull(e.due.ticks), ull(at.ticks), line);

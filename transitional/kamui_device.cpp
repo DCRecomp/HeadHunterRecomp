@@ -19,6 +19,7 @@
 #include "render/kamui/texture_heap.h"
 #include "render_capture.h"
 #include "system/dma_bus.h"
+#include "system/spg_bus.h"
 
 #include <array>
 #include <cstdio>
@@ -192,8 +193,9 @@ template <class F> void withNative(F&& fn) {
             ta_set_override(nullptr, nullptr);
         }
     } restore;
-    // tempo do video (SPG, 0x0C8-0x0E0): continua no runtime (HH15), escrito tambem fora do funil (0x8C169FE0)
-    for (uint32_t off = 0x0C8; off <= 0x0E0; off += 4) s.fs.set(off, pvr_reg(kRegBase + off));
+    // tempo do video (SPG, 0x0C8-0x0E0): servico nativo system/spg_bus (HH15.7d3), escrito tambem fora do funil
+    // (0x8C169FE0); a copia serve o banco impresso pelos diagnosticos
+    for (uint32_t off = 0x0C8; off <= 0x0E0; off += 4) s.fs.set(off, spg_bus_reg(off));
     pvr_regs_set_override(s.fs.data());
     vram_set_override(s.heap.data());
     ta_set_override(&s.taCopy, &s.taBytes);
@@ -308,7 +310,7 @@ void fRegWriteNative(Sh4Context* c) {
     if (off >= 0x2000 || (off & 3)) return callOriginal(c, kRegWrite);  // fora do banco: nao acontece no jogo
     c->cycles += kRegWriteCycles;
     c->r[0] = 1;  // o original devolve 1 (mov #1,r0 no slot do rts)
-    if (off >= 0x0C8 && off <= 0x0E0) pvr_reg_write(c, kRegBase + off, 4, val);  // tempo do video (SPG): HH15
+    if (spg_bus_holds(off)) spg_bus_write(c, off, val);  // tempo do video (SPG): servico nativo, HH15.7d3
     if (off == kStartRender) {
         ++s.stats.nativeRenders;
         // HH15.7b: com a captura como o renderizador (Software ou Native), o render vem da IR do ListSink; nos modos de
@@ -359,7 +361,7 @@ void fRegReadNative(Sh4Context* c) {
     if (off >= 0x2000 || (off & 3)) return callOriginal(c, kRegRead);
     c->cycles += kRegReadCycles;  // antes da leitura, como no original (SPG_STATUS depende do instante)
     uint32_t v = 0;
-    if (off == kSpgStatus) pvr_reg_read(c, kRegBase + off, 4, v);  // tempo do video (SPG): HH15.7d
+    if (off == kSpgStatus) v = spg_bus_read(c, off);  // tempo do video (SPG): servico nativo, HH15.7d3
     else v = s.fs.read(off);
     GuestCall(c).ret(v);
 }
@@ -591,7 +593,7 @@ Mode mode() { return st().mode; }
 
 void video_frame(std::vector<uint32_t>& argb, uint32_t& width, uint32_t& height) {
     State&         s   = st();
-    const uint32_t spg = pvr_reg(kRegBase + kSpgControl);  // tempo do video (SPG): HH15.7d
+    const uint32_t spg = spg_bus_reg(kSpgControl);  // tempo do video (SPG): servico nativo, HH15.7d3
     // HH15.7c: a imagem exibida pelo servico nativo; nos modos de verificacao a saida de video do runtime (sobre o mesmo
     // estado emprestado) e a referencia e o nativo e conferido com ela, quadro a quadro
     if (render_capture::draws_lists()) return nk::scanout(s.fs, spg, s.heap, argb, width, height);

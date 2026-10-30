@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink, 7c estado nativo do quadro, 7d1 DMA/system block e 7d2 banco de interrupções nativos concluídos) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink, 7c estado nativo do quadro, 7d1 DMA/system block, 7d2 banco de interrupções e 7d3 SPG nativos concluídos) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -380,6 +380,14 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   da entrega dos eventos no serviço do produto (`hh15_intc_entrega_de_eventos_vencidos`, conferido por mutação manual);
   parcial [MÉDIA] a sombra compara só o banco (efeitos no teste dirigido e na rota do produto). Produto: 94 hashes
   iguais. Regressão integral 14/14 (`analysis/hh15/regressao_7d2.log`), ctest 73/73.
+- HH15.7d3 (concluído, 2026-10-29): temporização do vídeo (SPG) como serviço nativo (`native/render/kamui/spg_timing`,
+  as contas movidas de `pvr/pvr_regs.cpp` sem mudança; `runtime/system/spg_bus`, papel `nativo`): fonte única do SPG
+  para os dois provedores de tempo, o provedor nativo do Kamui e o modelo dos registradores (que delega 0x0C8-0x0E0, o
+  SPG_STATUS, o dump, o reset e o boot). Testes `tests/hh15_spg_tests.cpp` (grade contra a cópia das fórmulas
+  anteriores, valores fixos, contrato; mutações manuais conferidas). Revisão Codex (`reviews/codex-hh15_7d3.log`):
+  aceito [MÉDIA] o teste passa a ver `holly_intc_sync` antes do valor novo; [BAIXA] registrado: o SPG pelo funil do
+  Kamui não passa mais pelos diagnósticos do modelo. Rota da área 1 e produto: 94 hashes iguais. Regressão integral
+  14/14 (`analysis/hh15/regressao_7d3.log`), ctest 73/73.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 
