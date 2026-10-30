@@ -21,7 +21,7 @@ Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink, 7c estado nativo do quadro, 7d1 DMA/system block, 7d2 banco de interrupções e 7d3 SPG nativos concluídos; 7d4a pedido de render e VBlank como serviços) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (HH15.0, HH15.1, HH15.5 e HH15.6 concluídas; HH15.2–HH15.4 em curso: runtime por papel com catraca no mapa do linker, syscalls por serviço nativo e Maple por barramento sem dispositivos, HLE e modelo do Maple fora do produto; HH15.6: área de som nativa, modelo da AICA fora do produto; HH15.7 em curso: 7a software sobre a IR, 7b ListSink, 7c estado nativo do quadro, 7d1 DMA/system block, 7d2 banco de interrupções e 7d3 SPG nativos concluídos; 7d4a pedido de render e VBlank como serviços, 7d4b desenho separado da captura) |
 | HH16 | PENDENTE | — |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -395,6 +395,12 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   Revisão Codex (`reviews/codex-hh15_7d4a.log`): sem achados (falha de teste de som do sandbox somente leitura,
   rejeitada). Rota da área 1 e produto: 94 hashes iguais. Regressão integral 14/14
   (`analysis/hh15/regressao_7d4a.log`), ctest 73/73.
+- HH15.7d4b (concluído, 2026-10-30): o desenho da IR separado da captura: `transitional/render_devices` (produto: os
+  dispositivos Vulkan e software sobre a IR com os caches de textura, a fonte dos texels escolhida pelo dono, o
+  resumo no mesmo formato e o renderizador do produto, que lê os texels só da memória nativa) e `render_capture` só com
+  o caminho do TA (verificação), sobre os mesmos dispositivos com os texels do runtime. Teste
+  `tests/unit/test_hh15_render_devices.cpp`. Revisão Codex (`reviews/codex-hh15_7d4b.log`): sem achados. Rota da área
+  1 e produto: 94 hashes iguais. Regressão integral 14/14 (`analysis/hh15/regressao_7d4b.log`), ctest 73/73.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

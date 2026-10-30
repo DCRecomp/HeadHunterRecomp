@@ -12,9 +12,7 @@
 #include "render/kamui/texture_heap.h"
 #include "render/kamui/texture_source.h"
 #include "render/render_ir.h"
-#include "render/soft/soft_device.h"
 #include "render/texture_convert.h"
-#include "render/vulkan/vk_device.h"
 
 #include <algorithm>
 #include <chrono>
@@ -85,12 +83,14 @@ bool same_vertex(const PvrVertex& a, const PvrVertex& b) {
     return std::memcmp(&a, &b, sizeof a) == 0;  // exato: os dois lados sao os mesmos floats
 }
 
-nr::ITextureReplacements* g_replacements = nullptr;  // texturas HD (set_texture_replacements)
-Fault                     g_fault        = Fault::None;     // testes do recuo (inject_fault)
-float                     g_scale        = 1.f;             // resolucao interna (set_scale)
-const km::ListSink*       g_list         = nullptr;         // HH15.7b: o ListSink nativo (set_list_sink)
-const km::FrameState*     g_fs           = nullptr;         // HH15.7c: o estado do quadro nativo (set_native_memory)
-const km::TextureHeap*    g_heap         = nullptr;         // HH15.7c: a memoria das texturas nativa
+const km::ListSink* g_list = nullptr;  // HH15.7b: o ListSink nativo (set_list_sink)
+
+// Os texels do runtime (VRAM e paleta do modelo; sem conversao nativa, o decodificador do legado)
+class LegacyTextures final : public TextureSource {
+public:
+    void bytes(const TextureKey& k, std::vector<uint8_t>& raw) override { texture_source(k, raw); }
+    bool argb(const TextureKey& k, std::vector<uint32_t>& argb, bool& legacy) override { return texture_argb(k, argb, legacy); }
+};
 
 // Os parametros do quadro campo a campo (os floats pelos bits: a mesma conta tem de dar o mesmo valor; sem o
 // preenchimento entre os campos)
@@ -211,82 +211,43 @@ public:
     void skipped(const TaParam&) override { ++frame.skipped_params; }
 
     bool render(const PvrFrame&, uint32_t w, uint32_t h, std::vector<uint32_t>& image) override {
-        static const std::pair<uint64_t, std::string> dumpAt = [] {
-            const char* v = std::getenv("HH_RENDER_IR_GUARDAR");
-            if (!v || !std::strchr(v, ':')) return std::pair<uint64_t, std::string>{0, {}};
-            return std::pair<uint64_t, std::string>{std::strtoull(v, nullptr, 10), std::strchr(v, ':') + 1};
-        }();
-        if (dumpAt.first && st.renders + 1 == dumpAt.first)
-            std::fprintf(stderr, "[render] IR do render %llu em %s: %s\n", static_cast<unsigned long long>(dumpAt.first),
-                         dumpAt.second.c_str(), save_frame_dump(dumpAt.second, frame) ? "ok" : "FALHOU");
-        if (mode == Mode::Software) return soft_render(w, h, image);
+        maybe_save_frame_dump(st.renders + 1, frame, legacy_textures());
+        if (mode == Mode::Software) return dev_.soft_render(frame, w, h, image);
         if (mode != Mode::Native && mode != Mode::Compare) return false;
-        vkOk_ = vk_render(w, h, mode == Mode::Native ? image : vkImage_);
-        if (mode == Mode::Native && !vkOk_) return soft_render(w, h, image);  // HH15.7a: o recuo e o software sobre a IR
+        // N7c: a escala so no nativo (o modo comparar compara na resolucao do jogo)
+        vkOk_ = dev_.vk_render(frame, mode == Mode::Native ? scale() : 1.f, w, h, mode == Mode::Native ? image : vkImage_);
+        if (mode == Mode::Native && !vkOk_) return dev_.soft_render(frame, w, h, image);  // HH15.7a: o recuo
         return mode == Mode::Native && vkOk_;
     }
 
     bool renders() const override { return mode == Mode::Software || mode == Mode::Native; }
-
-    // HH15.7b (produto): a IR do ListSink (as listas do Kamui decodificadas direto) no lugar da montagem pelos retornos
-    // do decodificador do legado; o resto (dispositivo, texturas, estatisticas) e o mesmo
-    bool render_list(const km::ListFrame& lf, uint32_t w, uint32_t h, std::vector<uint32_t>& image) {
-        frame                   = {};
-        frame.cl                = lf.cl;
-        frame.textures          = lf.textures;
-        frame.texture_stride    = lf.texture_stride;
-        frame.modifier_params   = lf.modifier_params, frame.modifier_volumes = lf.modifier_volumes;
-        frame.modifier_unclosed = lf.modifier_unclosed, frame.skipped_params = lf.skipped_params;
-        frame.sprites           = lf.sprites;
-        stride_                 = lf.texture_stride;
-        nativeTex_              = g_fs && g_heap;  // HH15.7c: os texels pela memoria nativa (sem a VRAM do runtime)
-        const bool ok           = render(PvrFrame{}, w, h, image);
-        nativeTex_              = false;
-        st.modifier_unclosed += frame.modifier_unclosed;
-        ++st.renders;
-        account();
-        return ok;
-    }
-
-    void account() {
-        st.draws += frame.cl.draws.size(), st.vertices += frame.cl.vertices.size(), st.sprites += frame.sprites;
-        st.frame_textures += frame.textures.size();  // HH15.7c: o total, independente do comparador (o portao confere)
-        st.modifier_params += frame.modifier_params, st.modifier_volumes += frame.modifier_volumes;
-        st.skipped_params += frame.skipped_params;
-        for (const nr::Draw& d : frame.cl.draws) {
-            const size_t fog = size_t(d.state.fog);
-            if (fog < st.fog_draws.size()) {
-                ++st.fog_draws[fog];
-                if (!st.fog_first_render[fog]) st.fog_first_render[fog] = st.renders;
-            }
-        }
-        if (!frame.cl.modifiers.empty() && !st.modifier_first_render) st.modifier_first_render = st.renders;
-    }
 
     // HH15.7c: com o estado nativo registrado (set_native_memory), os parametros do quadro, o stride e os texels de cada
     // textura do render lidos do estado do quadro e da memoria das texturas nativos tem de ser os que a captura leu dos
     // registradores e da VRAM do runtime (emprestados com o mesmo estado), e a imagem fica para o comparador da gravacao
     // do framebuffer (kamui_device). Negativos HH_KAMUI_NATIVO_MUTACAO=quadro|textura
     void check_native(std::span<const uint32_t> image, uint32_t w, uint32_t h) {
-        if (!g_fs || !g_heap) return;
+        const km::FrameState*  fs   = native_frame_state();
+        const km::TextureHeap* heap = native_texture_heap();
+        if (!fs || !heap) return;
         lastImage_.assign(image.begin(), image.end()), lastW_ = w, lastH_ = h;
         ++st.native_checked;
         auto fail = [&](uint64_t& counter, const std::string& why) {
             ++counter;
             if (st.native_error.empty()) st.native_error = "render " + std::to_string(st.renders) + ": " + why;
         };
-        nr::FrameParams nf = km::frame_params(*g_fs, *g_heap, frame.cl.frame.width, frame.cl.frame.height);
+        nr::FrameParams nf = km::frame_params(*fs, *heap, frame.cl.frame.width, frame.cl.frame.height);
         if (native_mutation("quadro")) nf.clear_depth += 1.f;
-        if (!same_frame(nf, frame.cl.frame) || g_fs->texture_stride() != stride_)
+        if (!same_frame(nf, frame.cl.frame) || fs->texture_stride() != stride_)
             fail(st.native_frame_mismatch, "parametros do quadro");
         for (const TextureKey& k : frame.textures) {
             std::vector<uint8_t>  raw, nraw;
             std::vector<uint32_t> argb, nargb;
             bool                  legacy = false;
             texture_source(k, raw);
-            km::texture_bytes(*g_fs, *g_heap, k, nraw);
+            km::texture_bytes(*fs, *heap, k, nraw);
             const bool have  = texture_argb(k, argb, legacy);
-            const bool nhave = km::convert_texture(*g_fs, *g_heap, k, nargb);
+            const bool nhave = km::convert_texture(*fs, *heap, k, nargb);
             if (native_mutation("textura") && !nargb.empty()) nargb[0] ^= 0x00FFFFFF;
             ++st.native_tex_checked;
             char b[64];
@@ -348,7 +309,7 @@ public:
         st.modifier_unclosed += frame.modifier_unclosed;
         ++st.renders;
         if (mode == Mode::Compare && vkOk_) compare(image, w, h);
-        account();
+        account(frame, st);
         check_list_sink();
         check_native(image, w, h);
         // HH15.7a: em todo render do conferir (nao so nos amostrados), o software sobre a IR (o dispositivo, com as
@@ -356,7 +317,7 @@ public:
         // contada a parte (soft_failures), nunca como imagem divergente
         if (mode == Mode::Check) {
             std::vector<uint32_t> dev;
-            if (soft_render(w, h, dev)) {
+            if (dev_.soft_render(frame, w, h, dev)) {
                 ++st.soft_checked;
                 if (dev.size() != image.size() || std::memcmp(dev.data(), image.data(), image.size() * 4) != 0) {
                     size_t diff = 0;
@@ -437,266 +398,12 @@ private:
     uint32_t               mod_instr_ = 0, mod_closed_ = 0;  // instrucao do ultimo global; volumes com ultimo poligono
     std::set<std::pair<uint64_t, uint64_t>> keys_, ids_;  // para o resumo: quantas chaves e quantos conteudos
 
-    // ---- N7b: backend Vulkan ----
-    std::shared_ptr<nr::VulkanDevice> vk_;  // o dispositivo do processo (o mesmo da apresentacao direta)
-    bool                              vkTried_ = false, vkOk_ = false;
-    std::vector<uint32_t>             vkImage_;
-    struct VkTex {
-        nr::TextureHandle    handle;
-        std::vector<uint8_t> raw;
-        uint64_t             used = 0;
-        uint32_t             w = 0, h = 0;  // o tamanho no dispositivo (o da substituicao, se houver)
-        const void*          provider = nullptr;
-    };
-    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, VkTex> vkTex_;
-    std::vector<uint8_t>  raw_;
-    std::vector<uint32_t> argb_;
-
-    // N7c: os ultimos renders na escala (o mais novo na frente): a imagem reduzida que foi para a VRAM (para achar o
-    // render exibido) e a maior. Tres por causa do buffer duplo (o exibido e o anterior ao ultimo) com folga.
-    struct Hires {
-        std::vector<uint32_t> down;
-        uint64_t              seq = 0;
-        uint32_t              w = 0, h = 0, iw = 0, ih = 0;
-    };
-    std::deque<Hires> hires_;
-
-public:
-    HiresImage hires_for(std::span<const uint32_t> shown, uint32_t w, uint32_t h) {
-        if (hires_.empty()) return {};
-        if (g_scale == 1.f) {
-            hires_.clear();
-            return {};
-        }
-        // o video pode mostrar so parte das linhas do render (entrelacado: 640 x 476 de um render de 640 x 480): procura a
-        // linha do render em que a imagem exibida comeca (ate 8 de deslocamento)
-        for (const Hires& e : hires_) {
-            if (e.w != w || h > e.h || shown.size() != size_t(w) * h) continue;
-            for (uint32_t dy = 0; dy <= std::min<uint32_t>(8, e.h - h); ++dy) {
-                // amostra de 1 pixel em 4 nas duas direcoes; diferenca por canal <= 16 (565/555/4444 perdem ate 4 bits)
-                uint32_t n = 0, bad = 0;
-                for (uint32_t y = 1; y < h && bad * 1000 <= n + 1000; y += 4)
-                    for (uint32_t x = 1; x < w; x += 4, ++n) {
-                        const uint32_t a = shown[size_t(y) * w + x], b = e.down[size_t(y + dy) * w + x];
-                        for (int s = 0; s < 24; s += 8)
-                            if (std::abs(int((a >> s) & 0xFF) - int((b >> s) & 0xFF)) > 16) {
-                                ++bad;
-                                break;
-                            }
-                    }
-                if (n && bad * 1000 <= n) {  // ate 0,1 % fora (bordas de recorte do framebuffer)
-                    ++st.hires_shown;
-                    HiresImage r{e.seq, e.iw, e.ih};
-                    // as linhas da imagem maior que correspondem as exibidas
-                    r.y0 = uint32_t(std::lround(double(dy) * e.ih / e.h)), r.rows = uint32_t(std::lround(double(h) * e.ih / e.h));
-                    r.rows = std::min(r.rows, e.ih - r.y0);
-                    return r;
-                }
-            }
-        }
-        ++st.hires_missed;
-        return {};
-    }
-
-    bool read_hires(const HiresImage& h, std::vector<uint32_t>& argb, uint32_t& w) {
-        return vk_ && h.seq && vk_->read_slot(h.seq, h.y0, h.rows, argb, w);
-    }
-
-    std::string dumpDir;
-    uint32_t    dumpEvery = 300;
-    ~Capture() override { drop_vk(false); }
-
-private:
-    bool ensure_vk() {
-        if (vk_) return true;
-        if (vkTried_) return false;
-        vkTried_ = true;
-        vk_      = nr::vulkan_shared(&st.vk_error);
-        if (!vk_) {
-            std::fprintf(stderr, "[render] Vulkan indisponivel (%s): renderizador em software\n", st.vk_error.c_str());
-            return false;
-        }
-        st.vk_device = vk_->stats().device;
-        const auto& vs = vk_->stats();
-        // garantido bit a bit com arredondamento ao par (RTE) e profundidade crua; os subnormais (abaixo de 1,2e-38) ficam
-        // no padrao do dispositivo quando ele nao garante preserva-los
-        std::fprintf(stderr,
-                     "[render] Vulkan: %s (modo fiel bit a bit %s: arredondamento ao par %s, subnormais preservados %s, "
-                     "profundidade crua %s)\n",
-                     st.vk_device.c_str(), vs.float_controls && vs.raw_depth ? "garantido" : "NAO garantido",
-                     vs.float_controls ? "sim" : "nao", vs.denorm_preserve ? "sim" : "padrao do dispositivo",
-                     vs.raw_depth ? "sim" : "nao");
-        return true;
-    }
-
-    // handle do dispositivo para a textura: refeita quando os bytes da VRAM (ou a paleta) mudam
-    bool texture_handle(const TextureKey& k, nr::TextureHandle& out) {
-        if (g_fault == Fault::Texture) {
-            g_fault = Fault::None;
-            return false;
-        }
-        source(k, raw_);
-        VkTex& e = vkTex_[{k.tcw, k.width, k.height, k.stride}];
-        e.used   = st.renders;
-        if (e.handle && e.raw == raw_ && e.provider == g_replacements) {
-            out = e.handle;
-            return true;
-        }
-        bool legacy = false;
-        if (!argb_of(k, argb_, legacy)) return false;
-        st.tex_legacy += legacy;
-        // substituicao HD pelo conteudo (nunca pelo endereco): compativel ou o original
-        const std::vector<uint32_t>* texels = &argb_;
-        uint32_t                     tw = k.width, th = k.height;
-        if (g_replacements) {
-            const nr::TextureId id = nr::texture_id(k.width, k.height, argb_);
-            if (const nr::ReplacementTexture* r = g_replacements->find(id)) {
-                if (nr::replacement_compatible(id, *r)) texels = &r->argb, tw = r->width, th = r->height, ++st.tex_replaced;
-                else ++st.tex_replace_rejected;
-            }
-        }
-        const auto bytes = std::as_bytes(std::span<const uint32_t>(*texels));
-        if (e.handle && (e.w != tw || e.h != th)) vk_->destroy_texture(e.handle), e.handle = {};
-        if (e.handle) {
-            if (!vk_->update_texture(e.handle, bytes)) return false;
-        } else {
-            nr::TextureDesc d;
-            d.width = tw, d.height = th;
-            auto r = vk_->create_texture(d, bytes);
-            if (!r) return false;
-            e.handle = r.value();
-        }
-        e.w = tw, e.h = th, e.provider = g_replacements;
-        e.raw = raw_;
-        ++st.tex_uploads;
-        out = e.handle;
-        return true;
-    }
-
-    void evict() {  // texturas sem uso ha 600 renders saem da GPU
-        for (auto it = vkTex_.begin(); it != vkTex_.end();)
-            if (st.renders - it->second.used > 600) {
-                if (it->second.handle) vk_->destroy_texture(it->second.handle);
-                it = vkTex_.erase(it), ++st.tex_evicted;
-            } else {
-                ++it;
-            }
-    }
-
-    // Perda do dispositivo (VK_ERROR_DEVICE_LOST e falhas do quadro): o dispositivo e recriado a partir dos dados da
-    // CPU (as texturas voltam do cache da VRAM) e o MESMO render e refeito; ate kRecoveries por sessao. Falhou de novo:
-    // software ate o fim da sessao (docs/N7-PLANO.md secao 3).
-    static constexpr uint32_t kRecoveries = 3;
-    bool vk_render(uint32_t w, uint32_t h, std::vector<uint32_t>& out) {
-        std::string why;
-        if (vk_attempt(w, h, out, &why)) return true;
-        if (!vk_ && vkTried_ && why.empty()) return false;  // sem Vulkan desde o inicio
-        ++st.vk_failures;
-        if (why == "textura") return false;  // so este render no software (o dispositivo continua)
-        if (st.vk_recoveries < kRecoveries) {
-            ++st.vk_recoveries;
-            std::fprintf(stderr, "[render] Vulkan: falha no render %llu (%s); recriando o dispositivo (%u de %u)\n",
-                         static_cast<unsigned long long>(st.renders + 1), why.c_str(), unsigned(st.vk_recoveries), kRecoveries);
-            drop_vk(true);
-            vkTried_ = false;  // ensure_vk cria de novo
-            std::string again;
-            if (vk_attempt(w, h, out, &again)) return true;
-            ++st.vk_failures;
-            why = again.empty() ? "recriacao" : again;
-        }
-        st.vk_error = "falha do dispositivo Vulkan no render " + std::to_string(st.renders + 1) + " (" + why +
-                      "): renderizador em software ate o fim da sessao";
-        std::fprintf(stderr, "[render] %s\n", st.vk_error.c_str());
-        drop_vk(true);
-        vkTried_ = true;  // nao tenta mais
-        return false;
-    }
-
-    // lost = o dispositivo se perdeu: o compartilhado e descartado (o proximo e outro); senao as texturas deste uso saem
-    // dele (a apresentacao pode continuar com ele)
-    void drop_vk(bool lost) {
-        if (vk_ && !lost) {
-            vk_->set_scale(1.f);
-            for (auto& [k, t] : vkTex_)
-                if (t.handle) vk_->destroy_texture(t.handle);
-        }
-        if (vk_ && lost) nr::vulkan_shared_lost(vk_.get());
-        vkTex_.clear();
-        hires_.clear();
-        vk_.reset();
-    }
-
-    bool vk_attempt(uint32_t w, uint32_t h, std::vector<uint32_t>& out, std::string* why) {
-        if (!ensure_vk()) return false;
-        if (st.renders % 300 == 0) evict();
-        std::vector<nr::TextureHandle> handles(frame.textures.size());
-        for (size_t i = 0; i < frame.textures.size(); ++i)
-            if (!texture_handle(frame.textures[i], handles[i])) {
-                // sem a textura o quadro sairia errado: este render fica no software (nunca um desenho sem textura)
-                if (st.vk_error.empty()) st.vk_error = "textura nao enviada ao Vulkan (render no software)";
-                *why = "textura";
-                return false;
-            }
-        const std::vector<nr::Draw> saved = frame.cl.draws;  // a IR do quadro fica com os handles do quadro
-        for (nr::Draw& d : frame.cl.draws)
-            if (d.state.texture) d.state.texture = handles[d.state.texture.value - 1];
-        uint32_t   rw = 0, rh = 0;
-        // N7c: a escala so no nativo (o modo comparar compara na resolucao do jogo)
-        const float    sc = mode == Mode::Native ? g_scale : 1.f;
-        vk_->set_scale(sc);
-        if (sc == 1.f) hires_.clear();
-        // testes: Device falha esta tentativa e a da recuperacao; DeviceOnce so esta
-        const bool injected = g_fault == Fault::Device || g_fault == Fault::DeviceOnce || g_fault == Fault::DeviceAgain;
-        if (g_fault == Fault::Device) g_fault = Fault::DeviceAgain;
-        else if (injected) g_fault = Fault::None;
-        const auto t0 = std::chrono::steady_clock::now();
-        const bool submitted = !injected && vk_->submit(frame.cl).ok();
-        const auto t1        = std::chrono::steady_clock::now();
-        // a leitura de volta e sempre na resolucao do jogo (com a escala, a reducao feita na GPU)
-        const bool ok = submitted && vk_->read_frame(out, rw, rh).ok() && rw == w && rh == h;
-        frame.cl.draws = saved;
-        uint32_t       iw = 0, ih = 0;
-        const uint64_t seq = ok && sc != 1.f ? vk_->last_slot(iw, ih) : 0;
-        if (ok && sc != 1.f) {
-            ++st.hires_renders, st.hires_w = iw, st.hires_h = ih;
-            st.hires_cpu_ms_total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
-        }
-        if (seq) {  // a imagem maior ficou num slot da GPU (para a apresentacao direta)
-            Hires e;
-            e.down = out, e.seq = seq, e.w = w, e.h = h, e.iw = iw, e.ih = ih;
-            hires_.push_front(std::move(e));
-            if (hires_.size() > 3) hires_.pop_back();
-        }
-        if (ok) {
-            ++st.vk_frames;
-            st.vk_fragment_retries = vk_->stats().fragment_retries, st.vk_negative_depth = vk_->stats().negative_depth_frames;
-            st.vk_gpu_ms_total = vk_->stats().gpu_ms_total, st.vk_gpu_ms_max = vk_->stats().gpu_ms_max;
-            st.vk_max_layers   = vk_->stats().max_layers;
-            return true;
-        }
-        *why = injected                           ? std::string("falha injetada")
-               : !vk_->stats().last_error.empty() ? vk_->stats().last_error
-               : (rw != w || rh != h)             ? "tamanho " + std::to_string(rw) + "x" + std::to_string(rh) + " em vez de " +
-                                                        std::to_string(w) + "x" + std::to_string(h)
-                                                  : std::string("leitura do quadro");
-        return false;
-    }
-
-    // HH15.7c: no render pela IR do ListSink, os bytes e os texels das texturas vem do estado e da memoria nativos (sem
-    // o decodificador do legado: uma textura sem conversao nativa nao e enviada e o render falha); no caminho do TA, os do
-    // runtime
-    bool                  nativeTex_ = false;
-    std::vector<uint32_t> lastImage_;
+    // ---- os dispositivos sobre a IR (render_devices.h), com os texels do runtime ----
+    Devices               dev_{st, legacy_textures()};
+    bool                  vkOk_ = false;
+    std::vector<uint32_t> vkImage_;
+    std::vector<uint32_t> lastImage_;  // HH15.7c: a imagem do ultimo render com o estado nativo registrado
     uint32_t              lastW_ = 0, lastH_ = 0;
-    void source(const TextureKey& k, std::vector<uint8_t>& raw) {
-        if (nativeTex_) km::texture_bytes(*g_fs, *g_heap, k, raw);
-        else texture_source(k, raw);
-    }
-    bool argb_of(const TextureKey& k, std::vector<uint32_t>& argb, bool& legacy) {
-        if (!nativeTex_) return texture_argb(k, argb, legacy);
-        legacy = false;
-        return km::convert_texture(*g_fs, *g_heap, k, argb);
-    }
 
 public:
     const std::vector<uint32_t>* last_image(uint32_t& w, uint32_t& h) const {
@@ -705,87 +412,10 @@ public:
         return &lastImage_;
     }
 
+    std::string dumpDir;
+    uint32_t    dumpEvery = 300;
+
 private:
-    // ---- HH15.7a: software sobre a IR ----
-    nr::soft::SoftwareDevice soft_;
-    struct SoftTex {
-        nr::TextureHandle    handle;
-        std::vector<uint8_t> raw;
-        uint64_t             used = 0;
-    };
-    std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t>, SoftTex> softTex_;
-
-    // a textura no dispositivo em software, refeita quando os bytes dela na memoria das texturas (ou a paleta) mudam
-    bool soft_texture(const TextureKey& k, nr::TextureHandle& out) {
-        source(k, raw_);
-        SoftTex& e = softTex_[{k.tcw, k.width, k.height, k.stride}];
-        e.used     = st.renders;
-        if (e.handle && e.raw == raw_) {
-            out = e.handle;
-            return true;
-        }
-        bool legacy = false;
-        if (!argb_of(k, argb_, legacy)) return false;
-        st.soft_tex_legacy += legacy;
-        // negativo do comparador (HH_RENDER_SOFT_MUTACAO=textura): o primeiro texel de cada textura enviada muda
-        static const bool mutate = [] {
-            const char* m = std::getenv("HH_RENDER_SOFT_MUTACAO");
-            return m && std::strcmp(m, "textura") == 0;
-        }();
-        if (mutate && !argb_.empty()) argb_[0] ^= 0x00FFFFFF;
-        const auto bytes = std::as_bytes(std::span<const uint32_t>(argb_));
-        if (e.handle) {
-            if (!soft_.update_texture(e.handle, bytes)) return false;
-        } else {
-            nr::TextureDesc d;
-            d.width = k.width, d.height = k.height;
-            auto r = soft_.create_texture(d, bytes);
-            if (!r) return false;
-            e.handle = r.value();
-        }
-        e.raw = raw_;
-        ++st.soft_tex_uploads;
-        out = e.handle;
-        return true;
-    }
-
-    // a IR do render no software; false (com o motivo) deixa o render para o rasterizador sobre o TA
-    bool soft_render(uint32_t w, uint32_t h, std::vector<uint32_t>& out) {
-        if (st.renders % 300 == 0)  // texturas sem uso ha 600 renders saem do dispositivo
-            for (auto it = softTex_.begin(); it != softTex_.end();)
-                if (st.renders - it->second.used > 600) {
-                    if (it->second.handle) soft_.destroy_texture(it->second.handle);
-                    it = softTex_.erase(it), ++st.soft_tex_evicted;
-                } else {
-                    ++it;
-                }
-        auto fail = [&](const std::string& why) {
-            ++st.soft_failures;
-            if (st.soft_error.empty()) {
-                st.soft_error = "render " + std::to_string(st.renders + 1) + ": " + why;
-                std::fprintf(stderr, "[render] software sobre a IR falhou (%s)\n", st.soft_error.c_str());
-            }
-            return false;
-        };
-        if (g_fault == Fault::Soft) {
-            g_fault = Fault::None;
-            return fail("falha injetada");
-        }
-        std::vector<nr::TextureHandle> handles(frame.textures.size());
-        for (size_t i = 0; i < frame.textures.size(); ++i)
-            if (!soft_texture(frame.textures[i], handles[i])) return fail("textura sem conversao");
-        const std::vector<nr::Draw> saved = frame.cl.draws;  // a IR do quadro fica com os handles do quadro
-        for (nr::Draw& d : frame.cl.draws)
-            if (d.state.texture) d.state.texture = handles[d.state.texture.value - 1];
-        const auto r = soft_.submit(frame.cl);
-        frame.cl.draws = saved;
-        if (!r) return fail(std::string("submit: ") + error_name(r.error()));
-        uint32_t rw = 0, rh = 0;
-        if (!soft_.read_frame(out, rw, rh) || rw != w || rh != h) return fail("leitura do quadro");
-        ++st.soft_frames;
-        return true;
-    }
-
     void compare(std::span<const uint32_t> sw, uint32_t w, uint32_t h) {
         if (vkImage_.size() != sw.size()) return;
         uint64_t diff = 0, diff8 = 0;
@@ -1055,82 +685,17 @@ bool content_id(const TextureKey& k, nr::TextureId& id) {
     return true;
 }
 
-void set_texture_replacements(nr::ITextureReplacements* provider) { g_replacements = provider; }
-
-void  set_scale(float s) { g_scale = s > 0 ? s : 1.f; }
-float scale() { return g_scale; }
-
-HiresImage hires_for(std::span<const uint32_t> shown, uint32_t width, uint32_t height) {
-    return g_cap ? g_cap->hires_for(shown, width, height) : HiresImage{};
+TextureSource& legacy_textures() {
+    static LegacyTextures src;
+    return src;
 }
 
-bool read_hires(const HiresImage& h, std::vector<uint32_t>& argb) {
-    uint32_t w = 0;
-    return g_cap && g_cap->read_hires(h, argb, w) && w == h.width;
-}
-
-namespace {
-constexpr char kDumpMagic[8] = {'B', 'S', 'I', 'R', '1', 0, 0, 0};
-template <class T> void put(std::ofstream& o, const T& v) { o.write(reinterpret_cast<const char*>(&v), sizeof v); }
-template <class T> void put_vec(std::ofstream& o, const std::vector<T>& v) {
-    put(o, uint32_t(v.size()));
-    if (!v.empty()) o.write(reinterpret_cast<const char*>(v.data()), std::streamsize(v.size() * sizeof(T)));
-}
-template <class T> bool get(std::ifstream& i, T& v) { return bool(i.read(reinterpret_cast<char*>(&v), sizeof v)); }
-template <class T> bool get_vec(std::ifstream& i, std::vector<T>& v) {
-    uint32_t n = 0;
-    if (!get(i, n) || n > (1u << 28)) return false;
-    v.resize(n);
-    return n == 0 || bool(i.read(reinterpret_cast<char*>(v.data()), std::streamsize(size_t(n) * sizeof(T))));
-}
-} // namespace
-
-bool save_frame_dump(const std::string& path, const Frame& f) {
-    std::ofstream o(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
-    if (!o) return false;
-    o.write(kDumpMagic, 8);
-    put(o, f.cl.frame);
-    put_vec(o, f.cl.vertices), put_vec(o, f.cl.draws), put_vec(o, f.cl.modifiers);
-    put(o, uint32_t(f.textures.size()));
-    for (const TextureKey& k : f.textures) {
-        std::vector<uint32_t> argb;
-        bool                  legacy = false;
-        if (!texture_argb(k, argb, legacy)) argb.assign(size_t(k.width) * k.height, 0xFFFF00FFu);
-        put(o, k.width), put(o, k.height), put_vec(o, argb);
-    }
-    return bool(o);
-}
-
-bool load_frame_dump(const std::string& path, nr::CommandList& cl, std::vector<DumpTexture>& textures) {
-    std::ifstream i(std::filesystem::path(path), std::ios::binary);
-    char          magic[8];
-    if (!i.read(magic, 8) || std::memcmp(magic, kDumpMagic, 8) != 0) return false;
-    if (!get(i, cl.frame) || !get_vec(i, cl.vertices) || !get_vec(i, cl.draws) || !get_vec(i, cl.modifiers)) return false;
-    uint32_t n = 0;
-    if (!get(i, n) || n > 65536) return false;
-    textures.resize(n);
-    for (DumpTexture& t : textures) {
-        if (!get(i, t.desc.width) || !get(i, t.desc.height) || !get_vec(i, t.argb)) return false;
-        t.desc.format = nr::PixelFormat::ARGB8888;
-    }
-    return true;
-}
-void inject_fault(Fault f) { g_fault = f; }
+bool save_frame_dump(const std::string& path, const Frame& f) { return save_frame_dump(path, f, legacy_textures()); }
 
 void set_list_sink(const native::render::kamui::ListSink* sink) { g_list = sink; }
 
-void set_native_memory(const native::render::kamui::FrameState* fs, const native::render::kamui::TextureHeap* heap) {
-    g_fs = fs, g_heap = heap;
-}
-
 const std::vector<uint32_t>* last_image(uint32_t& width, uint32_t& height) {
     return g_cap ? g_cap->last_image(width, height) : nullptr;
-}
-
-bool draws_lists() { return g_cap && (g_cap->mode == Mode::Software || g_cap->mode == Mode::Native); }
-
-bool draw_list(const native::render::kamui::ListFrame& lf, uint32_t width, uint32_t height, std::vector<uint32_t>& image) {
-    return draws_lists() && g_cap->render_list(lf, width, height, image);
 }
 
 void set_compare_dump(const std::string& dir, uint32_t every) {
@@ -1163,96 +728,6 @@ const Stats& stats() {
     return g_cap ? g_cap->st : empty;
 }
 
-std::string summary() {
-    if (!g_cap) return {};
-    const Stats& s = g_cap->st;
-    char         b[1400];
-    std::snprintf(b, sizeof b,
-                  "[render-ir] renders %llu (conferidos %llu): desenhos %llu, vertices %llu, triangulos %llu, sprites %llu; "
-                  "IR invalida %llu, triangulos divergentes %llu, imagens divergentes %llu; texturas conferidas %llu "
-                  "(divergentes %llu, sem conversao nativa %llu; chaves distintas %llu, conteudos distintos %llu); quadros "
-                  "divergentes %llu; volumes modificadores %llu (%llu triangulos, sem fechamento %llu), parametros "
-                  "omitidos %llu; fog desenhos tabela/vertice/nenhum/tabela2 %llu/%llu/%llu/%llu (primeiro render "
-                  "%llu/%llu/%llu/%llu), primeiro volume render %llu%s%s\n",
-                  (unsigned long long)s.renders, (unsigned long long)s.checked, (unsigned long long)s.draws,
-                  (unsigned long long)s.vertices, (unsigned long long)s.triangles, (unsigned long long)s.sprites,
-                  (unsigned long long)s.invalid, (unsigned long long)s.triangle_mismatch, (unsigned long long)s.image_mismatch,
-                  (unsigned long long)s.textures_checked, (unsigned long long)s.texture_mismatch,
-                  (unsigned long long)s.textures_without_native, (unsigned long long)s.distinct_texture_keys,
-                  (unsigned long long)s.distinct_texture_ids, (unsigned long long)s.frame_mismatch,
-                  (unsigned long long)s.modifier_volumes, (unsigned long long)s.modifier_params,
-                  (unsigned long long)s.modifier_unclosed, (unsigned long long)s.skipped_params,
-                  (unsigned long long)s.fog_draws[0], (unsigned long long)s.fog_draws[1],
-                  (unsigned long long)s.fog_draws[2], (unsigned long long)s.fog_draws[3],
-                  (unsigned long long)s.fog_first_render[0], (unsigned long long)s.fog_first_render[1],
-                  (unsigned long long)s.fog_first_render[2], (unsigned long long)s.fog_first_render[3],
-                  (unsigned long long)s.modifier_first_render,
-                  s.first_error.empty() ? "" : "; primeira: ", s.first_error.c_str());
-    std::string out = b;
-    if (!s.vk_device.empty() || !s.vk_error.empty()) {
-        char v[900];
-        std::snprintf(v, sizeof v,
-                      "[render-vk] %s: quadros %llu, falhas %llu; texturas enviadas %llu (pelo decodificador do legado %llu, "
-                      "descartadas do cache %llu, HD %llu, HD incompativeis %llu); dispositivo recriado %llu vez(es); comparados %llu: pixels diferentes %.4f%% (> 8 niveis %.4f%%), maior "
-                      "diferenca %u, pior render %llu (%.3f%%); PSNR minimo %.1f dB, medio %.1f dB, quadros abaixo de 40 dB %llu; GPU por "
-                      "quadro: media %.2f ms, pior %.1f ms; camadas translucidas por pixel ate %llu%s%s\n",
-                      s.vk_device.empty() ? "indisponivel" : s.vk_device.c_str(), (unsigned long long)s.vk_frames,
-                      (unsigned long long)s.vk_failures, (unsigned long long)s.tex_uploads, (unsigned long long)s.tex_legacy,
-                      (unsigned long long)s.tex_evicted, (unsigned long long)s.tex_replaced,
-                      (unsigned long long)s.tex_replace_rejected, (unsigned long long)s.vk_recoveries,
-                      (unsigned long long)s.cmp_frames,
-                      s.cmp_pixels ? 100.0 * double(s.cmp_diff) / double(s.cmp_pixels) : 0.0,
-                      s.cmp_pixels ? 100.0 * double(s.cmp_diff8) / double(s.cmp_pixels) : 0.0, s.cmp_max,
-                      (unsigned long long)s.cmp_worst_render, 100.0 * s.cmp_worst_fraction, s.cmp_frames ? s.cmp_min_psnr : 0.0,
-                      s.cmp_frames ? s.cmp_psnr_sum / double(s.cmp_frames) : 0.0, (unsigned long long)s.cmp_below40,
-                      s.vk_frames ? s.vk_gpu_ms_total / double(s.vk_frames) : 0.0, s.vk_gpu_ms_max,
-                      (unsigned long long)s.vk_max_layers,
-                      s.vk_error.empty() ? "" : "; ",
-                      s.vk_error.c_str());
-        out += v;
-    }
-    if (s.native_checked) {  // HH15.7c: o estado nativo contra o do runtime
-        char r[400];
-        std::snprintf(r, sizeof r,
-                      "[render-nativo] quadros conferidos %llu (divergentes %llu); texturas conferidas %llu de %llu (divergentes %llu, "
-                      "sem conversao nativa %llu)%s%s",
-                      (unsigned long long)s.native_checked, (unsigned long long)s.native_frame_mismatch,
-                      (unsigned long long)s.native_tex_checked, (unsigned long long)s.frame_textures,
-                      (unsigned long long)s.native_tex_mismatch,
-                      (unsigned long long)s.native_tex_missing, s.native_error.empty() ? "" : "; primeira: ",
-                      s.native_error.c_str());
-        out += r;
-        out += '\n';
-    }
-    if (s.list_checked) {  // HH15.7b: o ListSink nativo contra a captura
-        char r[300];
-        std::snprintf(r, sizeof r, "[render-lista] ListSink conferido com a captura em %llu renders: divergentes %llu%s%s",
-                      (unsigned long long)s.list_checked, (unsigned long long)s.list_mismatch,
-                      s.list_error.empty() ? "" : "; primeira: ", s.list_error.c_str());
-        out += r;
-        out += '\n';
-    }
-    if (s.soft_frames || s.soft_failures || s.soft_mismatch) {  // HH15.7a: software sobre a IR
-        char r[400];
-        std::snprintf(r, sizeof r,
-                      "[render-soft] quadros %llu, falhas %llu, conferidos com o caminho do TA %llu (imagens divergentes %llu); texturas enviadas %llu (pelo decodificador do legado %llu, "
-                      "descartadas %llu)%s%s",
-                      (unsigned long long)s.soft_frames, (unsigned long long)s.soft_failures,
-                      (unsigned long long)s.soft_checked, (unsigned long long)s.soft_mismatch, (unsigned long long)s.soft_tex_uploads, (unsigned long long)s.soft_tex_legacy,
-                      (unsigned long long)s.soft_tex_evicted, s.soft_error.empty() ? "" : "; primeira: ", s.soft_error.c_str());
-        out += r;
-        out += '\n';
-    }
-    if (s.hires_renders) {  // N7c: resolucao interna
-        char r[300];
-        std::snprintf(r, sizeof r,
-                      "[render-escala] alvo %ux%u: renders %llu; VBlanks com a imagem maior %llu, sem %llu; leitura de volta "
-                      "(so a reduzida, feita na GPU): media %.2f ms por render\n",
-                      s.hires_w, s.hires_h, (unsigned long long)s.hires_renders, (unsigned long long)s.hires_shown,
-                      (unsigned long long)s.hires_missed, s.hires_cpu_ms_total / double(s.hires_renders));
-        out += r;
-    }
-    return out;
-}
+std::string summary() { return g_cap ? format_summary(g_cap->st) : std::string(); }
 
 } // namespace hh::transitional::render_capture

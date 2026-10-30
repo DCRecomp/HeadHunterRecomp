@@ -306,10 +306,13 @@ HostResult host_run(const HostOptions& opt) {
                                                   every);
         } else {
             // HH15.7a: os dois renderizadores desenham a IR (o Vulkan, com o software sobre a IR de recuo, ou o software
-            // sobre a IR); o rasterizador sobre o TA fica para os modos de verificacao acima
-            transitional::render_capture::install(opt.render == RenderProvider::Native
-                                                      ? transitional::render_capture::Mode::Native
-                                                      : transitional::render_capture::Mode::Software);
+            // sobre a IR); o rasterizador sobre o TA fica para os modos de verificacao acima. HH15.7d4b: o renderizador
+            // do produto desenha a IR do ListSink nativo; a captura, no mesmo modo, a do caminho do TA (HH_KAMUI=legado
+            // ou sombra)
+            const auto rm = opt.render == RenderProvider::Native ? transitional::render_capture::Mode::Native
+                                                                 : transitional::render_capture::Mode::Software;
+            transitional::render_capture::install_renderer(rm);
+            transitional::render_capture::install(rm);
         }
         call_trace_install();  // HH_CALL_TRACE=<tsv>;<end>,... (diagnostico; HH08.1)
         transitional::pad::probe_install();  // HH_PAD_CONTRATO=<tsv>: contrato do pd contra o legado (HH10.1)
@@ -417,10 +420,14 @@ HostResult host_run(const HostOptions& opt) {
         transitional::video::uninstall(boundaries);
     }
     // HH13: o resumo sai sempre que a captura foi instalada (HH_RENDER_IR / --render nativo), mesmo sem render (revisao Codex)
-    if (const char* ir = std::getenv("HH_RENDER_IR"); (ir && *ir) || opt.render == RenderProvider::Native ||
-                                                       transitional::render_capture::stats().renders)
+    // HH15.7d4b: o resumo de quem desenhou (a captura, nos modos de verificacao e no caminho do TA; senao o renderizador
+    // do produto), no mesmo formato
+    if (const char* ir = std::getenv("HH_RENDER_IR"); (ir && *ir) || transitional::render_capture::stats().renders)
         std::fputs(transitional::render_capture::summary().c_str(), stderr);
+    else if (opt.render == RenderProvider::Native || transitional::render_capture::renderer_stats().renders)
+        std::fputs(transitional::render_capture::renderer_summary().c_str(), stderr);
     transitional::render_capture::install(transitional::render_capture::Mode::Off);  // sempre (revisao Codex do BS)
+    transitional::render_capture::install_renderer(transitional::render_capture::Mode::Off);
     if (transitional::time::installed()) {
         transitional::time::uninstall();
         std::fputs(transitional::time::progress_summary().c_str(), stderr);

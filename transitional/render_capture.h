@@ -29,36 +29,18 @@
 // Texturas: as conversoes nativas; sem conversao nativa (paleta de 8 bits, YUV, bump), o decodificador do legado
 // texel a texel (contadas, nunca descartadas). O cache do backend refaz uma textura quando os bytes dela na VRAM
 // (ou a paleta) mudam.
+//
+// HH15.7d4b: os dispositivos (Vulkan e software sobre a IR), os tipos comuns e o renderizador do produto ficam em
+// render_devices.h (no produto); a captura (so verificacao) monta a IR do caminho do TA e desenha nos mesmos
+// dispositivos com os texels do runtime (legacy_textures).
 #include "pvr/pvr_render.h"
-#include "render/kamui/frame_state.h"
-#include "render/kamui/list_sink.h"
-#include "render/kamui/texture_heap.h"
-#include "render/render.h"
-#include "render/texture_replacement.h"
+#include "render_devices.h"
 
-#include <array>
 #include <cstdint>
-#include <memory>
-#include <span>
 #include <string>
 #include <vector>
 
 namespace hh::transitional::render_capture {
-
-namespace nr = hh::native::render;
-
-// O que identifica os texels de uma textura (a IR so guarda o handle): TCW (endereco, formato, paleta, modos),
-// tamanho do TSP e o stride linear (TEXT_CONTROL).
-// HH15.7b: a mesma chave do ListSink nativo (native/render/kamui/list_sink.h).
-using TextureKey = native::render::kamui::TextureKey;
-
-struct Frame {
-    nr::CommandList         cl;
-    std::vector<TextureKey> textures;  // TextureHandle.value - 1
-    uint32_t                texture_stride = 0;  // TEXT_CONTROL do render (stride das texturas lineares)
-    uint32_t                modifier_params = 0, modifier_volumes = 0, modifier_unclosed = 0, skipped_params = 0,
-                            sprites = 0;
-};
 
 // IR estruturalmente valida (validate) e handles de textura dentro da tabela do quadro.
 bool valid(const Frame& f, std::string* error);
@@ -84,113 +66,20 @@ bool convert_texture(const TextureKey& k, std::vector<uint32_t>& argb);
 // a chave futura das substituicoes HD. false se o formato nao tem conversao nativa.
 bool content_id(const TextureKey& k, nr::TextureId& id);
 
-struct Stats {
-    uint64_t renders = 0, checked = 0, draws = 0, vertices = 0, triangles = 0, sprites = 0;
-    uint64_t invalid = 0, triangle_mismatch = 0, image_mismatch = 0;  // tem de ficar em 0
-    uint64_t textures_checked = 0, texture_mismatch = 0, textures_without_native = 0;
-    uint64_t modifier_params = 0, modifier_volumes = 0, modifier_unclosed = 0, skipped_params = 0;
-    // Cobertura de fidelidade: quantos desenhos realmente pediram cada modo de fog e em qual render apareceram
-    // primeiro; o primeiro render com volumes permite extrair uma cena real para o oraculo do Flycast.
-    std::array<uint64_t, 4> fog_draws{}, fog_first_render{};
-    uint64_t modifier_first_render = 0;
-    uint64_t frame_mismatch = 0;  // FrameParams que nao reproduzem os registradores usados (tem de ficar em 0)
-    // N7b (Vulkan)
-    std::string vk_device, vk_error;
-    uint64_t    vk_frames = 0, vk_failures = 0, tex_uploads = 0, tex_legacy = 0, tex_evicted = 0;
-    uint64_t    tex_replaced = 0, tex_replace_rejected = 0;  // substituicoes HD usadas / incompativeis (original)
-    uint64_t    vk_fragment_retries = 0, vk_negative_depth = 0;  // listas por pixel refeitas; quadros com 1/w negativo
-    uint64_t    vk_recoveries = 0;                                 // dispositivo recriado depois de uma perda
-    double      vk_gpu_ms_total = 0, vk_gpu_ms_max = 0;           // tempo de GPU por quadro (total e o pior)
-    uint64_t    vk_max_layers = 0;                                 // maior numero de camadas translucidas num pixel
-    uint64_t    cmp_frames = 0, cmp_pixels = 0, cmp_diff = 0, cmp_diff8 = 0, cmp_worst_render = 0;
-    uint32_t    cmp_max = 0;
-    double      cmp_worst_fraction = 0;
-    double      cmp_min_psnr = 0, cmp_psnr_sum = 0;  // PSNR (RGB) por quadro: minimo e soma (media = soma / quadros)
-    uint64_t    cmp_below40 = 0;                     // quadros com PSNR < 40 dB (criterio do plano, secao 5)
-    uint64_t distinct_texture_keys = 0, distinct_texture_ids = 0;  // chaves (TCW+tamanho) e ids de conteudo distintos
-    // N7c: resolucao interna (Mode::Native com escala != 1)
-    uint64_t hires_renders = 0, hires_shown = 0, hires_missed = 0;  // renders na escala; VBlanks com/sem a imagem maior
-    double   hires_cpu_ms_total = 0;                                // leitura de volta (so a reduzida) na CPU
-    uint32_t hires_w = 0, hires_h = 0;                              // tamanho do ultimo render na escala
-    // HH15.7a: software sobre a IR (Mode::Software e o recuo do Native)
-    uint64_t    soft_frames = 0, soft_failures = 0, soft_checked = 0, soft_mismatch = 0, soft_tex_uploads = 0, soft_tex_legacy = 0, soft_tex_evicted = 0;
-    std::string soft_error;
-    // HH15.7b: o ListSink nativo contra a captura (renders conferidos; divergentes tem de ficar em 0)
-    uint64_t    list_checked = 0, list_mismatch = 0;
-    std::string list_error;
-    // HH15.7c: o estado nativo (quadro e texturas) contra o do runtime (divergentes e sem conversao tem de ficar em 0)
-    uint64_t    native_checked = 0, native_frame_mismatch = 0, native_tex_checked = 0, native_tex_mismatch = 0;
-    uint64_t    native_tex_missing = 0, frame_textures = 0;  // frame_textures: texturas dos renders (o total)
-    std::string native_error;
-    std::string first_error;
-};
-
-// HH15.7a: Software desenha a IR no renderizador em software (native/render/soft/soft_device, texturas pelas conversoes
-// nativas) e a imagem substitui a do rasterizador sobre o TA; e tambem o recuo do Native quando o Vulkan falha.
-enum class Mode : uint8_t { Off, Capture, Check, Native, Compare, Software };
 void         install(Mode m, uint32_t every = 1);  // instala no pvr_render e zera as estatisticas (Off desinstala e descarta)
 const Frame& last_frame();                         // a IR do ultimo render
 const Stats& stats();
 std::string  summary();
 void         set_compare_dump(const std::string& dir, uint32_t every);  // BMP das comparacoes (Mode::Compare)
-// N7c: resolucao interna do renderizador nativo (so Mode::Native; o modo comparar e a referencia continuam em 1). Com
-// escala != 1 o Vulkan desenha a geometria em round(w x escala) x round(h x escala) (vk_device.h) e:
-//   - o framebuffer emulado recebe essa imagem REDUZIDA na GPU para o tamanho do jogo (media dos pixels), entao o resto
-//     do caminho (VRAM, capturas, hash dos quadros, a apresentacao SDL) continua coerente e e o recuo;
-//   - a imagem maior fica na GPU (um slot do dispositivo compartilhado) para a apresentacao direta.
-// 1 = o modo fiel. Vale a partir do proximo render; chamar na thread do jogo.
-void  set_scale(float scale);
-float scale();
-
-// A imagem maior do que esta sendo EXIBIDO: `shown` e o quadro que o video do PVR leu da VRAM (pvr_video_frame). Se
-// ele e um dos ultimos renders na escala (o conteudo confere com a imagem reduzida que foi para a VRAM, tolerando a
-// quantizacao do formato do framebuffer), devolve o slot desse render; senao (filme, tela escrita pela CPU, escala 1),
-// seq = 0. Thread do jogo.
-struct HiresImage {
-    uint64_t seq = 0;                    // slot no dispositivo compartilhado (VulkanDevice::last_slot)
-    uint32_t width = 0, height = 0;      // tamanho da imagem maior
-    uint32_t y0 = 0, rows = 0;           // as linhas que correspondem ao exibido
-};
-HiresImage hires_for(std::span<const uint32_t> shown, uint32_t width, uint32_t height);
-// Le de volta as linhas exibidas de um slot (so para capturas e testes). false = o slot ja foi reaproveitado.
-bool read_hires(const HiresImage& h, std::vector<uint32_t>& argb);
-
-// Ponto de extensao das texturas HD (contrato do N7a): com provedor, o backend Vulkan troca cada textura pela
-// substituicao do mesmo TextureId quando ela e compativel (replacement_compatible); senao, o original. nullptr =
-// so originais (o padrao ate o N9, que traz o carregador de mods). O provedor tem de viver enquanto instalado.
-void         set_texture_replacements(nr::ITextureReplacements* provider);
-// Testes do recuo para o software: a proxima textura (Texture) ou o proximo quadro (Device) falha no Vulkan.
-// Soft (HH15.7a): o proximo render do software sobre a IR falha.
-enum class Fault : uint8_t { None, Texture, Device, DeviceOnce, DeviceAgain, Soft };  // Device: falha permanente; DeviceOnce: transitoria
-void         inject_fault(Fault f);
-
 // HH15.7b: o ListSink nativo (transitional/kamui_device, modo nativo). Registrado, em todo render pelo caminho do TA a
 // captura confere a IR que ele decodifica direto com a montada dos retornos do decodificador do legado
 // (Stats::list_*); nullptr desliga.
 void set_list_sink(const native::render::kamui::ListSink* sink);
-// HH15.7c: o estado do quadro e a memoria das texturas nativos (transitional/kamui_device, modo nativo). Registrados, o
-// render pela IR do ListSink le os texels deles, e em todo render pelo caminho do TA a captura confere os parametros do
-// quadro e os texels lidos deles com os do runtime (Stats::native_*); nullptr desliga.
-void set_native_memory(const native::render::kamui::FrameState* fs, const native::render::kamui::TextureHeap* heap);
 // HH15.7c: a imagem do ultimo render pelo caminho do TA com o estado nativo registrado (para o comparador da gravacao
 // do framebuffer); nullptr sem ela.
 const std::vector<uint32_t>* last_image(uint32_t& width, uint32_t& height);
-// true: a captura esta instalada como o renderizador (Software ou Native), e o render vem da IR do ListSink
-bool draws_lists();
-// O render pela IR do ListSink (`image`: width x height, ja com o fundo): false = nao desenhado (sem captura no modo
-// de renderizador, ou falha do dispositivo; o chamador para com erro explicito).
-bool draw_list(const native::render::kamui::ListFrame& lf, uint32_t width, uint32_t height, std::vector<uint32_t>& image);
-
-// Diagnostico (HH_RENDER_IR_GUARDAR=<render>:<arquivo>): a IR inteira de um render (parametros, vertices, desenhos,
-// volumes e as texturas ja convertidas, na ordem dos handles do quadro) num arquivo binario, gravada ANTES de ir ao
-// dispositivo (sobrevive a uma perda do dispositivo nesse render); load_frame_dump a le de volta para reproduzir o
-// render fora do jogo (tests/unit/test_render_vulkan.cpp, HH_RENDER_IR_REPRODUZIR).
-struct DumpTexture {
-    nr::TextureDesc       desc;
-    std::vector<uint32_t> argb;
-};
+// Diagnostico (HH_RENDER_IR_GUARDAR=<render>:<arquivo>, render_devices.h) com os texels do runtime.
 bool save_frame_dump(const std::string& path, const Frame& f);
-bool load_frame_dump(const std::string& path, nr::CommandList& cl, std::vector<DumpTexture>& textures);
 
 // HH13: texels de 16 bits que uma textura linear le (stride 0 = a largura): a linha y comeca em y * stride e vai ate
 // x = largura - 1, entao a ultima termina em (altura - 1) * stride + max(stride, largura). 0 para dimensoes nulas.
@@ -200,5 +89,7 @@ size_t linear_texture_texels(uint32_t width, uint32_t height, uint32_t stride);
 bool texture_argb(const TextureKey& k, std::vector<uint32_t>& argb, bool& legacy);
 // Os bytes que definem a textura na VRAM e a paleta usada (para o cache do backend saber se ela mudou).
 void texture_source(const TextureKey& k, std::vector<uint8_t>& raw);
+// As duas acima como fonte dos dispositivos (render_devices.h).
+TextureSource& legacy_textures();
 
 } // namespace hh::transitional::render_capture

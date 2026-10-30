@@ -607,3 +607,15 @@ substitutos do produto (só o contrato medido do guest, o SPG, atendido; o resto
   sem achados; a falha que ele viu em `hh15_area_de_som_clock_log_do_contrato` é do sandbox somente leitura (o teste
   grava no diretório temporário), rejeitada: passa fora do sandbox.
   Regressão integral 14/14 (`analysis/hh15/regressao_7d4a.log`).
+- 7d4b (2026-10-30): `transitional/render_devices` (produto): os tipos comuns, os ajustes globais (escala, substituições
+  HD, falhas injetadas, memória nativa), os dispositivos sobre a IR (`Devices`: Vulkan com recuperação e resolução
+  interna, software sobre a IR, caches de textura) com a fonte dos texels escolhida pelo dono (`TextureSource`), o
+  arquivo da IR, o resumo (`format_summary`, as mesmas linhas que os portões leem) e o renderizador do produto
+  (`install_renderer`, `draws_lists`, `draw_list`), movidos de `render_capture.cpp` sem mudança. O renderizador lê os
+  texels só da memória nativa (antes, sem ela, caía na VRAM do runtime; agora a textura não é enviada e o render para
+  com erro explícito). A captura fica com o caminho do TA (montagem, conferir, comparar, ListSink, estado nativo) e uma
+  instância dos mesmos dispositivos com os texels do runtime; o host instala os dois no mesmo modo fora de
+  `HH_RENDER_IR` e imprime o resumo de quem desenhou. Teste `tests/unit/test_hh15_render_devices.cpp` (a IR igual ao
+  dispositivo direto, contagens e resumo, sem memória nativa o render falha, com ela os texels vêm dela, instalação).
+  Rota da área 1 e produto: 94 hashes iguais; ctest 73/73. Revisão Codex (`reviews/codex-hh15_7d4b.log`): sem achados.
+  Regressão integral 14/14 (`analysis/hh15/regressao_7d4b.log`).
