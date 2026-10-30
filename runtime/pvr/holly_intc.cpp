@@ -23,6 +23,8 @@
 #include "pvr/pvr_regs.h"
 #include "maple/maple.h"
 #include "pvr/pvr_video.h"
+#include "system/render_bus.h"
+#include "system/video_bus.h"
 #include "render/kamui/event_status.h"
 
 #include <array>
@@ -115,7 +117,7 @@ void update(uint64_t now) {
     // fim de render agendado pelo STARTRENDER: bits 0 (video), 1 (ISP), 2 (TSP)
     if (due & kDueRender) {
         reg(kIstNrm) |= 0x7;
-        pvr_render_done_take();
+        render_bus_done_take();
     }
     // fim do DMA do Maple: bit 12
     if (due & kDueMaple) {
@@ -132,7 +134,7 @@ void update(uint64_t now) {
     }
     // host (apresentacao de quadros, ritmo): depois de atualizar o estado, porque o
     // gancho pode interromper a execucao (encerramento)
-    if (vblankIn) pvr_video_vblank();
+    if (vblankIn) video_bus_vblank();
 }
 
 } // namespace

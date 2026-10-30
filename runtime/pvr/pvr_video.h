@@ -21,9 +21,6 @@ namespace hh {
 // Devolve largura e altura; o vetor e redimensionado.
 void pvr_video_frame(std::vector<uint32_t>& argb, uint32_t& width, uint32_t& height);
 
-// Chamado no inicio de cada VBlank (VBlank-in do SPG), na thread que executa o jogo.
-using PvrVblankHook = void (*)(void* arg);
-void pvr_set_vblank_hook(PvrVblankHook fn, void* arg);
-void pvr_video_vblank();  // usado por holly_intc ao detectar o VBlank-in
+// HH15.7d4a: o aviso de VBlank para o host e o servico nativo system/video_bus.h.
 
 } // namespace hh

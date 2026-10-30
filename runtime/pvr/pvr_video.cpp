@@ -16,8 +16,6 @@ namespace {
 
 constexpr uint32_t R(uint32_t off) { return 0x005F8000 + off; }
 
-PvrVblankHook g_hook    = nullptr;
-void*         g_hookArg = nullptr;
 
 uint32_t expand5(uint32_t v) { return (v << 3) | (v >> 2); }
 uint32_t expand6(uint32_t v) { return (v << 2) | (v >> 4); }
@@ -61,15 +59,6 @@ void pvr_video_frame(std::vector<uint32_t>& argb, uint32_t& width, uint32_t& hei
         uint32_t* row = argb.data() + size_t(y) * width;
         for (uint32_t x = 0; x < width; ++x) row[x] = pixel(vram, base + x * bpp, fmt);
     }
-}
-
-void pvr_set_vblank_hook(PvrVblankHook fn, void* arg) {
-    g_hook    = fn;
-    g_hookArg = arg;
-}
-
-void pvr_video_vblank() {
-    if (g_hook) g_hook(g_hookArg);
 }
 
 } // namespace hh

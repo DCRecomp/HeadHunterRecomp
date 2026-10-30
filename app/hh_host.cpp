@@ -31,6 +31,7 @@
 #include "maple/maple.h"
 #include "pvr/holly_intc.h"
 #include "pvr/pvr_video.h"
+#include "system/video_bus.h"
 #include "pvr/vram.h"
 
 #include <chrono>
@@ -327,7 +328,7 @@ HostResult host_run(const HostOptions& opt) {
             input_configure_from_env();  // HH_INPUT_SCRIPT=<roteiro> (deterministico)
         }
         g_epoch = std::chrono::steady_clock::now();
-        pvr_set_vblank_hook(&onVblank, nullptr);
+        video_bus_set_vblank_hook(&onVblank, nullptr);
         if (opt.stop) sh4_set_service_hook(onService);
         static FnProfile fnProfile;
         if (const char* fp = std::getenv("HH_FN_PERFIL"); fp && *fp) {
@@ -356,7 +357,7 @@ HostResult host_run(const HostOptions& opt) {
         res.end   = HostEnd::Error;
         res.error = e.what();
     }
-    pvr_set_vblank_hook(nullptr, nullptr);
+    video_bus_set_vblank_hook(nullptr, nullptr);
     sh4_set_service_hook(nullptr);
     sh4_set_session_context(nullptr);
     sh4_set_trace(nullptr);

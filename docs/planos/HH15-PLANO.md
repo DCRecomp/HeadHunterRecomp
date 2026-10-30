@@ -586,3 +586,24 @@ inicialização (`0x8C15FAC8`).
     do modelo (`HH_TA_FONTES`, `HH_PVR_DEBUG`, `HH_PVR_WATCH`), que só existem nele; o modelo sai do produto no 7d4 e
     esses diagnósticos continuam no caminho do guest pela memória.
 - Regressão integral 14/14 (`analysis/hh15/regressao_7d3.log`), ctest 73/73.
+
+#### HH15.7d4 (em andamento): modelos gráficos fora do produto
+
+Medição (mapa do `HeadHunter.exe` em ba0a110): ainda entram `pvr_regs`, `pvr_render`, `pvr_texture`, `pvr_video`, `ta`,
+`vram`, `sh4_sq` e `render_capture` (729 símbolos). O BS deixou o `render_capture` no produto; o portão desta etapa o
+exclui, então o 7d4 tem três passos: 7d4a, o que o produto usa dos modelos vira serviço nativo compartilhado; 7d4b, o
+desenho do produto (renderizador em software e Vulkan sobre a IR) separado da captura e das comparações; 7d4c, os
+substitutos do produto (só o contrato medido do guest, o SPG, atendido; o resto erro explícito; store queue para a
+área 4 erro explícito), a catraca e os negativos.
+
+- 7d4a (2026-10-29): `runtime/system/render_bus` (o pedido de render: contagem, gancho do hh-diff,
+  `HH_STOP_ON_STARTRENDER`, `HH_TA_DUMP`, render na hora, prazo `min(450000 + bytes * 100, 1500000)` avisado ao
+  provedor de tempo, o fim pendente que o banco de status consome) e `runtime/system/video_bus` (o aviso de VBlank do
+  host), papel `nativo`, movidos de `pvr/pvr_regs.cpp` e `pvr/pvr_video.cpp` sem mudança. O provedor nativo do Kamui, o
+  caminho do TA (`pvr_start_render`, que lê os bytes do TA antes do render; o `pvr_render` não muda o TA), as duas
+  versões do banco de status, o host e o hh-diff usam os serviços. Teste `tests/hh15_render_bus_tests.cpp` (nos dois
+  executáveis: ordem gancho/render/prazo, mínimo, teto, consumo, reset; aviso de VBlank). Rota da área 1: 94 hashes
+  iguais ao HH06; produto: 94 iguais à referência do produto; ctest 73/73. Revisão Codex (`reviews/codex-hh15_7d4a.log`):
+  sem achados; a falha que ele viu em `hh15_area_de_som_clock_log_do_contrato` é do sandbox somente leitura (o teste
+  grava no diretório temporário), rejeitada: passa fora do sandbox.
+  Regressão integral 14/14 (`analysis/hh15/regressao_7d4a.log`).

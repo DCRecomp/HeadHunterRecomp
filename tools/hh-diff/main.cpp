@@ -37,6 +37,7 @@
 #include "input/input.h"
 #include "cpu/sh4_threads.h"
 #include "pvr/pvr_regs.h"
+#include "system/render_bus.h"
 #include "pvr/vram.h"
 
 #include <chrono>
@@ -141,7 +142,7 @@ int run(const char* mode, uint32_t func, const char* entryPath, const char* outP
     hhg::register_functions();
     sh4_set_fatal_handler(onFatal);
     sh4_set_trace(onEnter);
-    pvr_set_startrender_hook(onStartRender);
+    render_bus_set_start_hook(onStartRender);
 
     std::vector<uint8_t> ram(16u << 20);
     Sh4Context           c{};

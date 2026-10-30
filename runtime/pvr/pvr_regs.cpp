@@ -27,6 +27,7 @@
 #include "pvr/pvr_render.h"
 #include "pvr/ta.h"
 #include "cpu/sh4_runtime.h"
+#include "system/render_bus.h"
 #include "system/spg_bus.h"
 
 #include <algorithm>
@@ -57,9 +58,6 @@ constexpr uint32_t kTaListCont = 0x005F8160;  // bit 31: continua as listas
 
 std::array<uint32_t, kSize / 4> g_regs{};
 std::array<bool, kSize / 4>     g_reported{};
-PvrStartRenderHook              g_startHook = nullptr;
-uint64_t                        g_renderDue = 0;  // ciclo do fim de render pendente (0: nenhum)
-int                             g_startCount = 0;
 
 const uint32_t* g_regOverride = nullptr;  // HH13.6: registradores do provedor nativo do Kamui (render e video)
 // a temporizacao do video (0x0C8-0x0E0) e sempre a do servico (a copia emprestada pelo provedor nativo e a mesma)
@@ -75,9 +73,8 @@ uint32_t canon(uint32_t a) { return a < 0xE0000000 ? (a & 0x1FFFFFFF) : 0; }
 
 void pvr_regs_reset() {
     g_regs.fill(0);
-    g_renderDue = 0;
     g_reported.fill(false);
-    time_provider().render_scheduled(0);  // nenhum fim de render pendente
+    render_bus_reset();  // nenhum fim de render pendente
     spg_bus_reset();
 }
 
@@ -113,8 +110,6 @@ bool pvr_reg_read(Sh4Context* c, uint32_t a, unsigned size, uint32_t& v) {
     return true;
 }
 
-void pvr_set_startrender_hook(PvrStartRenderHook hook) { g_startHook = hook; }
-
 void pvr_regs_set_override(const uint32_t* words) { g_regOverride = words; }
 
 uint32_t pvr_reg(uint32_t a) { return reg(a & 0x1FFFFFFF); }
@@ -135,9 +130,6 @@ uint32_t pvr_pal_entry(uint32_t index) {
     return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
-uint64_t pvr_render_done_due() { return g_renderDue; }
-void     pvr_render_done_take() { g_renderDue = 0; }
-
 void pvr_regs_load(const uint32_t* words) {
     for (uint32_t i = 0; i < kSize / 4; ++i) g_regs[i] = words[i];
     spg_bus_load(words);  // a temporizacao e a fase do feixe deixadas pelo boot
@@ -151,72 +143,32 @@ void pvr_regs_dump(Sh4Context* c, uint32_t* out) {
     }
 }
 
-// STARTRENDER: o render das listas atuais e o agendamento do fim do render (HH13.6: tambem chamado pelo provedor nativo do
-// Kamui, com os registradores, a memoria e os parametros nativos emprestados por pvr_regs_set_override,
-// vram_set_override e ta_set_override).
+// STARTRENDER pelo caminho do TA (HH13.6: tambem chamado pelo provedor nativo do Kamui nos modos de verificacao, com os
+// registradores, a memoria e os parametros nativos emprestados por pvr_regs_set_override, vram_set_override e
+// ta_set_override). HH15.7d4a: a contagem, o gancho, o HH_TA_DUMP e o prazo sao do servico system/render_bus.
 namespace {
 
-// O inicio de todo STARTRENDER: a contagem, o gancho e a parada pedida (HH_STOP_ON_STARTRENDER).
-void startRenderBegin(Sh4Context* c) {
-    ++g_startCount;
-    if (g_startHook) g_startHook(c, g_startCount);
-    static const char* stop = std::getenv("HH_STOP_ON_STARTRENDER");
-    if (stop && g_startCount == std::atoi(stop))
-        sh4_fatal(c, "parada pedida: STARTRENDER", c->pc, uint32_t(g_startCount));
+// O render roda inteiro aqui (a CPU nao observa estados intermediarios); o jogo so ve o resultado depois do fim de
+// render sinalizado pelo servico.
+void renderTa(Sh4Context* c) {
+    const auto        t0 = std::chrono::steady_clock::now();
+    const RenderStats st = pvr_render(c);
+    if (std::getenv("HH_PVR_DEBUG"))
+        std::fprintf(stderr, "[render] #%d %ux%u tri=%u sprites=%u omitidos=%u (%.2f ms)\n", render_bus_count(),
+                     st.width, st.height, st.triangles, st.sprites, st.skipped,
+                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
 }
 
-// Fim de render: o hardware nao documenta a duracao; mesma estimativa do Flycast (spg.cpp, scheduleRenderDone):
-// min(450000 + bytes do TA * 100, 1500000) ciclos. Aproximacao. Depois disso, ISTNRM bits 0 (video), 1 (ISP) e 2 (TSP).
-void startRenderDone(Sh4Context* c, uint32_t taBytes) {
-    const uint64_t cost = std::min<uint64_t>(450000 + uint64_t(taBytes) * 100, 1500000);
-    g_renderDue         = time_now(c) + cost;
-    time_provider().render_scheduled(g_renderDue);
-}
-
-// Diagnostico: HH_TA_DUMP=<n> lista os parametros do TA e os registradores de render no n-esimo STARTRENDER. true =
-// este e o pedido (o cabecalho e os registradores ja foram impressos; o chamador imprime os parametros).
-bool startRenderDump(size_t params, uint32_t bytes, const uint32_t* bank) {
-    static const char* dump = std::getenv("HH_TA_DUMP");
-    if (!dump || g_startCount != std::atoi(dump)) return false;
-    std::fprintf(stderr, "[render] STARTRENDER %d: %zu parametros, %u bytes\n", g_startCount, params, bytes);
-    for (uint32_t r : {0x044u, 0x048u, 0x04Cu, 0x050u, 0x054u, 0x05Cu, 0x060u, 0x064u, 0x068u, 0x06Cu, 0x074u, 0x078u,
-                       0x07Cu, 0x080u, 0x084u, 0x088u, 0x08Cu, 0x098u, 0x0B0u, 0x0B4u, 0x0B8u, 0x0E4u, 0x108u, 0x11Cu,
-                       0x13Cu, 0x140u})
-        std::fprintf(stderr, "[render]   reg %08X = %08X\n", kBase + r, bank ? bank[r / 4] : reg(kBase + r));
-    return true;
+void dumpTaParams() {
+    for (const auto& prm : ta_params()) render_bus_dump_param(prm.list, prm.w, prm.words);
 }
 
 } // namespace
 
-void pvr_render_dump_param(uint32_t list, const uint32_t* w, uint32_t words) {
-    std::fprintf(stderr, "[render]   L%u", list);
-    for (uint32_t i = 0; i < words; ++i) std::fprintf(stderr, " %08X", w[i]);
-    std::fprintf(stderr, "\n");
-}
-
-void pvr_start_render_with(Sh4Context* c, uint32_t taBytes, size_t params, void (*render)(Sh4Context*),
-                           void (*dumpParams)(), const uint32_t* bank) {
-    startRenderBegin(c);
-    if (startRenderDump(params, taBytes, bank) && dumpParams) dumpParams();
-    render(c);  // o render inteiro aqui, como no caminho do TA
-    startRenderDone(c, taBytes);
-}
-
 void pvr_start_render(Sh4Context* c) {
-    startRenderBegin(c);
-    if (startRenderDump(ta_params().size(), ta_bytes(), nullptr))
-        for (const auto& prm : ta_params()) pvr_render_dump_param(prm.list, prm.w, prm.words);
-    // O render roda inteiro aqui (a CPU nao observa estados intermediarios); o
-    // jogo so ve o resultado depois do fim de render sinalizado abaixo.
-    {
-        const auto        t0 = std::chrono::steady_clock::now();
-        const RenderStats st = pvr_render(c);
-        if (std::getenv("HH_PVR_DEBUG"))
-            std::fprintf(stderr, "[render] #%d %ux%u tri=%u sprites=%u omitidos=%u (%.2f ms)\n", g_startCount,
-                         st.width, st.height, st.triangles, st.sprites, st.skipped,
-                         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
-    }
-    startRenderDone(c, ta_bytes());
+    // o pvr_render nao muda o TA: os bytes antes do render sao os de depois (o prazo do modelo anterior)
+    render_bus_start(c, ta_bytes(), ta_params().size(), &renderTa, &dumpTaParams,
+                     g_regOverride ? g_regOverride : g_regs.data());
 }
 
 bool pvr_reg_write(Sh4Context* c, uint32_t a, unsigned size, uint32_t v) {

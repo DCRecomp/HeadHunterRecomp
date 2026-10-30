@@ -19,6 +19,7 @@
 #include "render/kamui/texture_heap.h"
 #include "render_capture.h"
 #include "system/dma_bus.h"
+#include "system/render_bus.h"
 #include "system/spg_bus.h"
 
 #include <array>
@@ -317,8 +318,8 @@ void fRegWriteNative(Sh4Context* c) {
         // verificacao, o caminho do TA (decodificador do legado) sobre as mesmas listas emprestadas, e a captura confere
         // o ListSink com ele
         if (render_capture::draws_lists()) {
-            pvr_start_render_with(c, s.list.bytes(), s.list.params().size(), &renderList, [] {
-                for (const nk::ListParam& p : st().list.params()) pvr_render_dump_param(p.list, p.w, p.words);
+            render_bus_start(c, s.list.bytes(), s.list.params().size(), &renderList, [] {
+                for (const nk::ListParam& p : st().list.params()) render_bus_dump_param(p.list, p.w, p.words);
             }, s.fs.data());
         } else {
             s.taCopy.clear();

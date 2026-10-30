@@ -12,8 +12,8 @@
 #include "cpu/time_hooks.h"
 #include "maple/maple.h"
 #include "pvr/holly_intc.h"
-#include "pvr/pvr_regs.h"
-#include "pvr/pvr_video.h"
+#include "system/render_bus.h"
+#include "system/video_bus.h"
 #include "render/kamui/event_status.h"
 
 #include <string>
@@ -164,8 +164,8 @@ struct Gancho {
 
 // revisao Codex 7d2: a entrega dos eventos vencidos (holly_intc_sync, a avaliacao no acesso e no nivel IRL) com os
 // efeitos do controlador anterior, nas duas versoes: os bits, as contagens, o instante do ultimo VBlank-In, o consumo do
-// fim de render (pvr_render_done_take) e do fim do DMA do Maple (maple_dma_take) e a apresentacao do quadro
-// (pvr_video_vblank) depois do estado atualizado
+// fim de render (render_bus_done_take) e do fim do DMA do Maple (maple_dma_take) e a apresentacao do quadro
+// (video_bus_vblank) depois do estado atualizado
 HH_TEST(hh15_intc_entrega_de_eventos_vencidos) {
     std::vector<uint8_t> ram(16u << 20);
     hh::Sh4Context       c{};
@@ -176,7 +176,7 @@ HH_TEST(hh15_intc_entrega_de_eventos_vencidos) {
     hh::maple_reset();
     hh::maple_set_controller_present(false);  // o barramento sem dispositivos (o do produto)
     Gancho g;
-    hh::pvr_set_vblank_hook(
+    hh::video_bus_set_vblank_hook(
         [](void* arg) {
             auto& x = *static_cast<Gancho*>(arg);
             ++x.calls, x.vblanks = hh::holly_vblank_count(), x.at = hh::holly_last_vblank_instant();
@@ -187,23 +187,23 @@ HH_TEST(hh15_intc_entrega_de_eventos_vencidos) {
     const uint64_t e0 = hh::holly_event_count();
     // um render agendado e um DMA do Maple em curso
     c.cycles = 10;
-    hh::pvr_start_render_with(&c, 0, 0, [](hh::Sh4Context*) {}, nullptr, nullptr);
+    hh::render_bus_start(&c, 0, 0, [](hh::Sh4Context*) {}, nullptr, nullptr);
     hh::maple_write(&c, 0xA05F6C14, 1), hh::maple_write(&c, 0xA05F6C04, 0x0C100000);
     hh::sh4_write32(&c, 0x0C100000, 0x80000001u), hh::sh4_write32(&c, 0x0C100004, 0x0C110000);
     hh::sh4_write32(&c, 0x0C100008, 0x01002001), hh::sh4_write32(&c, 0x0C10000C, 0);
     hh::maple_write(&c, 0xA05F6C18, 1);
-    HH_CHECK(hh::pvr_render_done_due() != 0 && hh::maple_dma_due() != 0);
+    HH_CHECK(hh::render_bus_done_due() != 0 && hh::maple_dma_due() != 0);
     t.due = {hh::kDueVblankIn, hh::kDueVblankOut | hh::kDueRender, hh::kDueMaple | hh::kDueVblankIn, 0};
     hh::holly_intc_sync(100);  // VBlank-In
     HH_CHECK(g.calls == 1 && g.vblanks == 1 && g.at == 100 && (g.ist & hh::kIstVblankIn));
     HH_CHECK(hh::holly_vblank_count() == 1 && hh::holly_last_vblank_instant() == 100 && hh::holly_vblank_fused() == 0);
-    HH_CHECK(hh::pvr_render_done_due() != 0 && hh::maple_dma_due() != 0);
+    HH_CHECK(hh::render_bus_done_due() != 0 && hh::maple_dma_due() != 0);
     hh::holly_intc_sync(100);  // mesmo instante: nada avaliado
     HH_CHECK(t.next == 1);
     c.cycles = 200;  // a leitura avalia: VBlank-Out + fim de render (consumido)
     uint32_t v = 0;
     HH_CHECK(hh::holly_intc_read(&c, 0xA05F6900, 4, v) && v == (hh::kIstVblankIn | hh::kIstVblankOut | 0x7));
-    HH_CHECK(hh::pvr_render_done_due() == 0 && hh::maple_dma_due() != 0 && g.calls == 1);
+    HH_CHECK(hh::render_bus_done_due() == 0 && hh::maple_dma_due() != 0 && g.calls == 1);
     HH_CHECK(hh::holly_irl_level(300) == 0);  // o nivel avalia: fim do Maple (consumido) + VBlank-In nao reconhecido
     HH_CHECK(hh::maple_dma_due() == 0 && g.calls == 2 && g.at == 300);
     HH_CHECK(hh::holly_vblank_count() == 2 && hh::holly_vblank_fused() == 1);
@@ -215,7 +215,7 @@ HH_TEST(hh15_intc_entrega_de_eventos_vencidos) {
 #ifndef HH_PRODUTO_STUBS
     HH_CHECK(differ() == 0);
 #endif
-    hh::pvr_set_vblank_hook(nullptr, nullptr);
+    hh::video_bus_set_vblank_hook(nullptr, nullptr);
     hh::maple_reset();
     hh::maple_set_controller_present(true);
     hh::time_set_provider(nullptr);

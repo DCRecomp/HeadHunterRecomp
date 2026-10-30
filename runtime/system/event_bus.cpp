@@ -13,8 +13,8 @@
 #include "debug/clock_log.h"
 #include "debug/event_trace.h"
 #include "maple/maple.h"
-#include "pvr/pvr_regs.h"
-#include "pvr/pvr_video.h"
+#include "system/render_bus.h"
+#include "system/video_bus.h"
 #include "render/kamui/event_status.h"
 
 #include <cstdio>
@@ -48,11 +48,11 @@ void update(uint64_t now) {
         if (g_event_trace) event_trace(TraceEvent::VBlank, now, uint32_t(g_bank.vblanks()));
         if (g_clock_log) clock_log_vblank(g_bank.vblanks());
     }
-    if (d.render) pvr_render_done_take();
+    if (d.render) render_bus_done_take();
     if (d.maple) maple_dma_take();
     g_last = now;
     // host (apresentacao de quadros, ritmo): depois de atualizar o estado, porque o gancho pode interromper a execucao
-    if (d.vblank_in) pvr_video_vblank();
+    if (d.vblank_in) video_bus_vblank();
 }
 
 } // namespace

@@ -73,13 +73,14 @@ endif()
 # HH05: testes do runtime hibrido (setjmp/longjmp entre threads do guest, portado do Blue Stinger).
 add_executable(hh_runtime_tests unit/main.cpp unit/test_longjmp.cpp hh05_bios_exit_tests.cpp hh05_gdrom_getscd_tests.cpp hh06_service_hook_tests.cpp
                hh15_sistema_tests.cpp hh15_maple_tests.cpp hh15_som_tests.cpp hh15_dma_sb_tests.cpp hh15_intc_tests.cpp
-               hh15_spg_tests.cpp)
+               hh15_spg_tests.cpp hh15_render_bus_tests.cpp)
 target_include_directories(hh_runtime_tests PRIVATE unit)
 target_link_libraries(hh_runtime_tests PRIVATE hh_translator hh_runtime)
 add_test(NAME hh_runtime_tests COMMAND hh_runtime_tests)
 # HH15.7d1 (revisao Codex): o mesmo contrato do DMA do canal 2 e do system block com os stubs do produto
 # (system/sb_ausente e system/dmac_ausente no lugar dos modelos, como no HeadHunter.exe)
 add_executable(hh15_produto_sb_tests unit/main.cpp hh15_dma_sb_tests.cpp hh15_intc_tests.cpp hh15_spg_tests.cpp
+               hh15_render_bus_tests.cpp
                ${PROJECT_SOURCE_DIR}/runtime/system/sb_ausente.cpp ${PROJECT_SOURCE_DIR}/runtime/system/dmac_ausente.cpp
                ${PROJECT_SOURCE_DIR}/runtime/system/event_bus.cpp)
 target_include_directories(hh15_produto_sb_tests PRIVATE unit)

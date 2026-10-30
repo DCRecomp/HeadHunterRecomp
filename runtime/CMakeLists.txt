@@ -44,7 +44,8 @@ hh_mark_tool_only(hh_runtime_hw_m3)
 #               native/render/kamui/event_status)
 set(hh_rt_aot         cpu/sh4_service.cpp cpu/sh4_threads.cpp cpu/irq_bridge.cpp memory/memory.cpp)
 set(hh_rt_nativo      memory/sys_logical.cpp system/syscall_service.cpp system/maple_bus.cpp system/sound_bus.cpp
-                      system/dma_bus.cpp system/sb_bus.cpp system/spg_bus.cpp)
+                      system/dma_bus.cpp system/sb_bus.cpp system/spg_bus.cpp
+                      system/render_bus.cpp system/video_bus.cpp)
 set(hh_rt_simulacao   memory/sh4_sq.cpp pvr/pvr_regs.cpp pvr/pvr_render.cpp pvr/pvr_video.cpp
                       pvr/pvr_texture.cpp pvr/vram.cpp pvr/ta.cpp
                       input/input.cpp boot/native_boot.cpp)
