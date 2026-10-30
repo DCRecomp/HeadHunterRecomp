@@ -681,6 +681,12 @@ endereço, RAM guest nem código gerado), com a Preview jogável e equivalente �
 - Pelas fronteiras já nomeadas (`config/fronteiras.toml`), o código do jogo fica abaixo de `0x8C1586A8` (3 521
   funções, com bolsões de som e do runtime C) e o SDK acima (1 178: CRI, Kamui, Shinobi, BIOS).
 - Rota `newgame_area1_nativo` (4 700 VBlanks, `HH_FN_PERFIL`): 1 428 funções do jogo e 433 do SDK executadas.
+- HH15.9, `tools/dev/hh15_elevacao_inventario.py` sobre o `hh-hwscan` (classificação por banners e assinaturas do SDK)
+  e o perfil da rota: jogo 3 032 funções (1 113 executadas na área 1), SDK 1 515 (Shinobi 390, CRI 272, Kamui 58, som
+  33, BIOS 18, runtime C 7, 737 ainda sem família; 649 executadas), 151 desconhecidas (98 executadas). O jogo chama
+  diretamente 187 funções do SDK (a superfície a substituir: Shinobi 53, CRI 13, Kamui 9, som 9, runtime C 4, BIOS 2,
+  97 sem família). Por nível no grafo de chamadas diretas, 673 funções do jogo são folhas e 1 041 estão a 10 níveis
+  ou mais (ciclos e cadeias longas); 64 funções do jogo fazem 114 chamadas indiretas.
 
 ### 7.2 Método (o do N10 do BS, sem precedente executado lá)
 
