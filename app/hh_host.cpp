@@ -88,7 +88,32 @@ struct FnProfile {
 };
 FnProfile* g_fnProfile = nullptr;
 
+// HH15.11 (diagnostico das referencias de RAM, com HH_RAM_DUMP): o R15 mais fundo na entrada de uma funcao, por thread
+// do guest (a pilha abaixo dele so tem os quadros das folhas e e lixo; as referencias zeram a pilha morta)
+// (troca de pilha: o R15 descer mais de 64 KiB abaixo da entrada anterior, mais que qualquer quadro (o maior medido na
+// rota e 0x7840, um buffer local), ou subir mais de 4 KiB acima do mais raso ja visto, mais que um retorno; o minimo
+// recomeca, e a troca e contada com a origem, para a ferramenta aceitar so a identificada, a da pilha do boot para a do
+// jogo, e reprovar as outras; descida = o maior quadro visto)
+struct StackTrack {
+    uint32_t min = 0xFFFFFFFFu, max = 0, last = 0, trocas = 0, origem = 0, descida = 0;  // descida: o maior quadro
+    bool     visto = false;
+};
+std::vector<StackTrack> g_stacks;
+bool                    g_stackTrack = false;
+
 void onTrace(Sh4Context* c, uint32_t entry) {
+    if (g_stackTrack) {
+        const size_t   t  = size_t(sh4_current_thread());
+        const uint32_t sp = c->r[15];
+        if (t >= g_stacks.size()) g_stacks.resize(t + 1);
+        StackTrack& s = g_stacks[t];
+        if (s.visto && ((sp < s.last && s.last - sp > (64u << 10)) || (sp > s.max && sp - s.max > (4u << 10)))) {
+            ++s.trocas, s.origem = s.last;
+            s.min = s.max = sp;
+        }
+        if (s.visto && sp < s.last) s.descida = std::max(s.descida, s.last - sp);
+        s.min = std::min(s.min, sp), s.max = std::max(s.max, sp), s.last = sp, s.visto = true;
+    }
     if (g_fnProfile && entry >= g_fnProfile->lo && entry < g_fnProfile->hi) {
         auto& h = g_fnProfile->hits[{entry, c->pr}];
         if (!h[0]++) h[1] = g_res->vblanks;
@@ -131,7 +156,10 @@ void onVblank(void*) {
     if (!blank && !r.nonBlank++) r.firstNonBlank = r.vblanks;
     if (g_opt->onFrame) g_opt->onFrame(g_frame);
     // Diagnostico (HH12.0, so desenvolvimento): HH_RAM_DUMP=<vblank>,...;<pasta> grava ram_<v>.bin (16 MiB) e
-    // vram_<v>.bin (8 MiB, layout de 32 bits) nesses VBlanks. Saida privada (pasta ignorada).
+    // vram_<v>.bin (8 MiB, layout de 32 bits) nesses VBlanks. Saida privada (pasta ignorada). HH15.11: e pilhas_<v>.txt,
+    // uma linha por thread do guest: "thread topo sp minimo trocas origem descida" (hexa; topo 0 = a thread do jogo; minimo = o R15
+    // mais fundo na entrada de uma funcao desde a ultima troca de pilha; trocas e a origem da ultima), para as referencias
+    // ignorarem a pilha morta.
     static const std::string dumpSpec = [] { const char* v = std::getenv("HH_RAM_DUMP"); return std::string(v ? v : ""); }();
     if (!dumpSpec.empty()) {
         const size_t semi = dumpSpec.find(';');
@@ -141,6 +169,15 @@ void onVblank(void*) {
             if (std::strtoull(list.c_str() + i, nullptr, 10) == r.vblanks) {
                 const std::string n = std::to_string(r.vblanks);
                 if (std::FILE* f = std::fopen((dir + "/ram_" + n + ".bin").c_str(), "wb")) std::fwrite(g_ram, 1, 16u << 20, f), std::fclose(f);
+                if (std::FILE* f = std::fopen((dir + "/pilhas_" + n + ".txt").c_str(), "w")) {
+                    uint32_t topo = 0, sp = 0;
+                    for (int t = 0; sh4_thread_stack(t, *g_ctx, topo, sp); ++t) {
+                        const StackTrack s = size_t(t) < g_stacks.size() ? g_stacks[size_t(t)] : StackTrack{};
+                        std::fprintf(f, "%d %08X %08X %08X %u %08X %X\n", t, topo, sp, std::min(s.min, sp), s.trocas, s.origem,
+                                     s.descida);
+                    }
+                    std::fclose(f);
+                }
                 if (vram_data())  // sem VRAM no produto (HH15.7d4c)
                     if (std::FILE* f = std::fopen((dir + "/vram_" + n + ".bin").c_str(), "wb")) std::fwrite(vram_data(), 1, 8u << 20, f), std::fclose(f);
             }
@@ -358,7 +395,9 @@ HostResult host_run(const HostOptions& opt) {
             fnProfile.hi   = uint32_t(std::stoul(spec.substr(dash + 1), nullptr, 16));
             g_fnProfile    = &fnProfile;
         }
-        if (!opt.watch.empty() || g_fnProfile) sh4_set_trace(onTrace);
+        g_stackTrack = std::getenv("HH_RAM_DUMP") != nullptr;
+        g_stacks.clear();
+        if (!opt.watch.empty() || g_fnProfile || g_stackTrack) sh4_set_trace(onTrace);
         const Sh4Func entry = sh4_lookup(c.pc);
         if (!entry) throw std::runtime_error("entrada do jogo sem codigo recompilado");
         transitional::elevacao::verificar_premissas(&c);  // HH15.10: o executavel carregado e o que as elevadas supoem

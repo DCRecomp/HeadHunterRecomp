@@ -86,9 +86,19 @@ void gerada_global(hh::Sh4Context* c) {
 
 hh::Sh4Func g_slotAngulo = &gerada_angulo, g_slotGlobal = &gerada_global;
 
+void outra(hh::Sh4Context*) {}  // a "gerada" das outras elevadas (nao chamadas aqui)
+
+// slots para todas as elevadas (as duas primeiras com as geradas de teste); sem o da 8C073980, se pedido
 void slots(bool comGlobal) {
-    static const hh::mods::Slot s[] = {{kAngulo, &g_slotAngulo, &gerada_angulo}, {kGlobal, &g_slotGlobal, &gerada_global}};
-    hh::mods::set_slots(s, comGlobal ? 2 : 1);
+    static std::vector<hh::Sh4Func>    fns(ev::lista().size(), &outra);
+    static std::vector<hh::mods::Slot> s;
+    s.clear();
+    s.push_back({kAngulo, &g_slotAngulo, &gerada_angulo});
+    if (comGlobal) s.push_back({kGlobal, &g_slotGlobal, &gerada_global});
+    for (size_t i = 0; i < ev::lista().size(); ++i)
+        if (ev::lista()[i].endereco != kAngulo && ev::lista()[i].endereco != kGlobal)
+            s.push_back({ev::lista()[i].endereco, &fns[i], &outra});
+    hh::mods::set_slots(s.data(), s.size());
 }
 
 struct Maquina {
@@ -100,11 +110,10 @@ struct Maquina {
         c.next_event = UINT64_MAX, c.next_poll = UINT64_MAX;
         c.fpscr      = 0x00040001u;  // DN, RM para zero (o do jogo), PR = SZ = 0
         c.pr         = 0x8C010000u;
-        // o literal pool que as elevadas supoem
-        hh::sh4_write32(&c, 0x8C06F670u, 0x40C90FDBu);
-        hh::sh4_write32(&c, 0x8C06F674u, 0xC0490FDBu);
-        hh::sh4_write32(&c, 0x8C06F678u, 0x40490FDBu);
-        hh::sh4_write32(&c, 0x8C07398Cu, kPalavra);
+        // o literal pool que as elevadas supoem (as constantes do angulo conferidas a parte: 2pi, -pi, pi)
+        for (const ev::Elevada& e : ev::lista())
+            for (const ev::Premissa& p : e.premissas) hh::sh4_write32(&c, p.endereco, p.valor);
+        HH_CHECK(hh::sh4_read32(&c, 0x8C06F670u) == 0x40C90FDBu && hh::sh4_read32(&c, 0x8C07398Cu) == kPalavra);
     }
     void angulo(float a) {
         escf(&c, kDado, a);
@@ -218,7 +227,7 @@ HH_TEST(hh15_elevacao_conferir_acusa_cada_divergencia) {
     const uint64_t conferidas = ev::stats().conferidas;
     m.angulo(9.0f);
     HH_CHECK(ev::stats().conferidas == conferidas + 1);
-    HH_CHECK(ev::summary().find("[elevacao] conferir: 2 funcoes") == 0 &&
+    HH_CHECK(ev::summary().find("[elevacao] conferir: " + std::to_string(ev::lista().size()) + " funcoes") == 0 &&
              ev::summary().find("[elevacao]   8C073980 ler_global_8C14B61C: chamadas") != std::string::npos);
     ev::install(ev::Modo::Gerado);
     hh::mods::reset();

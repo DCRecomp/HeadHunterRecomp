@@ -748,3 +748,41 @@ subetapa; novas rotas entram como novos perfis.
   convenção) e a exclusão da memória abaixo do `r15` de entrada (morta depois do retorno pela ABI). Segunda passada
   (`reviews/codex-hh15_10b.log`): aceito, a instalação passava por cima dos mods do usuário (corrigido: antes deles).
   Regressão integral 15/15 (`analysis/hh15e/regressao_10.log`), ctest 93/93.
+
+### HH15.11 (em andamento): SDK
+
+#### HH15.11a (concluído, 2026-10-30): biblioteca do compilador e do runtime C
+
+- `transitional/elevadas_runtime_c.cpp`: `strlen` (8C1247E8), `strcmp` (8C124068), `memset` (8C124640), a cópia byte a
+  byte (8C123FE0) e as duas entradas da cópia por palavras pela tabela de saltos (8C123E14 e 8C123E20) do compilador, e
+  as divisões do compilador (quociente e resto, com e sem sinal: 8C123B38, 8C123BEC, 8C123C94, 8C123D5C). Identificação
+  pelo desmonte e pela conferência contra a gerada em cada chamada. Contratos: C (`strcmp`), completo (todos os
+  registradores e o T como a gerada deixa: os auxiliares com convenção própria) e auxiliar (o completo menos os bits M,
+  Q e T do SR, rascunho das sequências de `div1`, que toda divisão recomeça). Premissas: a tabela de saltos das cópias e
+  as palavras do código de erro das divisões (divisor zero grava o código na variável de erro).
+- As divisões usam fórmulas fechadas (resultado, `r1` e o desvio de correção do resto com sinal), deduzidas por um
+  modelo das instruções do trecho feito só como ferramenta de análise, fora do produto, e conferidas em 400 mil
+  entradas por função (inclusive `INT_MIN / -1`); a elevada não imita `div1`.
+- `tools/dev/hh15_custo.py`: o esqueleto de custo de uma função gerada (rótulos, `HH_CYCLES`, back-edges, desvios).
+- Rota da área 1 no modo conferir: 12 elevadas, cerca de 3 milhões de chamadas conferidas por rota, 0 divergências,
+  hashes iguais; produto: 94 hashes iguais.
+- **Referências de RAM sem a pilha morta.** A primeira regressão do lote reprovou as referências pré-corte da HH15 só
+  no hash da RAM (quadros, ordem, relógio, áudio e resumo idênticos): 12 a 17 bytes diferentes, todos na pilha
+  principal abaixo do SP. Uma elevada não reproduz o lixo que a gerada deixa abaixo do SP, e um tratador de
+  interrupção que atende dentro dela empilha registradores de rascunho diferentes; copiar esse lixo exigiria imitar a
+  gerada instrução a instrução. O `HH_RAM_DUMP` passou a gravar a pilha de cada thread (topo, SP, o R15 mais fundo na
+  entrada de função, as trocas de pilha), e `tools/dev/hh15_referencias.py` zera a pilha morta antes do hash (do mais
+  fundo menos 256 bytes até o SP, sem invadir a pilha viva de outra thread, no máximo 64 KiB; só a troca identificada,
+  a da pilha do boot para a do jogo, é aceita; outra descontinuidade, o R15 descer mais de 64 KiB numa chamada ou subir
+  mais de 4 KiB acima do mais raso já visto, reprova a medição; o maior quadro medido na rota é 0x7840, um buffer
+  local). As referências foram
+  recapturadas com as geradas (`analysis/hh15/ref_mascara`): quadros, relógio, áudio, resumo e o hash da RAM inteira
+  idênticos às pré-corte nos três casos; o `ordem.tsv` pré-corte mantido (a lista fechada de SPCs se aplica sobre ele).
+  A máscara cobre cerca de 12 KB de 16 MiB. A conferência das elevadas ignora só os 256 bytes do quadro abaixo do r15 de
+  entrada (a cópia de lixo de pilha nas elevadas, tentada antes, foi removida).
+- Revisão Codex: do lote (`reviews/codex-hh15_11a.log`), sem achados; da mudança das referências
+  (`reviews/codex-hh15_11a2.log`), aceito: a troca de pilha inferida por salto de 64 KiB podia mascarar dados entre
+  pilhas próximas (corrigido: troca detectada por descida acima de 64 KiB ou subida acima do mais raso, só a
+  identificada é aceita; a primeira versão, com salto de 4 KiB em qualquer sentido, acusava retornos e quadros grandes
+  e foi medida e corrigida antes do commit). Regressão integral 15/15
+  (`analysis/hh15e/regressao_11a2.log`), ctest 93/93.

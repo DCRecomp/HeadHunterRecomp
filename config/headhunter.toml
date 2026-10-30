@@ -175,6 +175,13 @@ slots = [
   # sem slot)
   0x8C06F62C,  # normalizar_angulo
   0x8C073980,  # ler_global_8C14B61C
+  # HH15.11a: biblioteca do compilador e do runtime C (transitional/elevadas_runtime_c.cpp)
+  0x8C1247E8,  # strlen
+  0x8C124068,  # strcmp
+  0x8C124640,  # memset
+  0x8C123FE0,  # copiar_bytes (auxiliar do compilador)
+  0x8C123E14, 0x8C123E20,  # copiar_palavras_par / _impar (auxiliares do compilador, tabela de saltos)
+  0x8C123B38, 0x8C123BEC, 0x8C123C94, 0x8C123D5C,  # dividir, dividir_sem_sinal, resto, resto_sem_sinal
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

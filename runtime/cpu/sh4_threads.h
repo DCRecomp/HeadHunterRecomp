@@ -27,6 +27,10 @@ int sh4_thread_count();
 int sh4_current_thread();
 // Trocas de thread do guest desde o inicio do processo (diagnostico N2b: epoca de eventos).
 uint64_t sh4_thread_switch_count();
+// HH15.11 (diagnostico das referencias de RAM): a pilha da thread `i` do guest. `topo` e o R15 com que ela nasceu (0 na
+// thread 0, que comecou com o jogo); `sp` o R15 atual (o do contexto `c`, na thread corrente) ou o de quando foi
+// suspensa. false se `i` nao existe.
+bool sh4_thread_stack(int i, const Sh4Context& c, uint32_t& topo, uint32_t& sp);
 
 // Encerramento: apaga as fibras das threads do guest e desfaz a conversao da thread do
 // host em fibra. Chamar na thread do host que executou o jogo, depois que a execucao

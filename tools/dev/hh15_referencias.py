@@ -6,7 +6,12 @@ Cada caso roda o roteiro newgame_area1_nativo (4 700 VBlanks) com os provedores 
   quadros.txt  hashes de quadro a cada 50 VBlanks (stdout do hh-run);
   ordem.tsv    trace de ordem (HH_EVENT_TRACE) sem a coluna de ciclos: V, I (INTEVT, SPC), R, T, N, J em ordem;
   relogio.tsv  relogios consultaveis por VBlank (HH_CLOCK_LOG);
-  ram.txt      SHA-256 da RAM principal nos VBlanks de RAM_VBLANKS (os despejos sao apagados);
+  ram.txt      SHA-256 da RAM principal nos VBlanks de RAM_VBLANKS, com a pilha morta de cada thread zerada (HH15.11:
+               do R15 mais fundo visto na entrada de funcao, menos MARGEM_PILHA, ate o R15 atual, sem invadir a pilha
+               viva de outra thread; pilhas_<v>.txt do hh-run; so a troca de pilha identificada, a do boot para a do
+               jogo, e aceita, e a faixa e limitada a MAX_PILHA_MORTA). A pilha morta e lixo que nenhum codigo le, e uma
+               funcao elevada nao reproduz o lixo da gerada (os despejos sao apagados);
+  ram_completa.txt  o SHA-256 da RAM inteira (so evidencia: a recaptura das referencias prova que e o de antes);
   audio.txt    SHA-256 da saida do motor de audio (HH_AUDIO_WAV);
   resumo.txt   linhas de resumo do host ([tempo], [arquivos], [audio], [saves], parada).
 Nada disso contem bytes do jogo: so hashes, enderecos e contagens (a pasta fica em analysis/, ignorada).
@@ -43,6 +48,56 @@ CASES = {
 ARTIFACTS = ('quadros.txt', 'ordem.tsv', 'relogio.tsv', 'ram.txt', 'audio.txt', 'resumo.txt')
 ENV_DROP = ('HH_EVENT_TRACE', 'HH_CLOCK_LOG', 'HH_AUDIO_WAV', 'HH_RAM_DUMP', 'HH_HW_PROBE', 'HH_TEMPO_MUTACAO',
             'HH_TIME_TRACE', 'HH_PROGRESS_TRACE', 'HH_AUDIO_LOG', 'HH_ARQUIVOS_LOG', 'HH_BU_MUTACAO')
+
+
+MARGEM_PILHA = 256  # o quadro de uma folha abaixo do R15 da entrada (o da conferencia das elevadas)
+RAM_BASE, RAM_FIM = 0x8C000000, 0x8D000000
+MAX_PILHA_MORTA = 64 << 10
+PILHA_DO_BOOT = 0x8C010000  # a pilha do IP.BIN/boot fica abaixo do executavel (r15 de entrada 0x8C00F400)
+
+
+def pilha_morta(pilhas):
+    """faixas [lo, hi) de enderecos da pilha morta: de cada thread, do mais fundo (menos a margem) ao R15 atual, menos
+    as pilhas vivas das outras ([sp, topo); a thread 0 ate o fim da RAM)."""
+    ts = []
+    for l in open(pilhas):
+        t, topo, sp, mn, trocas, origem = (l.split() + ['0', '0'])[:6]  # o formato antigo nao tem as trocas
+        t, trocas, origem = int(t), int(trocas), int(origem, 16)
+        # so a troca identificada: a thread do jogo saindo da pilha do boot para a do jogo; qualquer outra descontinuidade
+        # (salto de R15 acima de 4 KiB entre entradas de funcao) reprova a medicao em vez de mascarar
+        if trocas and not (t == 0 and trocas == 1 and origem < PILHA_DO_BOOT):
+            raise SystemExit('troca de pilha nao identificada na thread %d (%d trocas, ultima de %08X) em %s'
+                             % (t, trocas, origem, pilhas))
+        ts.append((t, int(topo, 16), int(sp, 16), int(mn, 16)))
+    vivas = {t: (sp, topo if topo else RAM_FIM) for t, topo, sp, mn in ts}
+    out = []
+    for t, topo, sp, mn in ts:
+        if sp - mn > MAX_PILHA_MORTA:  # a medicao nao delimitou a pilha: mascarar mais seria esconder estado
+            raise SystemExit('pilha morta da thread %d grande demais (%X-%X) em %s' % (t, mn, sp, pilhas))
+        faixas = [(max(mn - MARGEM_PILHA, RAM_BASE), sp)]
+        for u, (lo, hi) in vivas.items():
+            if u == t:
+                continue
+            novas = []
+            for a, b in faixas:
+                if b <= lo or a >= hi:
+                    novas.append((a, b))
+                    continue
+                if a < lo:
+                    novas.append((a, lo))
+                if b > hi:
+                    novas.append((hi, b))
+            faixas = novas
+        out += [(a, b) for a, b in faixas if a < b]
+    return out
+
+
+def sha_ram(path, pilhas):
+    data = bytearray(open(path, 'rb').read())
+    if os.path.isfile(pilhas):
+        for a, b in pilha_morta(pilhas):
+            data[a - RAM_BASE:b - RAM_BASE] = bytes(b - a)
+    return hashlib.sha256(bytes(data)).hexdigest()
 
 
 def sha(path):
@@ -82,8 +137,11 @@ def run_case(run, case, out):
                     order.append('\t'.join((f[2], f[3], f[4])))
         w('ordem.tsv', ''.join(l + '\n' for l in order))
         w('relogio.tsv', open(ck).read() if os.path.isfile(ck) else '')
-        w('ram.txt', ''.join('%d %s\n' % (v, sha(os.path.join(tmp, 'ram_%d.bin' % v)) if os.path.isfile(
-            os.path.join(tmp, 'ram_%d.bin' % v)) else 'ausente') for v in RAM_VBLANKS))
+        ram = lambda v: os.path.join(tmp, 'ram_%d.bin' % v)
+        w('ram.txt', ''.join('%d %s\n' % (v, sha_ram(ram(v), os.path.join(tmp, 'pilhas_%d.txt' % v))
+                                           if os.path.isfile(ram(v)) else 'ausente') for v in RAM_VBLANKS))
+        w('ram_completa.txt', ''.join('%d %s\n' % (v, sha(ram(v)) if os.path.isfile(ram(v)) else 'ausente')
+                                      for v in RAM_VBLANKS))
         w('audio.txt', (sha(wav) if os.path.isfile(wav) else 'ausente') + '\n')
         keep = re.compile(r'^(\[(tempo|arquivos|audio|saves|video|render)\]|PARADA|ok:|vblanks:)')
         w('resumo.txt', 'rc %d\n' % p.returncode + ''.join(l + '\n' for l in text.splitlines() if keep.match(l)))

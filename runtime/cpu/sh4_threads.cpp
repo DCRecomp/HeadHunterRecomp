@@ -31,6 +31,7 @@ struct Thread {
     uint32_t entry = 0;  // thread nova: primeira instrucao
     uint32_t redirect = 0;  // retomada por longjmp: ponto de retorno do setjmp
     uint32_t curFn = 0;     // c->cur_fn ao suspender (sonda N0: atribuicao por thread)
+    uint32_t top = 0;       // R15 com que a thread nasceu (topo da pilha; 0 na thread 0)
 };
 
 // Estado por thread do host: as threads do guest pertencem a thread do host que executa
@@ -130,6 +131,7 @@ void startThread(Sh4Context* c, uint32_t pc, uint32_t target) {
     t.entry     = target;
     t.retExpect = 0xFFFFFFFF;  // a funcao de entrada nunca retorna
     t.retSp     = sp;
+    t.top       = sp;
     const size_t id = g_threads.size();
     t.fiber = CreateFiberEx(64 << 10, 8u << 20, FIBER_FLAG_FLOAT_SWITCH, fiberMain,
                             reinterpret_cast<void*>(uintptr_t(id)));
@@ -146,6 +148,18 @@ void startThread(Sh4Context* c, uint32_t pc, uint32_t target) {
 int sh4_thread_count() { return int(g_threads.size()); }
 int sh4_current_thread() { return int(g_current); }
 uint64_t sh4_thread_switch_count() { return g_switches; }
+
+bool sh4_thread_stack(int i, const Sh4Context& c, uint32_t& topo, uint32_t& sp) {
+    if (g_threads.empty() && i == 0) {  // so a thread do jogo, sem fibras ainda
+        topo = 0, sp = c.r[15];
+        return true;
+    }
+    if (i < 0 || size_t(i) >= g_threads.size()) return false;
+    const Thread& t = g_threads[size_t(i)];
+    topo            = t.top;
+    sp              = size_t(i) == g_current ? c.r[15] : t.resumeSp;
+    return true;
+}
 
 int sh4_live_fibers() { return g_liveFibers.load(); }
 

@@ -16,7 +16,7 @@ namespace hh::transitional::elevacao {
 namespace {
 
 constexpr size_t   kMax          = 1024;       // thunks de conferencia (um por elevada)
-constexpr uint32_t kPilhaMorta   = 64u << 10;  // abaixo do r15 de entrada: morta depois do retorno (ABI), nao comparada
+constexpr uint32_t kQuadro       = 256;  // abaixo do r15 de entrada: o quadro da gerada (lixo depois do retorno)
 constexpr uint64_t kCompletasAte = 256;        // RAM inteira nas primeiras chamadas de cada elevada...
 constexpr uint64_t kCompletaCada = 1024;       // ... e depois numa a cada kCompletaCada
 
@@ -137,7 +137,8 @@ void conferir(size_t i, Sh4Context* c) {
     for (int r = 0; r < 8; ++r)
         if (c->rbank[r] != ce.rbank[r]) divergiu(c, e, "banco inativo (rbank)", c->rbank[r], ce.rbank[r]);
     if (c->pr != ce.pr) divergiu(c, e, "pr", c->pr, ce.pr);
-    if (c->sr != ce.sr) divergiu(c, e, "sr", c->sr, ce.sr);
+    const uint32_t mascaraSr = e.contrato == Contrato::Auxiliar ? ~(kSrM | kSrQ) : ~0u;
+    if ((c->sr & mascaraSr) != (ce.sr & mascaraSr)) divergiu(c, e, "sr", c->sr, ce.sr);
     if (c->gbr != ce.gbr || c->vbr != ce.vbr || c->ssr != ce.ssr || c->spc != ce.spc || c->sgr != ce.sgr || c->dbr != ce.dbr)
         divergiu(c, e, "gbr/vbr/ssr/spc/sgr/dbr", c->gbr, ce.gbr);
     if (c->mach != ce.mach || c->macl != ce.macl) divergiu(c, e, "mach/macl", c->macl, ce.macl);
@@ -147,6 +148,12 @@ void conferir(size_t i, Sh4Context* c) {
     for (int f = 0; f < 16; ++f)
         if (c->xf[f] != ce.xf[f]) divergiu(c, e, "banco inativo da FPU (xf)", c->xf[f], ce.xf[f]);
     if (e.retorno == Retorno::R0 && c->r[0] != ce.r[0]) divergiu(c, e, "retorno r0", c->r[0], ce.r[0]);
+    if (e.contrato != Contrato::C) {
+        for (int r = 0; r < 8; ++r)
+            if (c->r[r] != ce.r[r]) divergiu(c, e, "registrador do contrato completo (r0-r7)", c->r[r], ce.r[r]);
+        if ((e.contrato == Contrato::Completo && c->t != ce.t) || c->fpul != ce.fpul)
+            divergiu(c, e, "T/FPUL do contrato completo", c->t, ce.t);
+    }
     if (e.retorno == Retorno::Fr0 && c->fr[0] != ce.fr[0]) divergiu(c, e, "retorno fr0", c->fr[0], ce.fr[0]);
     // o valor final de cada palavra escrita pela elevada (a ultima escrita vale)
     for (auto it = finais.rbegin(); it != finais.rend(); ++it) {
@@ -161,17 +168,19 @@ void conferir(size_t i, Sh4Context* c) {
     if (!full) return;
     ++g_stats.completas, ++s.completas;
     for (const Final& f : finais) std::memcpy(g_copia.data() + f.off, f.depois, f.n);
-    const uint32_t topo  = c0.r[15] & kRamMask;
-    const uint32_t morta = topo > kPilhaMorta ? topo - kPilhaMorta : 0;
-    auto           cmp   = [&](uint32_t lo, uint32_t hi) {
+    auto cmp = [&](uint32_t lo, uint32_t hi) {
         if (hi <= lo || std::memcmp(c->ram + lo, g_copia.data() + lo, hi - lo) == 0) return;
         uint32_t k = lo;
         while (c->ram[k] == g_copia[k]) ++k;
         divergiu(c, e, "RAM (a gerada escreveu o que a elevada nao)", 0x0C000000u | k, g_copia[k]);
     };
-    const bool pilhaNaRam = sh4_is_ram(c0.r[15]);
-    cmp(0, pilhaNaRam ? morta : 16u << 20);
-    if (pilhaNaRam) cmp(topo, 16u << 20);
+    if (sh4_is_ram(c0.r[15])) {
+        const uint32_t topo = c0.r[15] & kRamMask, quadro = topo > kQuadro ? topo - kQuadro : 0;
+        cmp(0, quadro);
+        cmp(topo, 16u << 20);
+    } else {
+        cmp(0, 16u << 20);
+    }
 }
 
 template <size_t I>
@@ -187,6 +196,15 @@ constexpr std::array<Sh4Func, sizeof...(I)> thunks(std::index_sequence<I...>) {
 constexpr auto kThunks = thunks(std::make_index_sequence<kMax>{});
 
 } // namespace
+
+std::span<const Elevada> lista() {
+    static const std::vector<Elevada> todas = [] {
+        std::vector<Elevada> v;
+        for (const auto& fonte : {elevadas_jogo(), elevadas_runtime_c()}) v.insert(v.end(), fonte.begin(), fonte.end());
+        return v;
+    }();
+    return todas;
+}
 
 const char* nome_modo(Modo m) {
     switch (m) {
@@ -259,6 +277,12 @@ uint32_t ler32(Sh4Context* c, uint32_t a) {
     std::memcpy(&v, c->ram + offsetRam(c, a, 4, "elevacao: leitura fora da RAM principal ou desalinhada"), 4);
     return v;
 }
+
+uint8_t ler8(Sh4Context* c, uint32_t a) {
+    return c->ram[offsetRam(c, a, 1, "elevacao: leitura fora da RAM principal")];
+}
+
+void escrever8(Sh4Context* c, uint32_t a, uint8_t v) { escrever(c, a, &v, 1); }
 
 float ler_f(Sh4Context* c, uint32_t a) {
     const uint32_t u = ler32(c, a);

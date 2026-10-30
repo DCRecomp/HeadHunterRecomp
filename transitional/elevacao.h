@@ -8,8 +8,9 @@
 //
 // Modos (HH_ELEVACAO, so na verificacao): ativo (padrao, o do produto), gerado (as funcoes geradas) e conferir: em
 // cada chamada a elevada roda num ensaio (escritas num diario, desfeitas; back-edges so contados), a gerada roda de
-// verdade e o resultado e comparado (custo, registradores do contrato, escritas da elevada; a RAM inteira, menos a
-// pilha morta abaixo do r15 de entrada, numa amostra). Uma chamada em que a gerada foi atendida (interrupcao, tick) so
+// verdade e o resultado e comparado (custo, registradores do contrato, escritas da elevada; a RAM inteira numa amostra,
+// menos o quadro da propria funcao, os 256 bytes abaixo do r15 de entrada: o que a gerada empilha e lixo depois do
+// retorno, e as referencias de RAM do HH15 ignoram a pilha morta das threads). Uma chamada em que a gerada foi atendida (interrupcao, tick) so
 // conta; se so a elevada teria sido atendida, e divergencia.
 #include "cpu/sh4_runtime.h"
 
@@ -20,6 +21,10 @@
 namespace hh::transitional::elevacao {
 
 enum class Retorno : uint8_t { Nenhum, R0, Fr0 };
+// Contrato de registradores conferido: o da convencao C (r8-r15 e o resto preservado, mais o retorno) ou o completo
+// (tambem r0-r7, T e FPUL como a gerada deixa: auxiliares do compilador, com convencao propria) ou o auxiliar (o
+// completo menos os bits M, Q e T do SR: rascunho das sequencias de div1, que toda divisao recomeca com div0s/div0u).
+enum class Contrato : uint8_t { C, Completo, Auxiliar };
 
 // Palavra do executavel (literal pool) da qual a elevada depende: o valor fica embutido na elevada.
 struct Premissa {
@@ -33,9 +38,14 @@ struct Elevada {
     Sh4Func                   funcao;
     Retorno                   retorno;
     std::span<const Premissa> premissas;
+    Contrato                  contrato = Contrato::C;
 };
 
-std::span<const Elevada> lista();  // elevadas_jogo.cpp
+// Todas as elevadas: as do jogo (elevadas_jogo.cpp) e as da biblioteca do compilador e do runtime C
+// (elevadas_runtime_c.cpp), nessa ordem.
+std::span<const Elevada> lista();
+std::span<const Elevada> elevadas_jogo();
+std::span<const Elevada> elevadas_runtime_c();
 
 enum class Modo : uint8_t { Gerado, Ativo, Conferir };
 // Instala o modo (Gerado devolve as geradas). std::runtime_error se uma elevada nao tem slot ou nao e funcao gerada.
@@ -64,6 +74,8 @@ inline void cobrar(Sh4Context* c, uint32_t ciclos) { c->cycles += ciclos; }
 void volta(Sh4Context* c, uint32_t retomada);
 // RAM principal, alinhada; outro endereco e erro explicito (a elevada nao toca hardware).
 uint32_t ler32(Sh4Context* c, uint32_t a);
+uint8_t  ler8(Sh4Context* c, uint32_t a);
+void     escrever8(Sh4Context* c, uint32_t a, uint8_t v);
 float    ler_f(Sh4Context* c, uint32_t a);
 void     escrever32(Sh4Context* c, uint32_t a, uint32_t v);
 void     escrever_f(Sh4Context* c, uint32_t a, float v);

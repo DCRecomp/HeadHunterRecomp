@@ -50,6 +50,6 @@ constexpr Elevada kLista[] = {
 
 } // namespace
 
-std::span<const Elevada> lista() { return kLista; }
+std::span<const Elevada> elevadas_jogo() { return kLista; }
 
 } // namespace hh::transitional::elevacao
