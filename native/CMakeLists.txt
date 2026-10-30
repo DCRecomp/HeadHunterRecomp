@@ -55,7 +55,8 @@ target_link_libraries(hh_native_render_soft PUBLIC hh_native_render)
 # HH15.7b-c: os servicos nativos da camada grafica do Kamui: as listas decodificadas direto para a IR, o estado do
 # quadro, os texels das texturas e a imagem exibida
 add_library(hh_native_render_kamui STATIC render/kamui/list_sink.cpp render/kamui/frame_state.cpp
-            render/kamui/texture_source.cpp render/kamui/display_service.cpp)
+            render/kamui/texture_source.cpp render/kamui/display_service.cpp
+            render/kamui/event_status.cpp)
 target_link_libraries(hh_native_render_kamui PUBLIC hh_native_render_soft)
 
 # HH13: backend Vulkan (offscreen; o Vulkan e carregado em tempo de execucao, sem SDK; cabecalhos Khronos em

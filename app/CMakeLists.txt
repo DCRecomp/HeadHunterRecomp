@@ -48,11 +48,12 @@ if(HH_GENERATED_DIR)
     # HH15.2/HH15.3: o stub dos diagnosticos de validacao e o lugar do BIOS HLE e do drive simulado sao fontes do proprio
     # produto; como os simbolos ja estao definidos aqui, o linker nao puxa hw_probe/validacao nem bios/flashrom/gdrom/
     # data_source do hh_runtime (a catraca hh15_produto_papeis confere no mapa). HH15.4/HH15.6: o mesmo para o modelo do
-    # Maple (maple_ausente) e o da AICA (aica_ausente).
+    # Maple (maple_ausente) e o da AICA (aica_ausente). HH15.7d: os do system block e do DMAC (sb_ausente,
+    # dmac_ausente) e o banco de status de interrupcao nativo no lugar do controlador anterior (event_bus).
     add_executable(HeadHunter WIN32 hh_window.cpp ${CMAKE_SOURCE_DIR}/runtime/debug/validacao_stubs.cpp
                    ${CMAKE_SOURCE_DIR}/runtime/system/hle_ausente.cpp ${CMAKE_SOURCE_DIR}/runtime/system/maple_ausente.cpp
                    ${CMAKE_SOURCE_DIR}/runtime/system/aica_ausente.cpp ${CMAKE_SOURCE_DIR}/runtime/system/sb_ausente.cpp
-                   ${CMAKE_SOURCE_DIR}/runtime/system/dmac_ausente.cpp)
+                   ${CMAKE_SOURCE_DIR}/runtime/system/dmac_ausente.cpp ${CMAKE_SOURCE_DIR}/runtime/system/event_bus.cpp)
     target_link_libraries(HeadHunter PRIVATE hh_host hh_native_install SDL3::SDL3-static shell32 ole32)  # shell32/ole32: pasta Documentos (saves)
     # HH18: identificacao (--version) e mods em C++ do projeto exportado (com HH_MODS: slots em todas as funcoes)
     set(HH_VERSION_OVERRIDE "" CACHE STRING "Versao gravada no HeadHunter.exe (vazio = arquivo VERSION)")

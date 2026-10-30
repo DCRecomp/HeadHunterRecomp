@@ -19,6 +19,12 @@ K6  HH15.7c: o estado nativo (estado do quadro, memoria das texturas, imagem exi
     HH_KAMUI_NATIVO_MUTACAO=quadro|textura|framebuffer|video, cada um acusado so pelo seu comparador;
 K3  sonda de hardware (HH_TA_FONTES) no nativo: nenhum byte no TA nem na VRAM do runtime; do PVR so os registradores de
     tempo do video (SPG, 0x0C8-0x0E0, e SPG_STATUS), que saem no HH15; os bytes da area 4 chegam ao destino nativo.
+K7  HH15.7d2: o banco de status de interrupcao nativo (native/render/kamui/event_status, o do produto) em sombra do
+    controlador anterior que o hh-run executa, comparado a cada operacao (registradores, ISTNRM lido, nivel IRL,
+    contagens): 0 diferencas com o Kamui nativo e em sombra, com operacoes comparadas > 0; negativo
+    HH_EVENT_STATUS_MUTACAO=limpa (a sombra ignora a limpeza do bit 19) acusado. O servico do produto em volta do banco
+    (system/event_bus.cpp: entrega, efeitos e ordem) e conferido pelo hh15_produto_sb_tests e, com dados, pela rota do
+    produto no passo builder da regressao (revisao Codex 7d2).
 
 uso: hh13_kamui.py <hh-run.exe> <raiz do projeto>
 ambiente: HH_DATA_DIR (dados privados; sem ele = SKIP, rc 77); HH_AREA1_HASHES (referencia do HH06; obrigatoria com
@@ -185,6 +191,19 @@ dn, ds = dma(n['kamui']), dma(s['kamui'])
 check('K3: area 4 no destino nativo, pedidos e bytes por destino iguais aos da sombra (DMA do canal 2 sem o TA)',
       dn is not None and dn == ds and dn[0] > 0 and dn[1] > 0 and not any(d == 'kamui_poligonos' for d in destinos),
       'nativo %s, sombra %s' % (dn, ds))
+
+
+def status(err):
+    m = re.search(r'\[event-status\] operacoes comparadas (\d+), diferentes (\d+)', err)
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+en, es = status(n['err']), status(s['err'])
+check('K7: banco de status nativo igual ao controlador anterior em toda operacao (nativo e sombra)',
+      en is not None and es is not None and en[0] > 0 and es[0] > 0 and en[1] == 0 and es[1] == 0,
+      'nativo %s, sombra %s' % (en, es))
+em = status(run('nativo', {'HH_EVENT_STATUS_MUTACAO': 'limpa'}, 300)['err'])
+check('K7 negativo limpa: acusado', em is not None and em[1] > 0, str(em))
 
 print('FALHOU (%d)' % fails if fails else 'OK')
 sys.exit(1 if fails else 0)

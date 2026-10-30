@@ -522,3 +522,37 @@ inicialização (`0x8C15FAC8`).
   referência do produto.
 - Regressão integral 14/14 (`analysis/hh15/regressao_7d1.log`), ctest 70/70; no passo `builder` o produto instalado
   cumpre a rota sem acesso recusado.
+
+#### HH15.7d2 (concluído, 2026-10-29): banco de status de interrupção nativo
+
+- `native/render/kamui/event_status` (derivado do BS, N8.7 4a; deslocamentos 0x00-0x3F): o banco mínimo de status que o
+  tratador `0x8C168160`, a Ninja e o jogo leem e limpam: ISTNRM/ISTEXT/ISTERR e as máscaras IML*, a entrega dos eventos
+  vencidos na ordem do controlador anterior (VBlank-In com a contagem dos fundidos, VBlank-Out, fim de render, fim do
+  DMA do Maple), os levantados na hora, o nível da fonte externa da AICA (ISTEXT: só a fonte apaga; o ISTNRM lido com o
+  bit 30), o nível IRL e as contagens. O prazo de cada evento continua com o provedor de tempo (D-K4).
+- `runtime/system/event_bus.cpp`, compilado só no produto (como os stubs): a API de `pvr/holly_intc.h` sobre o banco
+  nativo, com os mesmos efeitos e a mesma ordem no `update` (`maple_vblank_in`, traces, `pvr_render_done_take`,
+  `maple_dma_take`, `pvr_video_vblank` por último).
+- `pvr/holly_intc.cpp` vai para o papel novo `intc` (só verificação): é a referência e roda o banco nativo em sombra,
+  comparado depois de cada operação (os 16 registradores, o ISTNRM lido, o nível IRL e as contagens;
+  `holly_event_status_summary`, impresso pelo host); negativo `HH_EVENT_STATUS_MUTACAO=limpa` (a sombra ignora a limpeza
+  do bit 19).
+- Catraca: `intc` fora do mapa e `event_bus` como objeto do próprio produto (negativos `com_intc` e `sem_event_bus`).
+  Testes (`tests/hh15_intc_tests.cpp`, no `hh_runtime_tests` com a referência e no `hh15_produto_sb_tests` com o serviço
+  do produto): o banco puro, o contrato pela API com valores fixos e a entrega dos eventos vencidos com um provedor de
+  tempo roteirizado; negativo `hh15_event_status_mutacao`. Portão K7 em `tests/diff/hh13_kamui.py`.
+- Rota da área 1 (`hh-run`): 94 hashes iguais ao HH06; a sombra comparou 83 990 operações, 0 diferentes; o negativo
+  `limpa` acusa (300 VBlanks: 2 632 diferentes, a primeira na limpeza da operação 173). Produto (`HeadHunter.exe
+  --headless`, rota do produto): 94 hashes iguais à referência do produto. ctest 73/73.
+- Revisão Codex (`reviews/codex-hh15_7d2.log`), sem diferença apontada nos valores, bit 30, reset, contagens, faixas ou
+  símbolos:
+  - [MÉDIA] aceito: o K7 só executa o controlador da verificação (o `hh-run` não liga o `event_bus`), e o teste do
+    produto não entregava eventos vencidos; remover a entrega ou um efeito do `event_bus` não reprovava nada sem dados.
+    Novo `hh15_intc_entrega_de_eventos_vencidos` (nas duas versões): provedor roteirizado, render agendado e DMA do Maple
+    em curso; confere bits, contagens, fundidos, instante do último VBlank-In, consumo do fim de render e do Maple e a
+    apresentação do quadro depois do estado atualizado. Conferido por mutação manual do `event_bus` (sem
+    `pvr_render_done_take`; sem `pvr_video_vblank`): o teste reprova nos dois casos. O K7 passa a dizer o que confere;
+  - [MÉDIA] parcial: a sombra compara o banco, não os efeitos em volta (instante do VBlank, despertar, Maple, traces,
+    consumo dos prazos, apresentação). Esses efeitos ficam no teste dirigido acima, nas duas versões, e na rota do
+    produto do passo `builder`; a comparação por operação continua só do banco, como no BS.
+- Regressão integral 14/14 (`analysis/hh15/regressao_7d2.log`), ctest 73/73.

@@ -29,6 +29,7 @@
 #include "hle/bios.h"
 #include "input/input.h"
 #include "maple/maple.h"
+#include "pvr/holly_intc.h"
 #include "pvr/pvr_video.h"
 #include "pvr/vram.h"
 
@@ -434,6 +435,7 @@ HostResult host_run(const HostOptions& opt) {
                      static_cast<unsigned long long>(s.vblankCollapsed));
     }
     std::fputs(sys_logical_summary().c_str(), stderr);  // HH15.1: servicos do tempo logico (vazio fora dele)
+    std::fputs(holly_event_status_summary().c_str(), stderr);  // HH15.7d2: banco de status em sombra (vazio no produto)
     {  // HH15.1: origem das entregas de interrupcao (quantum de ciclos x atendimento pedido x espera do hardware x ldc sr)
         auto n = [](IrqOrigin o) { return static_cast<unsigned long long>(sh4_irq_origin_count(o)); };
         std::fprintf(stderr, "[irq] entregas %llu: quantum %llu, pedido %llu, espera do hardware %llu, ldc sr %llu, despertar %llu\n",

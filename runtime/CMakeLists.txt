@@ -39,26 +39,31 @@ hh_mark_tool_only(hh_runtime_hw_m3)
 #               negativos HH_SB_MUTACAO e o canal 2 para o TA do runtime no HH_KAMUI=legado/sombra); o produto compila
 #               system/sb_ausente.cpp e system/dmac_ausente.cpp no lugar (o contrato medido: system/sb_bus e
 #               system/dma_bus)
+#   intc        so a verificacao (HH15.7d2): o controlador de interrupcoes anterior, referencia do banco de status nativo
+#               (em sombra, comparado a cada operacao); o produto compila system/event_bus.cpp no lugar (o banco nativo,
+#               native/render/kamui/event_status)
 set(hh_rt_aot         cpu/sh4_service.cpp cpu/sh4_threads.cpp cpu/irq_bridge.cpp memory/memory.cpp)
 set(hh_rt_nativo      memory/sys_logical.cpp system/syscall_service.cpp system/maple_bus.cpp system/sound_bus.cpp
                       system/dma_bus.cpp system/sb_bus.cpp)
 set(hh_rt_simulacao   memory/sh4_sq.cpp pvr/pvr_regs.cpp pvr/pvr_render.cpp pvr/pvr_video.cpp
-                      pvr/pvr_texture.cpp pvr/holly_intc.cpp pvr/vram.cpp pvr/ta.cpp
+                      pvr/pvr_texture.cpp pvr/vram.cpp pvr/ta.cpp
                       input/input.cpp boot/native_boot.cpp)
 set(hh_rt_hle         hle/bios.cpp hle/flashrom.cpp gdrom/gdrom.cpp gdrom/data_source.cpp)
 set(hh_rt_perifericos maple/maple.cpp)
 set(hh_rt_aica        aica/aica_regs.cpp)
 set(hh_rt_sb          pvr/holly_sb.cpp memory/sh4_dmac.cpp)
+set(hh_rt_intc        pvr/holly_intc.cpp)
 set(hh_rt_estavel     cpu/time_legacy.cpp cpu/sh4_intc.cpp memory/sh4_port.cpp memory/sh4_tmu.cpp memory/sh4_ccn.cpp)
 set(hh_rt_diagnostico debug/snapshot.cpp debug/event_trace.cpp debug/call_trace.cpp debug/file_log.cpp
                       debug/clock_log.cpp)
 set(hh_rt_validacao   debug/hw_probe.cpp debug/validacao.cpp)
-set(hh_rt_papeis aot nativo simulacao estavel diagnostico validacao hle perifericos aica sb)
+set(hh_rt_papeis aot nativo simulacao estavel diagnostico validacao hle perifericos aica sb intc)
 set(hh_rt_manifesto "papel\tfonte\n")
 set(hh_rt_objetos "")
 foreach(papel IN LISTS hh_rt_papeis)
   add_library(hh_rt_${papel} OBJECT ${hh_rt_${papel}})
-  target_link_libraries(hh_rt_${papel} PUBLIC hh_runtime_cpu hh_extract_core hh_native_render_soft PRIVATE hh_dcmap)
+  target_link_libraries(hh_rt_${papel} PUBLIC hh_runtime_cpu hh_extract_core hh_native_render_soft hh_native_render_kamui
+                        PRIVATE hh_dcmap)
   list(APPEND hh_rt_objetos $<TARGET_OBJECTS:hh_rt_${papel}>)
   foreach(f IN LISTS hh_rt_${papel})
     string(APPEND hh_rt_manifesto "${papel}\t${f}\n")
@@ -66,4 +71,5 @@ foreach(papel IN LISTS hh_rt_papeis)
 endforeach()
 file(WRITE "${CMAKE_BINARY_DIR}/runtime_papeis.tsv" "${hh_rt_manifesto}")
 add_library(hh_runtime STATIC ${hh_rt_objetos})
-target_link_libraries(hh_runtime PUBLIC hh_runtime_cpu hh_extract_core hh_native_render_soft PRIVATE hh_dcmap xinput)
+target_link_libraries(hh_runtime PUBLIC hh_runtime_cpu hh_extract_core hh_native_render_soft hh_native_render_kamui
+                      PRIVATE hh_dcmap xinput)

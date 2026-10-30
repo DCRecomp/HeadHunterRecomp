@@ -7,6 +7,8 @@
 // (fim de lista do TA, fim de render); as mascaras IML2/4/6 definem o nivel IRL.
 #include "cpu/sh4_context.h"
 
+#include <string>
+
 namespace hh {
 
 constexpr uint32_t kIstVblankIn  = 1u << 3;
@@ -35,6 +37,9 @@ uint64_t holly_vblank_fused();
 // Eventos do Holly entregues (vencidos ou levantados), mesmo com a interrupcao mascarada:
 // diagnostico do N2b (epoca de eventos do HH_CRI_DIAG).
 uint64_t holly_event_count();
+// HH15.7d2: na verificacao, o resumo da comparacao do banco de status nativo (em sombra) com este controlador
+// ("[event-status] operacoes comparadas N, diferentes D..."); no produto (system/event_bus.cpp), vazio.
+std::string holly_event_status_summary();
 
 // Nivel IRL pedido ao SH-4 (6, 4, 2 ou 0): maior nivel cujas mascaras IMLn
 // (NRM/EXT/ERR) tem algum bit pendente em ISTNRM/ISTEXT/ISTERR.
