@@ -72,6 +72,47 @@ inline RestoComQuociente resto_com_quociente(float x, float y, float invalido) {
     return r;
 }
 
+// ldexpf do SDK: x * 2^n pelo expoente. Infinito ou NaN: NaN da `invalido`, infinito fica (com o sinal); zero ou
+// denormalizado: zero com o sinal; expoente resultante ate 0: zero com o sinal; de 255 em diante: infinito com o sinal
+// (n >= 0) ou zero (n < 0).
+struct Ldexp {
+    enum class Caso : uint8_t { Nan, MenosInfinito, MaisInfinito, Zero, Normal, Estouro, Subestouro };
+    float resultado = 0;
+    Caso  caso      = Caso::Normal;
+    bool  negativo  = false;
+};
+
+inline Ldexp ldexp_sdk(float x, int32_t n, float invalido) {
+    using Caso = Ldexp::Caso;
+    Ldexp          r;
+    const uint32_t xb = bits(x);
+    r.negativo        = (xb & kSinal) != 0;
+    const uint32_t e  = xb & kExpoente;
+    if (e == kExpoente) {
+        r.caso      = (xb & kMantissa) ? Caso::Nan : r.negativo ? Caso::MenosInfinito : Caso::MaisInfinito;
+        r.resultado = r.caso == Caso::Nan ? invalido : x;
+        return r;
+    }
+    if (e == 0) {
+        r.caso      = Caso::Zero;
+        r.resultado = de_bits(xb & kSinal);
+        return r;
+    }
+    const int32_t e2 = int32_t(e >> 23) + n;
+    if (e2 > 0 && e2 < 255) {
+        r.resultado = de_bits((xb & kSinal) | (uint32_t(e2) << 23) | (xb & kMantissa));
+        return r;
+    }
+    if (n >= 0) {
+        r.caso      = Caso::Estouro;
+        r.resultado = de_bits((xb & kSinal) | kExpoente);
+    } else {
+        r.caso      = Caso::Subestouro;
+        r.resultado = de_bits(xb & kSinal);
+    }
+    return r;
+}
+
 // Horner em x2 com 7 coeficientes: p = c[0]; p = x2 * p + c[i] (o produto e a soma arredondados um de cada vez, como o
 // fmac do SH-4).
 inline float horner7(float x2, const float (&c)[7]) {

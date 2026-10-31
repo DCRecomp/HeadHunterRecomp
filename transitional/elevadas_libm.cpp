@@ -6,6 +6,8 @@
 
 #include "sdk/matematica.h"
 
+#include <cmath>
+
 namespace hh::transitional::elevacao {
 namespace {
 
@@ -51,42 +53,83 @@ void resto_com_quociente(Sh4Context* c) {
     c->fr[0] = ns::bits(r.resto);
 }
 
-// Os 7 coeficientes de um nucleo, da tabela apontada pelo pool (lidos da RAM, como na gerada).
-void coeficientes(Sh4Context* c, uint32_t tabela, float (&k)[7]) {
-    for (uint32_t i = 0; i < 7; ++i) k[i] = ler_f(c, tabela + 4 * i);
+// 8C1289D4: ldexpf(fr4, r4); o infinito, o -infinito, o NaN e os zeros que devolve vem das palavras apontadas pelo pool
+// (lidas da RAM como na gerada; os valores sao os de native/sdk/matematica.h)
+constexpr Premissa kLdexp[] = {{0x8C128A70u, 0x00FF6EF6u}, {0x8C128A74u, 0x7F800000u}, {0x8C128A78u, 0x80000000u},
+                               {0x8C128A7Cu, 0x8C145438u}, {0x8C128A80u, 0x8C145468u}, {0x8C128A84u, 0x007FFFFFu},
+                               {0x8C128A88u, 0x8C145430u}, {0x8C128A8Cu, 0x8C145434u}, {0x8C128A90u, 0x8C145464u}};
+void ldexpf_(Sh4Context* c) {
+    using Caso      = ns::Ldexp::Caso;
+    const uint32_t xb = c->fr[4], sp = c->r[15];
+    const int32_t  n  = int32_t(c->r[4]);
+    const auto     r  = ns::ldexp_sdk(ns::de_bits(xb), n, ler_f(c, 0x8C145430u));
+    const bool     neg = r.negativo;
+    // os registradores como a rotina do SDK os deixa (r14 e restaurado): r1 = -infinito do pool, r6 = o local, fr5/fr7 =
+    // -infinito/+infinito; no resto, por caminho
+    c->r[1] = 0x8C145468u, c->r[6] = sp - 8, c->r[7] = xb & 0x7F800000u, c->r[5] = 0x80000000u;
+    c->fr[5] = 0xFF800000u, c->fr[7] = 0x7F800000u;
+    c->r[2] = 0x8C145438u, c->r[3] = 0x7F800000u;
+    const int32_t e2 = int32_t((xb & 0x7F800000u) >> 23) + n;
+    switch (r.caso) {
+    case Caso::Nan: cobrar(c, 15 + 3 + 5), c->r[0] = 0x007FFFFFu, c->r[3] = 0x8C145430u, c->t = 0; break;
+    case Caso::MenosInfinito: cobrar(c, 15 + 3 + 2 + 4), c->r[0] = 0x007FFFFFu, c->t = 0; break;
+    case Caso::MaisInfinito: cobrar(c, 15 + 3 + 2 + 2 + 4), c->r[0] = 0x007FFFFFu, c->t = 1; break;
+    default:
+        c->r[2] = 0x8C145434u, c->r[3] = 0x8C145464u, c->fr[4] = 0, c->fr[6] = 0x80000000u;  // +0 e -0 do pool
+        switch (r.caso) {
+        case Caso::Zero: cobrar(c, 15 + 6 + 2 + (neg ? 0 : 2) + 4), c->t = !neg; break;
+        case Caso::Normal:
+            cobrar(c, 15 + 6 + 5 + 3 + 12);
+            c->r[2] = xb & 0x007FFFFFu, c->r[3] = 23, c->r[5] = ns::bits(r.resultado), c->r[7] = uint32_t(e2) << 23, c->t = 0;
+            break;
+        case Caso::Estouro: cobrar(c, 15 + 6 + 5 + 3 + 2 + 2 + 4), c->r[3] = 0xFF, c->r[7] = uint32_t(e2), c->t = !neg; break;
+        default: cobrar(c, 15 + 6 + 5 + 2 + 2 + 4), c->r[3] = uint32_t(-23), c->r[7] = uint32_t(e2), c->t = !neg; break;
+        }
+    }
+    c->fr[0] = ns::bits(r.resultado);
 }
 
-// 8C128990: nucleo do cosseno, P(fr4^2) (Horner com fmac, 6 voltas); 8C1289B0: nucleo do seno, fr4 * Q(fr4^2)
-constexpr Premissa kCosNucleo[] = {{0x8C1289ACu, 0x8C145394u}};
-constexpr Premissa kSenNucleo[] = {{0x8C1289D0u, 0x8C1453B0u}};
-void nucleo(Sh4Context* c, bool seno) {
-    exigir_fpu_simples(c, seno ? 0x8C1289B0u : 0x8C128990u);
-    float k[7];
-    coeficientes(c, seno ? 0x8C1453B0u : 0x8C145394u, k);
-    // o estado vivo entre as voltas fica nos registradores do contexto, como na gerada: um atendimento no back-edge (que
-    // pode trocar de thread) ve e pode mudar o mesmo estado (x^2 em fr5/fr6, a soma em fr4/fr5)
-    // (e os inteiros: r4 conta as voltas de 6 a 0, r5 anda pela tabela, T = r4 > 0)
-    const uint32_t fx2 = seno ? 6 : 5, fp = seno ? 5 : 4, tabela = seno ? 0x8C1453B0u : 0x8C145394u;
+// Os 7 coeficientes de um nucleo, da tabela apontada pelo pool (lidos da RAM, como na gerada).
+// Um nucleo polinomial do SDK (Horner em x^2 com fmac): P(x^2) (cosseno) ou x * P(x^2) (seno, arco-tangente), com os
+// n coeficientes da tabela apontada pelo pool (lidos da RAM, como na gerada). O estado vivo entre as voltas fica nos
+// registradores do contexto, como na gerada (um atendimento no back-edge, que pode trocar de thread, ve e pode mudar o
+// mesmo estado): x^2 em fr5 (P) ou fr6 (x * P), a soma em fr4 ou fr5; r4 conta as voltas ate 0, r5 anda pela tabela,
+// T = r4 > 0.
+struct Nucleo {
+    uint32_t funcao, tabela, volta, n;
+    bool     vezesX;
+};
+void nucleo(Sh4Context* c, const Nucleo& d) {
+    exigir_fpu_simples(c, d.funcao);
+    const uint32_t fx2 = d.vezesX ? 6 : 5, fp = d.vezesX ? 5 : 4;
     c->fr[fx2]         = ns::bits(ns::de_bits(c->fr[4]) * ns::de_bits(c->fr[4]));
-    c->fr[fp]          = ns::bits(k[0]);
+    c->fr[fp]          = ns::bits(ler_f(c, d.tabela));
     cobrar(c, 5);
-    for (uint32_t i = 1; i < 7; ++i) {
-        if (i > 1) volta(c, seno ? 0x8C1289BAu : 0x8C12899Au);
+    for (uint32_t i = 1; i < d.n; ++i) {
+        if (i > 1) volta(c, d.volta);
         cobrar(c, 7);
-        c->r[5]       = tabela + 4 * (i + 1);
-        c->r[4]       = 6 - i;
+        const float k = ler_f(c, d.tabela + 4 * i);
+        c->r[5]       = d.tabela + 4 * (i + 1);
+        c->r[4]       = d.n - 1 - i;
         c->fr[0]      = c->fr[fx2];
         c->t          = c->r[4] > 0;
         const float m = ns::de_bits(c->fr[0]) * ns::de_bits(c->fr[fp]);  // fmac: produto e soma arredondados
-        c->fr[3]      = ns::bits(m + k[i]);
+        c->fr[3]      = ns::bits(m + k);
         c->fr[fp]     = c->fr[3];
     }
-    cobrar(c, seno ? 4 : 2);
-    if (seno) c->fr[6] = c->fr[5];
-    c->fr[0] = seno ? ns::bits(ns::de_bits(c->fr[4]) * ns::de_bits(c->fr[6])) : c->fr[4];
+    cobrar(c, d.vezesX ? 4 : 2);
+    if (d.vezesX) c->fr[6] = c->fr[5];
+    c->fr[0] = d.vezesX ? ns::bits(ns::de_bits(c->fr[4]) * ns::de_bits(c->fr[6])) : c->fr[4];
 }
-void cos_nucleo(Sh4Context* c) { nucleo(c, false); }
-void sen_nucleo(Sh4Context* c) { nucleo(c, true); }
+
+// 8C128990: nucleo do cosseno, P(fr4^2), 7 coeficientes; 8C1289B0: nucleo do seno, fr4 * Q(fr4^2), 7; 8C12896C: nucleo
+// do arco-tangente, fr4 * A(fr4^2), 6 (-1/11, 1/9, -1/7, 1/5, -1/3, 1)
+constexpr Premissa kCosNucleo[]  = {{0x8C1289ACu, 0x8C145394u}};
+constexpr Premissa kSenNucleo[]  = {{0x8C1289D0u, 0x8C1453B0u}};
+constexpr Premissa kAtanNucleo[] = {{0x8C12898Cu, 0x8C14537Cu}};
+void cos_nucleo(Sh4Context* c) { nucleo(c, {0x8C128990u, 0x8C145394u, 0x8C12899Au, 7, false}); }
+void sen_nucleo(Sh4Context* c) { nucleo(c, {0x8C1289B0u, 0x8C1453B0u, 0x8C1289BAu, 7, true}); }
+void atan_nucleo(Sh4Context* c) { nucleo(c, {0x8C12896Cu, 0x8C14537Cu, 0x8C128976u, 6, true}); }
 
 // 8C1264D0: cosseno (sem o errno): x infinito ou NaN da o NaN do SDK; |x| reduzido por pi/4 (resto_com_quociente, o
 // octante no quadro), nos octantes impares mais -pi/4, e o nucleo do octante (0 e 7 cos, 1 e 2 -sen, 3 e 4 -cos, 5 e 6
@@ -235,6 +278,215 @@ void seno_interno(Sh4Context* c) {
     c->r[15] = sp0, c->pr = pr0;
 }
 
+// 8C126124: arco-tangente (sem o errno). NaN da o NaN do SDK; |x| >= 2^32, +-pi/2; zero, x; |x| = 1, +-pi/4. Senao t = |x|
+// (|x| < 1, base 0) ou (|x| - 1)/(|x| + 1) (base pi/4); q = o quociente de t por 1/8 (resto_com_quociente) escolhe o ponto
+// de quarto k/4: a base soma atan(k/4) e t vira (t - k/4)/(1 + t * k/4) (t/4 e t/2 pelo ldexpf, 3t/4 por fmac); o
+// resultado e base + nucleo(t), com o sinal de x. Salva r13, r14 e fr12-fr15; os registradores na ordem da gerada.
+constexpr Premissa kAtan[] = {
+    {0x8C1262B8u, 0x7FFFFFFFu}, {0x8C1262BCu, 0x7F800000u}, {0x8C1262C0u, 0x80000000u}, {0x8C1262C4u, 0x8C145430u},
+    {0x8C1262C8u, 0x8C145458u}, {0x8C1262CCu, 0x8C14543Cu}, {0x8C1262D0u, 0x8C14545Cu}, {0x8C1262D4u, 0x8C145434u},
+    {0x8C1262D8u, 0x8C14546Cu}, {0x8C1262DCu, 0x8C14522Cu}, {0x8C1262E0u, 0x8C1263C0u}, {0x8C1262E4u, 0x8C12896Cu},
+    {0x8C1262E8u, 0x8C145218u}, {0x8C1262ECu, 0x8C145474u}, {0x8C1262F0u, 0x8C1289D4u}, {0x8C1262F4u, 0x8C14521Cu},
+    {0x8C1262F8u, 0x8C145470u}, {0x8C1262FCu, 0x8C145220u}, {0x8C126300u, 0x8C145228u}, {0x8C126304u, 0x8C145224u},
+};
+float fr(Sh4Context* c, int i) { return ns::de_bits(c->fr[i]); }
+void  fr(Sh4Context* c, int i, float v) { c->fr[i] = ns::bits(v); }
+void  atan_interno(Sh4Context* c) {
+    exigir_fpu_simples(c, 0x8C126124u);
+    const uint32_t pr0 = c->pr, sp0 = c->r[15], r13 = c->r[13], r14 = c->r[14];
+    const uint32_t f12 = c->fr[12], f13 = c->fr[13], f14 = c->fr[14], f15 = c->fr[15];
+    const uint32_t sp = sp0 - 40, xb = c->fr[4];  // r14, r13, fr15-fr12 e PR salvos e o quadro de 12 bytes
+    const float    x  = ns::de_bits(xb);
+    const bool     neg = int32_t(xb) < 0;
+    c->r[15]           = sp;
+    c->r[0] = 8, c->fr[5] = xb, c->r[3] = xb;
+    cobrar(c, 15 + (neg ? 1 : 0) + 5);
+    c->r[4] = neg ? 8 : 0, c->fr[3] = 0, c->r[7] = 4, c->r[6] = 1;
+    if (x == 0.0f) cobrar(c, 2), c->r[4] |= 4;
+    else {
+        cobrar(c, 6);
+        c->r[2] = xb & 0x7FFFFFFFu, c->r[3] = 0x7FFFFFFFu, c->r[1] = 0x7F800000u;
+        if (c->r[2] == 0x7F800000u) cobrar(c, 3), c->r[0] = 2, c->r[4] |= 2;
+        else if (cobrar(c, 2), x != x) cobrar(c, 1), c->r[4] |= 1;
+    }
+    const uint32_t classe = c->r[4], axb = xb & 0x7FFFFFFFu;
+    const float    ax     = ns::de_bits(axb);
+    cobrar(c, 7);
+    c->r[3] = sp, c->r[2] = 0x80000000u, c->r[1] = xb, c->r[5] = classe;
+    if (neg) cobrar(c, 3), c->fr[3] = axb;
+    cobrar(c, 2);
+    bool fimPi4 = false;  // |x| = 1: o resultado vai direto em fr0
+    if (classe & 1) {
+        cobrar(c, 3);
+        c->r[2] = 0x8C145430u, c->fr[5] = ns::bits(ler_f(c, 0x8C145430u)), c->t = 0;
+    } else {
+        cobrar(c, 12);
+        const int32_t e = int32_t((axb & 0x7F800000u) >> 23) - 127;
+        c->r[3] = 0x7F800000u, c->r[2] = uint32_t(-23), c->r[0] = 32, c->r[1] = uint32_t(e);
+        if (e >= 32) {
+            cobrar(c, 4 + 2);
+            c->r[1] = 0x8C145458u, c->fr[5] = ns::bits(ler_f(c, 0x8C145458u)), c->t = !neg;
+            if (neg) c->fr[5] ^= ns::kSinal;
+        } else if (cobrar(c, 2), classe & 4) {
+            cobrar(c, 2);
+            c->fr[5] = c->fr[4], c->t = 0;
+        } else {
+            cobrar(c, 7);
+            c->r[1] = 0x8C14543Cu, c->fr[3] = axb, fr(c, 5, ler_f(c, 0x8C14543Cu)), c->r[3] = 0x8C14545Cu;
+            fr(c, 4, ler_f(c, 0x8C14545Cu));
+            if (fr(c, 5) > ax) {
+                cobrar(c, 4);
+                c->r[2] = 0x8C145434u, fr(c, 14, ler_f(c, 0x8C145434u)), c->fr[15] = c->fr[3];
+            } else if (cobrar(c, 2), ax == fr(c, 5)) {
+                cobrar(c, 2 + (neg ? 1 : 0) + 2);
+                if (neg) c->fr[4] ^= ns::kSinal;
+                c->t = !neg, c->fr[0] = c->fr[4], fimPi4 = true;
+            } else {
+                cobrar(c, 8);
+                c->r[2] = 0x8C14546Cu, c->fr[3] = axb, fr(c, 2, ler_f(c, 0x8C14546Cu));
+                fr(c, 5, fr(c, 5) + ax), c->fr[14] = c->fr[4], fr(c, 2, fr(c, 2) + ax);
+                c->fr[15] = c->fr[2], fr(c, 15, fr(c, 15) / fr(c, 5));
+            }
+            if (!fimPi4) {
+                cobrar(c, 7);
+                c->r[3] = 0x8C14522Cu, c->r[4] = sp + 4, c->r[2] = 0x8C1263C0u, fr(c, 5, ler_f(c, 0x8C14522Cu));
+                c->fr[4] = c->fr[15];
+                chamar(c, 0x8C1263C0u, &resto_com_quociente, 0x8C1261FAu);
+                cobrar(c, 6);
+                const uint32_t q = ler32(c, sp + 4);
+                c->r[0] = q, c->r[3] = 0x8C14543Cu, c->r[14] = 0x8C12896Cu, fr(c, 13, ler_f(c, 0x8C14543Cu));
+                c->t = q == 0;
+                bool nucleo = true;
+                if (q == 0) cobrar(c, 2), c->fr[4] = c->fr[15];
+                else if (q <= 8) {
+                    cobrar(c, 2 * q);
+                    c->t = 1;
+                    if (q <= 4) {  // t/4 ou t/2 pelo ldexpf
+                        const bool  quarto = q <= 2;
+                        cobrar(c, 11);
+                        c->r[1] = quarto ? 0x8C145474u : 0x8C145470u, c->r[4] = quarto ? uint32_t(-2) : uint32_t(-1);
+                        c->r[2] = quarto ? 0x8C145218u : 0x8C14521Cu;
+                        fr(c, 2, ler_f(c, c->r[1])), fr(c, 3, ler_f(c, c->r[2])), fr(c, 2, fr(c, 2) + fr(c, 15));
+                        c->r[3] = 0x8C1289D4u, fr(c, 14, fr(c, 14) + fr(c, 3)), c->fr[12] = c->fr[2], c->fr[4] = c->fr[15];
+                        chamar(c, 0x8C1289D4u, &ldexpf_, quarto ? 0x8C126244u : 0x8C126262u);
+                        cobrar(c, 4);
+                        fr(c, 13, fr(c, 13) + fr(c, 0)), fr(c, 12, fr(c, 12) / fr(c, 13)), c->fr[4] = c->fr[12];
+                    } else if (q <= 6) {  // 3/4: 1 + 0,75 t por fmac
+                        cobrar(c, 13);
+                        c->r[1] = 0x8C145228u, c->r[3] = 0x8C145224u, c->r[2] = 0x8C145220u;
+                        fr(c, 2, ler_f(c, 0x8C145228u)), fr(c, 0, ler_f(c, 0x8C145224u)), c->fr[1] = c->fr[15];
+                        fr(c, 1, fr(c, 1) + fr(c, 2)), fr(c, 3, ler_f(c, 0x8C145220u));
+                        const float m = fr(c, 0) * fr(c, 15);
+                        fr(c, 13, m + fr(c, 13)), fr(c, 14, fr(c, 14) + fr(c, 3)), c->fr[4] = c->fr[1];
+                        fr(c, 4, fr(c, 4) / fr(c, 13));
+                    } else {  // 1: (t - 1)/(1 + t), base + pi/4
+                        cobrar(c, 9);
+                        c->r[1] = 0x8C14546Cu, fr(c, 13, fr(c, 13) + fr(c, 15)), c->r[2] = 0x8C14545Cu;
+                        fr(c, 2, ler_f(c, 0x8C14546Cu)), fr(c, 3, ler_f(c, 0x8C14545Cu)), fr(c, 2, fr(c, 2) + fr(c, 15));
+                        fr(c, 14, fr(c, 14) + fr(c, 3)), c->fr[4] = c->fr[2], fr(c, 4, fr(c, 4) / fr(c, 13));
+                    }
+                } else {  // fora da tabela (t > 1, nunca na reducao): sem nucleo, fr5 fica como a reducao deixou
+                    cobrar(c, 2 * 8 + 2);
+                    c->t   = 0;
+                    nucleo = false;
+                }
+                if (nucleo) {
+                    cobrar(c, 2);
+                    chamar(c, 0x8C12896Cu, &atan_nucleo, 0x8C12629Au);
+                    cobrar(c, 2);
+                    fr(c, 5, fr(c, 14) + fr(c, 0));
+                }
+                cobrar(c, 2 + (neg ? 1 : 0));
+                c->t = !neg;
+                if (neg) c->fr[5] ^= ns::kSinal;
+            }
+        }
+    }
+    if (!fimPi4) cobrar(c, 1), c->fr[0] = c->fr[5];
+    cobrar(c, 9);
+    c->r[13] = r13, c->r[14] = r14, c->fr[12] = f12, c->fr[13] = f13, c->fr[14] = f14, c->fr[15] = f15;
+    c->r[15] = sp0, c->pr = pr0;
+}
+
+// 8C126030: arco-seno (sem o errno). NaN ou |x| > 1 dao o NaN do SDK; |x| = 1, +-pi/2; zero, x. Senao 2 * atan(t)
+// (ldexpf(atan, 1)), t = x/(1 + sqrt(1 - x^2)) (|x| < 1/2) ou (1 - sqrt(1 - x^2))/x. Salva fr15.
+constexpr Premissa kAsin[] = {
+    {0x8C126100u, 0x7FFFFFFFu}, {0x8C126104u, 0x7F800000u}, {0x8C126108u, 0x8C145430u}, {0x8C12610Cu, 0x80000000u},
+    {0x8C126110u, 0x8C14543Cu}, {0x8C126114u, 0x8C145458u}, {0x8C126118u, 0x8C145440u}, {0x8C12611Cu, 0x8C126124u},
+    {0x8C126120u, 0x8C1289D4u},
+};
+void asin_interno(Sh4Context* c) {
+    exigir_fpu_simples(c, 0x8C126030u);
+    const uint32_t pr0 = c->pr, sp0 = c->r[15], f15 = c->fr[15];
+    const uint32_t sp = sp0 - 16, xb = c->fr[4];  // fr15 e PR salvos e o quadro de 8 bytes
+    const float    x  = ns::de_bits(xb);
+    const bool     neg = int32_t(xb) < 0;
+    c->r[15]           = sp;
+    c->r[0] = 4, c->fr[5] = xb, c->r[3] = xb;
+    cobrar(c, 10 + (neg ? 1 : 0) + 5);
+    c->r[4] = neg ? 8 : 0, c->fr[3] = 0, c->r[7] = 4, c->r[6] = 1;
+    if (x == 0.0f) cobrar(c, 2), c->r[4] |= 4;
+    else {
+        cobrar(c, 6);
+        c->r[2] = xb & 0x7FFFFFFFu, c->r[3] = 0x7FFFFFFFu, c->r[1] = 0x7F800000u;
+        if (c->r[2] == 0x7F800000u) cobrar(c, 3), c->r[0] = 2, c->r[4] |= 2;
+        else if (cobrar(c, 2), x != x) cobrar(c, 1), c->r[4] |= 1;
+    }
+    const uint32_t classe = c->r[4], axb = xb & 0x7FFFFFFFu;
+    const float    ax     = ns::de_bits(axb);
+    cobrar(c, 3);
+    c->r[5] = 0x8C145430u;
+    if (classe & 1) {  // NaN: volta direto, sem passar por fr5
+        cobrar(c, 5);
+        fr(c, 0, ler_f(c, 0x8C145430u)), c->t = 0;
+        c->r[15] = sp0, c->pr = pr0;
+        return;
+    }
+    cobrar(c, 6 + (neg ? 3 : 0));
+    c->r[3] = sp, c->r[2] = 0x80000000u, c->r[1] = xb;
+    if (neg) c->fr[3] = axb;
+    cobrar(c, 5);
+    c->r[3] = 0x8C14543Cu, c->fr[3] = axb, fr(c, 5, ler_f(c, 0x8C14543Cu));
+    if (ax > fr(c, 5)) {
+        cobrar(c, 2);
+        fr(c, 5, ler_f(c, 0x8C145430u)), c->t = 1;
+    } else if (cobrar(c, 2), fr(c, 5) == ax) {
+        cobrar(c, 5 + (neg ? 2 : 0));
+        c->r[2] = 8, c->r[1] = 0x8C145458u, fr(c, 5, ler_f(c, 0x8C145458u)), c->t = !neg;
+        if (neg) c->fr[5] ^= ns::kSinal;
+    } else if (cobrar(c, 2), classe & 4) {
+        cobrar(c, 2);
+        c->fr[5] = c->fr[4], c->t = 0;
+    } else {
+        cobrar(c, 5);
+        c->r[2] = 0x8C145440u, c->fr[3] = axb, fr(c, 2, ler_f(c, 0x8C145440u));
+        const bool  pequeno = fr(c, 2) > ax;
+        const float um      = fr(c, 5);
+        fr(c, 1, x * x), c->fr[0] = c->fr[5];
+        if (pequeno) {
+            cobrar(c, 10);
+            c->fr[15] = xb, fr(c, 0, fr(c, 0) - fr(c, 1)), c->fr[1] = ns::bits(um);
+            fr(c, 0, std::sqrt(fr(c, 0))), fr(c, 1, fr(c, 1) + fr(c, 0)), fr(c, 15, fr(c, 15) / fr(c, 1));
+        } else {
+            cobrar(c, 9);
+            fr(c, 0, fr(c, 0) - fr(c, 1)), c->fr[1] = ns::bits(um);
+            fr(c, 0, std::sqrt(fr(c, 0))), fr(c, 1, fr(c, 1) - fr(c, 0)), c->fr[15] = c->fr[1];
+            fr(c, 15, fr(c, 15) / x);
+        }
+        cobrar(c, 3);
+        c->r[3] = 0x8C126124u, c->fr[4] = c->fr[15];
+        chamar(c, 0x8C126124u, &atan_interno, 0x8C1260ECu);
+        cobrar(c, 4);
+        c->r[2] = 0x8C1289D4u, c->fr[4] = c->fr[0], c->r[4] = 1;
+        chamar(c, 0x8C1289D4u, &ldexpf_, 0x8C1260F4u);
+        cobrar(c, 1);
+        c->fr[5] = c->fr[0];
+    }
+    cobrar(c, 5);
+    c->fr[0] = c->fr[5], c->fr[15] = f15;
+    c->r[15] = sp0, c->pr = pr0;
+}
+
 // Os envoltorios publicos (cosf 8C1243B8, sinf 8C1246F8): a funcao interna e o errno (resultado NaN: 0x44D; infinito:
 // 0x44C) na variavel de erro do SDK
 void com_errno(Sh4Context* c, uint32_t endereco, Sh4Func interna, uint32_t retorno) {
@@ -260,21 +512,37 @@ void com_errno(Sh4Context* c, uint32_t endereco, Sh4Func interna, uint32_t retor
     cobrar(c, 5);
     c->r[15] = sp0, c->pr = pr0;
 }
-constexpr Premissa kCosf[] = {{0x8C1243F0u, 0x044D0009u}, {0x8C1243F4u, 0x0000044Cu}, {0x8C1243F8u, 0x8C1264D0u},
-                              {0x8C1243FCu, 0x7F800000u}, {0x8C124400u, 0x007FFFFFu}, {0x8C124404u, 0x8C30FA50u}};
-constexpr Premissa kSinf[] = {{0x8C124730u, 0x044D0009u}, {0x8C124734u, 0x0000044Cu}, {0x8C124738u, 0x8C126744u},
-                              {0x8C12473Cu, 0x7F800000u}, {0x8C124740u, 0x007FFFFFu}, {0x8C124744u, 0x8C30FA50u}};
-void cosf_(Sh4Context* c) { com_errno(c, 0x8C1264D0u, &cosseno_interno, 0x8C1243C2u); }
-void sinf_(Sh4Context* c) { com_errno(c, 0x8C126744u, &seno_interno, 0x8C124702u); }
+// Os envoltorios tem o mesmo codigo (conferido byte a byte, 0x38 bytes) e o pool em E + 0x38: a mascara do resultado,
+// os codigos de erro, a funcao interna e a variavel de erro; o retorno da chamada a interna em E + 0x0A.
+template <uint32_t E, uint32_t I>
+constexpr Premissa kEnvoltorio[] = {{E + 0x38, 0x044D0009u}, {E + 0x3C, 0x0000044Cu}, {E + 0x40, I},
+                                    {E + 0x44, 0x7F800000u}, {E + 0x48, 0x007FFFFFu}, {E + 0x4C, 0x8C30FA50u}};
+template <uint32_t E, uint32_t I, Sh4Func F>
+void envoltorio(Sh4Context* c) {
+    com_errno(c, I, F, E + 0x0A);
+}
+template <uint32_t E, uint32_t I, Sh4Func F>
+constexpr Elevada elevada_envoltorio(const char* nome) {
+    return {E, nome, &envoltorio<E, I, F>, Retorno::Fr0, kEnvoltorio<E, I>, Contrato::Completo};
+}
 
 constexpr Elevada kLista[] = {
     {0x8C1263C0u, "resto_com_quociente", &resto_com_quociente, Retorno::Fr0, kResto, Contrato::Completo},
     {0x8C128990u, "cos_nucleo", &cos_nucleo, Retorno::Fr0, kCosNucleo, Contrato::Completo},
     {0x8C1289B0u, "sen_nucleo", &sen_nucleo, Retorno::Fr0, kSenNucleo, Contrato::Completo},
     {0x8C1264D0u, "cosseno_interno", &cosseno_interno, Retorno::Fr0, kCosseno, Contrato::Completo},
-    {0x8C1243B8u, "cosf", &cosf_, Retorno::Fr0, kCosf, Contrato::Completo},
+    elevada_envoltorio<0x8C1243B8u, 0x8C1264D0u, &cosseno_interno>("cosf"),
     {0x8C126744u, "seno_interno", &seno_interno, Retorno::Fr0, kSeno, Contrato::Completo},
-    {0x8C1246F8u, "sinf", &sinf_, Retorno::Fr0, kSinf, Contrato::Completo},
+    elevada_envoltorio<0x8C1246F8u, 0x8C126744u, &seno_interno>("sinf"),
+    {0x8C1289D4u, "ldexpf", &ldexpf_, Retorno::Fr0, kLdexp, Contrato::Completo},
+    {0x8C12896Cu, "atan_nucleo", &atan_nucleo, Retorno::Fr0, kAtanNucleo, Contrato::Completo},
+    {0x8C126124u, "atan_interno", &atan_interno, Retorno::Fr0, kAtan, Contrato::Completo},
+    {0x8C126030u, "asin_interno", &asin_interno, Retorno::Fr0, kAsin, Contrato::Completo},
+    elevada_envoltorio<0x8C1241C0u, 0x8C126030u, &asin_interno>("asinf_1"),
+    elevada_envoltorio<0x8C124210u, 0x8C126030u, &asin_interno>("asinf_2"),
+    elevada_envoltorio<0x8C124300u, 0x8C126124u, &atan_interno>("atanf"),
+    elevada_envoltorio<0x8C124368u, 0x8C1264D0u, &cosseno_interno>("cosf_2"),
+    // 8C1246A8 (o segundo envoltorio do seno, mesmo codigo) fica gerado: a rota da area 1 nao o chama (sem conferencia)
 };
 
 } // namespace

@@ -443,6 +443,9 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   `analysis/hh15/ref_pilhas`, recapturadas com as geradas: a RAM inteira idêntica à pré-corte). 19 elevadas, 0
   divergências. Revisão Codex: 2 achados aceitos, 1 rejeitado com evidência. Regressão integral 15/15
   (`analysis/hh15e/regressao_11b2.log`), ctest 93/93.
+- HH15.11b parte 2 (2026-10-30): `ldexpf`, arco-tangente e arco-seno internos, núcleo do arco-tangente e os
+  envoltórios com errno num modelo; 27 elevadas, 0 divergências com o contrato completo. Regressão integral 15/15
+  (`analysis/hh15e/regressao_11b3.log`).
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

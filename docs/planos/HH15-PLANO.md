@@ -815,3 +815,13 @@ retornos diferentes nas chamadas com atendimento, agora contadas no resumo). Rev
 aceitos o `longjmp` atravessando uma elevada (erro explícito) e o `cur_fn` da chamada; rejeitado um custo a mais no seno
 (octantes 0 e 7): os três blocos depois da chamada estão no esqueleto, e a conferência compara o custo exato em cada
 chamada. Regressão integral 15/15 (`analysis/hh15e/regressao_11b2.log`), ctest 93/93.
+
+Parte 2 (2026-10-30): `ldexpf` (8C1289D4), o núcleo do arco-tangente (8C12896C, os núcleos generalizados por número de
+coeficientes), o arco-tangente interno (8C126124: redução pelos pontos de quarto com a tabela de atan(k/4), `ldexpf` nos
+pontos 1/4 e 1/2) e o arco-seno interno (8C126030: 2·atan(t) com `sqrt(1 - x²)`), e os envoltórios com `errno`
+generalizados num modelo (o código dos 13 envoltórios é idêntico byte a byte; muda só a função interna no pool em
+E + 0x38): `cosf`, `sinf`, `asinf` (dois), `atanf` e o segundo `cosf`. O segundo envoltório do seno (8C1246A8) fica
+gerado: a rota não o chama, e nenhuma função entra sem conferência. 27 elevadas, cerca de 3,4 milhões de chamadas
+conferidas por rota com o contrato completo, 0 divergências. Revisão Codex (`reviews/codex-hh15_11b2.log`): 2 achados
+aceitos (a soma do expoente no `ldexpf` podia estourar `int32_t`; falta o contrato de FPU na entrada do `ldexpf`),
+corrigidos no commit seguinte. Regressão integral 15/15 (`analysis/hh15e/regressao_11b3.log`), ctest 93/93.
