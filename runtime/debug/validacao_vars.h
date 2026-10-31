@@ -19,7 +19,7 @@ inline constexpr const char* kTestVars[] = {
     // HH15.7d4c: os modos da captura da IR (o produto nao tem a captura)
     "HH_RENDER_IR", "HH_RENDER_IR_CADA", "HH_RENDER_IR_BMP", "HH_RENDER_IR_BMP_CADA", "HH_RENDER_IR_BMP_DIFF",
     // HH15.10: escolha e conferencia das funcoes elevadas
-    "HH_ELEVACAO",
+    "HH_ELEVACAO", "HH_ELEVACAO_SO",
 };
 
 // So observam (registros, traces, despejos, perfis) ou sao funcoes do usuario.

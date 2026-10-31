@@ -182,6 +182,11 @@ slots = [
   0x8C123FE0,  # copiar_bytes (auxiliar do compilador)
   0x8C123E14, 0x8C123E20,  # copiar_palavras_par / _impar (auxiliares do compilador, tabela de saltos)
   0x8C123B38, 0x8C123BEC, 0x8C123C94, 0x8C123D5C,  # dividir, dividir_sem_sinal, resto, resto_sem_sinal
+  # HH15.11b: biblioteca matematica do SDK (transitional/elevadas_libm.cpp)
+  0x8C1263C0,  # resto_com_quociente
+  0x8C128990, 0x8C1289B0,  # cos_nucleo, sen_nucleo
+  0x8C1264D0, 0x8C1243B8,  # cosseno_interno, cosf
+  0x8C126744, 0x8C1246F8,  # seno_interno, sinf
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

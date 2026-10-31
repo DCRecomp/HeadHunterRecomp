@@ -6,9 +6,9 @@ Cada caso roda o roteiro newgame_area1_nativo (4 700 VBlanks) com os provedores 
   quadros.txt  hashes de quadro a cada 50 VBlanks (stdout do hh-run);
   ordem.tsv    trace de ordem (HH_EVENT_TRACE) sem a coluna de ciclos: V, I (INTEVT, SPC), R, T, N, J em ordem;
   relogio.tsv  relogios consultaveis por VBlank (HH_CLOCK_LOG);
-  ram.txt      SHA-256 da RAM principal nos VBlanks de RAM_VBLANKS, com a pilha morta de cada thread zerada (HH15.11:
-               do R15 mais fundo visto na entrada de funcao, menos MARGEM_PILHA, ate o R15 atual, sem invadir a pilha
-               viva de outra thread; pilhas_<v>.txt do hh-run; so a troca de pilha identificada, a do boot para a do
+  ram.txt      SHA-256 da RAM principal nos VBlanks de RAM_VBLANKS, com a pilha de cada thread zerada (HH15.11: do
+               R15 mais fundo visto na entrada de funcao, menos MARGEM_PILHA, ate o topo da pilha, sem invadir a pilha
+               de outra thread; pilhas_<v>.txt do hh-run; so a troca de pilha identificada, a do boot para a do
                jogo, e aceita, e a faixa e limitada a MAX_PILHA_MORTA). A pilha morta e lixo que nenhum codigo le, e uma
                funcao elevada nao reproduz o lixo da gerada (os despejos sao apagados);
   ram_completa.txt  o SHA-256 da RAM inteira (so evidencia: a recaptura das referencias prova que e o de antes);
@@ -61,20 +61,24 @@ def pilha_morta(pilhas):
     as pilhas vivas das outras ([sp, topo); a thread 0 ate o fim da RAM)."""
     ts = []
     for l in open(pilhas):
-        t, topo, sp, mn, trocas, origem = (l.split() + ['0', '0'])[:6]  # o formato antigo nao tem as trocas
+        t, topo, sp, mn, trocas, origem, _, mx = (l.split() + ['0', '0', '0', '0'])[:8]
         t, trocas, origem = int(t), int(trocas), int(origem, 16)
         # so a troca identificada: a thread do jogo saindo da pilha do boot para a do jogo; qualquer outra descontinuidade
         # (salto de R15 acima de 4 KiB entre entradas de funcao) reprova a medicao em vez de mascarar
         if trocas and not (t == 0 and trocas == 1 and origem < PILHA_DO_BOOT):
             raise SystemExit('troca de pilha nao identificada na thread %d (%d trocas, ultima de %08X) em %s'
                              % (t, trocas, origem, pilhas))
-        ts.append((t, int(topo, 16), int(sp, 16), int(mn, 16)))
-    vivas = {t: (sp, topo if topo else RAM_FIM) for t, topo, sp, mn in ts}
+        ts.append((t, int(topo, 16), int(sp, 16), int(mn, 16), int(mx, 16)))
+    # a pilha inteira de cada thread: a viva tambem tem lixo (posicoes de quadros nunca inicializadas, com o que um
+    # quadro anterior deixou), e o estado do jogo fica fora das pilhas; o topo e o R15 de criacao da thread (na do jogo,
+    # o mais raso visto na entrada de funcao, mais a margem do quadro da funcao de fora)
+    tops = {t: (topo if topo else min(max(mx, sp) + MARGEM_PILHA, RAM_FIM)) for t, topo, sp, mn, mx in ts}
+    vivas = {t: (sp, tops[t]) for t, topo, sp, mn, mx in ts}
     out = []
-    for t, topo, sp, mn in ts:
-        if sp - mn > MAX_PILHA_MORTA:  # a medicao nao delimitou a pilha: mascarar mais seria esconder estado
-            raise SystemExit('pilha morta da thread %d grande demais (%X-%X) em %s' % (t, mn, sp, pilhas))
-        faixas = [(max(mn - MARGEM_PILHA, RAM_BASE), sp)]
+    for t, topo, sp, mn, mx in ts:
+        if tops[t] - mn > MAX_PILHA_MORTA:  # a medicao nao delimitou a pilha: mascarar mais seria esconder estado
+            raise SystemExit('pilha da thread %d grande demais (%X-%X) em %s' % (t, mn, tops[t], pilhas))
+        faixas = [(max(mn - MARGEM_PILHA, RAM_BASE), tops[t])]
         for u, (lo, hi) in vivas.items():
             if u == t:
                 continue

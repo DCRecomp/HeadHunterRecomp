@@ -437,6 +437,12 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   cerca de 3 milhões de chamadas conferidas por rota, 0 divergências. Referências de RAM da HH15 sem a pilha morta das
   threads (`analysis/hh15/ref_mascara`, recapturadas com as geradas: a RAM inteira idêntica à pré-corte). Revisão Codex:
   1 achado aceito e corrigido. Regressão integral 15/15 (`analysis/hh15e/regressao_11a2.log`), ctest 93/93.
+- HH15.11b parte 1 (2026-10-30): cadeia trigonométrica do SDK elevada (redução, núcleos, seno e cosseno internos,
+  `sinf`/`cosf` com errno). Critério endurecido: contrato completo de registradores para todas (o escalonador do jogo
+  salva os registradores "mortos" na RAM) e a pilha inteira de cada thread fora do hash de RAM (referências
+  `analysis/hh15/ref_pilhas`, recapturadas com as geradas: a RAM inteira idêntica à pré-corte). 19 elevadas, 0
+  divergências. Revisão Codex: 2 achados aceitos, 1 rejeitado com evidência. Regressão integral 15/15
+  (`analysis/hh15e/regressao_11b2.log`), ctest 93/93.
 - Limitação registrada: no tempo lógico a tela de carga antes da cena de abertura (anúncio do jogo) não aparece, porque
   a carga não consome tempo; o estável a mostrava só pelo custo estimado de ciclos da descompressão.
 

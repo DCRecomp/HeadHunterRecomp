@@ -157,7 +157,8 @@ void onVblank(void*) {
     if (g_opt->onFrame) g_opt->onFrame(g_frame);
     // Diagnostico (HH12.0, so desenvolvimento): HH_RAM_DUMP=<vblank>,...;<pasta> grava ram_<v>.bin (16 MiB) e
     // vram_<v>.bin (8 MiB, layout de 32 bits) nesses VBlanks. Saida privada (pasta ignorada). HH15.11: e pilhas_<v>.txt,
-    // uma linha por thread do guest: "thread topo sp minimo trocas origem descida" (hexa; topo 0 = a thread do jogo; minimo = o R15
+    // uma linha por thread do guest: "thread topo sp minimo trocas origem descida maximo" (hexa; maximo = o R15 mais
+    // raso na entrada de uma funcao desde a ultima troca; topo 0 = a thread do jogo; minimo = o R15
     // mais fundo na entrada de uma funcao desde a ultima troca de pilha; trocas e a origem da ultima), para as referencias
     // ignorarem a pilha morta.
     static const std::string dumpSpec = [] { const char* v = std::getenv("HH_RAM_DUMP"); return std::string(v ? v : ""); }();
@@ -173,8 +174,8 @@ void onVblank(void*) {
                     uint32_t topo = 0, sp = 0;
                     for (int t = 0; sh4_thread_stack(t, *g_ctx, topo, sp); ++t) {
                         const StackTrack s = size_t(t) < g_stacks.size() ? g_stacks[size_t(t)] : StackTrack{};
-                        std::fprintf(f, "%d %08X %08X %08X %u %08X %X\n", t, topo, sp, std::min(s.min, sp), s.trocas, s.origem,
-                                     s.descida);
+                        std::fprintf(f, "%d %08X %08X %08X %u %08X %X %08X\n", t, topo, sp, std::min(s.min, sp), s.trocas,
+                                     s.origem, s.descida, std::max(s.max, sp));
                     }
                     std::fclose(f);
                 }

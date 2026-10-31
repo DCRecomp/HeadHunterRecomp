@@ -786,3 +786,32 @@ subetapa; novas rotas entram como novos perfis.
   identificada é aceita; a primeira versão, com salto de 4 KiB em qualquer sentido, acusava retornos e quadros grandes
   e foi medida e corrigida antes do commit). Regressão integral 15/15
   (`analysis/hh15e/regressao_11a2.log`), ctest 93/93.
+
+#### HH15.11b (em andamento): biblioteca matemática do SDK
+
+Parte 1 (2026-10-30): a cadeia trigonométrica, de baixo para cima, em `native/sdk/matematica.h` (lógica) e
+`transitional/elevadas_libm.cpp` (adaptadores): a redução com quociente (8C1263C0), os núcleos de cosseno e seno (Horner
+em x² com o `fmac` do SH-4, duas operações arredondadas; 8C128990 e 8C1289B0), o cosseno e o seno internos (redução por
+π/4 e octantes; 8C1264D0 e 8C126744) e os públicos `cosf` e `sinf` com o `errno` (8C1243B8 e 8C1246F8). As elevadas
+compostas chamam as outras elevadas pelo protocolo da gerada (`chamar`: PR, retorno esperado, `cur_fn`, o poll de
+retorno; um `longjmp` atravessando uma elevada é erro explícito), e a conferência aninhada guarda uma cópia da RAM por
+nível.
+
+Duas mudanças de critério, medidas:
+- **Contrato completo para todas.** A regressão reprovou a RAM do caso experimental num float fora das pilhas; a
+  bisseção por grupos (`HH_ELEVACAO_SO`, só na verificação) chegou ao núcleo do seno: a gerada termina com `fr6` = o
+  polinômio, a elevada deixava x². O escalonador do jogo salva todos os registradores no contexto da thread, na RAM, a
+  cada troca, então um registrador "morto" pela convenção aparece no estado. O contrato completo passou a incluir
+  `fr0`-`fr11`, e todas as elevadas da biblioteca matemática e o `strcmp` passaram a ele, com os registradores também
+  nos back-edges (onde um atendimento pode trocar de thread). A conferência mostra cada registrador que falta.
+- **A pilha inteira de cada thread fora do hash de RAM.** Uma posição nunca inicializada de um quadro vivo guarda o lixo
+  de um quadro anterior (um PR empilhado pela gerada), que nenhum código lê; a máscara passou a cobrir a pilha inteira de
+  cada thread (do R15 mais fundo ao topo: o de criação, ou o mais raso visto na thread do jogo). O estado do jogo fica
+  fora das pilhas e continua comparado byte a byte. Referências recapturadas com as geradas (`analysis/hh15/ref_pilhas`):
+  quadros, relógio, áudio, resumo e a RAM inteira idênticos às pré-corte; o build com as elevadas passa nas 18.
+
+19 elevadas, cerca de 3,3 milhões de chamadas conferidas por rota com o contrato completo, 0 divergências (também 0
+retornos diferentes nas chamadas com atendimento, agora contadas no resumo). Revisão Codex (`reviews/codex-hh15_11b1.log`):
+aceitos o `longjmp` atravessando uma elevada (erro explícito) e o `cur_fn` da chamada; rejeitado um custo a mais no seno
+(octantes 0 e 7): os três blocos depois da chamada estão no esqueleto, e a conferência compara o custo exato em cada
+chamada. Regressão integral 15/15 (`analysis/hh15e/regressao_11b2.log`), ctest 93/93.

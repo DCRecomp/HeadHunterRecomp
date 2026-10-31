@@ -34,32 +34,44 @@ bool tem_zero(uint32_t w) { return !(w & 0xFF) || !(w & 0xFF00) || !(w & 0xFF000
 // uma palavra de s2 com zero (cmp/str) ou diferente (a gerada ja le a palavra seguinte de s2 nesse teste); depois byte a
 // byte nessa palavra, parando no zero de s2 ou na diferenca (o quarto byte sem teste). Desalinhadas: byte a byte, quatro
 // por volta, parando no zero de s1 ou na diferenca.
+// Os registradores ficam como na gerada, no retorno e em cada back-edge (o escalonador do jogo os salva na RAM).
 void strcmp_(Sh4Context* c) {
     const uint32_t s1 = c->r[4], s2 = c->r[5];
     cobrar(c, 4);
-    if ((s1 | s2) & 3) {
+    if ((s1 | s2) & 3) {  // r0 = byte de s1, r3 = byte de s2, r4/r5 depois deles
         for (uint32_t i = 0;; ++i) {
-            const uint32_t p = i % 4;
-            if (i && !p) volta(c, 0x8C1240DCu);
+            if (i && !(i % 4)) {
+                c->r[4] = s1 + i, c->r[5] = s2 + i, c->t = 1;
+                volta(c, 0x8C1240DCu);
+            }
             cobrar(c, 4);
             const uint8_t a = ler8(c, s1 + i), b = ler8(c, s2 + i);
+            c->r[0] = sext8(a), c->r[3] = sext8(b);
             if (!a || (cobrar(c, 2), a != b)) {
                 cobrar(c, 2);
+                c->r[4] = s1 + i + 1, c->r[5] = s2 + i + 1, c->t = !a;
                 c->r[0] = sext8(a) - sext8(b);
                 return;
             }
         }
     }
+    // alinhadas: as palavras de s2 se alternam entre r3 (indice par) e r1 (impar); r0 = palavra de s1; r2 = 0
     cobrar(c, 2);
     uint32_t k  = 0;
     uint32_t w2 = ler32(c, s2);  // a palavra de s2 e lida um passo antes (antes do back-edge)
+    c->r[2] = 0, c->r[3] = w2;
     for (;;) {
-        if (k && !(k % 4)) volta(c, 0x8C124074u);
+        if (k && !(k % 4)) {
+            c->r[4] = s1 + 4 * k, c->r[5] = s2 + 4 * (k + 1), c->t = 1;
+            volta(c, 0x8C124074u);
+        }
         cobrar(c, 3);
         const uint32_t w1 = ler32(c, s1 + 4 * k);
+        c->r[0]           = w1;
         if (tem_zero(w2)) break;
         cobrar(c, 3);
-        const uint32_t prox = ler32(c, s2 + 4 * (k + 1));
+        const uint32_t prox      = ler32(c, s2 + 4 * (k + 1));
+        c->r[(k & 1) ? 3 : 1] = prox;
         if (w1 != w2) {
             cobrar(c, 1);
             break;
@@ -69,21 +81,27 @@ void strcmp_(Sh4Context* c) {
     }
     const uint32_t b1 = s1 + 4 * k, b2 = s2 + 4 * k;
     cobrar(c, 6);
-    uint32_t r1 = sext8(ler8(c, b2)), r0 = sext8(ler8(c, b1));
+    uint32_t r1 = sext8(ler8(c, b2)), r0 = sext8(ler8(c, b1)), lidos = 1;
+    bool     t  = false;
     for (uint32_t j = 0; j < 3; ++j) {
-        if (!r1) break;
+        if (!r1) {
+            t = true;  // cmp/eq r2,r1: o zero de s2
+            break;
+        }
         cobrar(c, 2);
-        if (r0 != r1) break;
+        t = r0 == r1;
+        if (!t) break;
         if (j == 2) {
             cobrar(c, 2);
-            r0 = sext8(ler8(c, b1 + 3)), r1 = sext8(ler8(c, b2 + 3));
+            r0 = sext8(ler8(c, b1 + 3)), r1 = sext8(ler8(c, b2 + 3)), ++lidos;
             break;
         }
         cobrar(c, 4);
-        r1 = sext8(ler8(c, b2 + j + 1)), r0 = sext8(ler8(c, b1 + j + 1));
+        r1 = sext8(ler8(c, b2 + j + 1)), r0 = sext8(ler8(c, b1 + j + 1)), ++lidos;
     }
     cobrar(c, 2);
-    c->r[0] = r0 - r1;
+    c->r[0] = r0 - r1, c->r[1] = r1;
+    c->r[4] = b1 + lidos, c->r[5] = b2 + lidos, c->t = t;
 }
 
 // 8C124640 memset(r4, r5, r6): devolve r4; deixa r3 = 0 e r7 = n (contador), T = 1 (cmp/hs final ou de n = 0).
@@ -262,7 +280,7 @@ void copiar_palavras_impar(Sh4Context* c) { copiar_palavras(c, false, 0x8C123E20
 
 constexpr Elevada kLista[] = {
     {0x8C1247E8u, "strlen", &strlen_, Retorno::R0, {}, Contrato::Completo},
-    {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::C},
+    {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124640u, "memset", &memset_, Retorno::R0, {}, Contrato::Completo},
     {0x8C123FE0u, "copiar_bytes", &copiar_bytes, Retorno::R0, {}, Contrato::Completo},
     {0x8C123E14u, "copiar_palavras_par", &copiar_palavras_par, Retorno::R0, kTabela, Contrato::Completo},

@@ -6,6 +6,8 @@
 #include "mods/mod_api.h"
 
 #include <array>
+#include <cstdlib>
+#include <deque>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -33,7 +35,10 @@ struct Escrita {
     uint8_t  antes[4];
 };
 std::vector<Escrita> g_diario;
-std::vector<uint8_t> g_copia;  // RAM antes da chamada (conferencia completa)
+// RAM antes da chamada (conferencia completa), uma por nivel: a gerada de uma elevada chama outra elevada pelo slot, e a
+// conferencia dela roda dentro da da mae
+std::deque<std::vector<uint8_t>> g_copias;  // deque: crescer no nivel filho nao invalida a referencia da mae
+size_t                            g_nivel = 0;
 
 uint32_t offsetRam(Sh4Context* c, uint32_t a, uint32_t n, const char* what) {
     if (!sh4_is_ram(a) || (a & (n - 1))) sh4_fatal(c, what, c->pc, a);
@@ -103,6 +108,12 @@ void conferir(size_t i, Sh4Context* c) {
     premissas(c, e);
     const bool       full = s.chamadas <= kCompletasAte || s.chamadas % kCompletaCada == 0;
     const Sh4Context c0   = *c;
+    struct Nivel {
+        Nivel() { ++g_nivel; }
+        ~Nivel() { --g_nivel; }
+    } nivel;
+    if (g_copias.size() < g_nivel) g_copias.resize(g_nivel);
+    std::vector<uint8_t>& g_copia = g_copias[g_nivel - 1];
     if (full) g_copia.assign(c->ram, c->ram + (16u << 20));
 
     // ensaio da elevada
@@ -126,6 +137,12 @@ void conferir(size_t i, Sh4Context* c) {
     mods::original(e.endereco)(c);
     if (c->next_event != c0.next_event || c->next_poll != c0.next_poll) {  // a gerada foi atendida
         ++g_stats.comAtendimento, ++s.comAtendimento;
+        const bool difere = (e.retorno == Retorno::R0 && c->r[0] != ce.r[0]) || (e.retorno == Retorno::Fr0 && c->fr[0] != ce.fr[0]);
+        if (difere && s.atendidasComRetornoDiferente++ < 3)
+            std::fprintf(stderr, "[elevacao] %s atendida com retorno diferente: gerada r0 %08X fr0 %08X, elevada r0 %08X fr0 %08X; "
+                         "entrada fr4 %08X fr5 %08X r4 %08X; fpscr %08X -> %08X\n", e.nome, c->r[0], c->fr[0], ce.r[0], ce.fr[0],
+                         c0.fr[4], c0.fr[5], c0.r[4], c0.fpscr, c->fpscr);
+        g_stats.atendidasComRetornoDiferente += difere;
         return;
     }
     if (atenderia) divergiu(c, e, "atendimento (so a elevada chegaria a um atendimento)", 0, 1);
@@ -153,6 +170,8 @@ void conferir(size_t i, Sh4Context* c) {
             if (c->r[r] != ce.r[r]) divergiu(c, e, "registrador do contrato completo (r0-r7)", c->r[r], ce.r[r]);
         if ((e.contrato == Contrato::Completo && c->t != ce.t) || c->fpul != ce.fpul)
             divergiu(c, e, "T/FPUL do contrato completo", c->t, ce.t);
+        for (int f = 0; f < 12; ++f)
+            if (c->fr[f] != ce.fr[f]) divergiu(c, e, f == 0 ? "fr0 do contrato completo" : "fr1-fr11 do contrato completo", c->fr[f], ce.fr[f]);
     }
     if (e.retorno == Retorno::Fr0 && c->fr[0] != ce.fr[0]) divergiu(c, e, "retorno fr0", c->fr[0], ce.fr[0]);
     // o valor final de cada palavra escrita pela elevada (a ultima escrita vale)
@@ -200,7 +219,7 @@ constexpr auto kThunks = thunks(std::make_index_sequence<kMax>{});
 std::span<const Elevada> lista() {
     static const std::vector<Elevada> todas = [] {
         std::vector<Elevada> v;
-        for (const auto& fonte : {elevadas_jogo(), elevadas_runtime_c()}) v.insert(v.end(), fonte.begin(), fonte.end());
+        for (const auto& fonte : {elevadas_jogo(), elevadas_runtime_c(), elevadas_libm()}) v.insert(v.end(), fonte.begin(), fonte.end());
         return v;
     }();
     return todas;
@@ -227,8 +246,15 @@ void install(Modo m) {
     g_modo  = m;
     g_stats = {};
     g_por.assign(l.size(), Stats{});
-    for (size_t i = 0; i < l.size(); ++i)
-        mods::replace(l[i].endereco, m == Modo::Gerado ? nullptr : m == Modo::Ativo ? l[i].funcao : kThunks[i]);
+    // HH_ELEVACAO_SO=<hexa,...> (so na verificacao, para isolar uma divergencia): so as elevadas listadas; as outras geradas
+    std::string so;
+    if (const char* v = std::getenv("HH_ELEVACAO_SO")) so = std::string(",") + v + ",";
+    for (size_t i = 0; i < l.size(); ++i) {
+        char h[16];
+        std::snprintf(h, sizeof h, ",%08X,", l[i].endereco);
+        const bool fora = !so.empty() && so.find(h) == std::string::npos;
+        mods::replace(l[i].endereco, m == Modo::Gerado || fora ? nullptr : m == Modo::Ativo ? l[i].funcao : kThunks[i]);
+    }
 }
 
 Modo modo() { return g_modo; }
@@ -246,10 +272,12 @@ bool em_ensaio() { return g_ensaio; }
 
 std::string summary() {
     char b[256];
-    std::snprintf(b, sizeof b, "[elevacao] %s: %zu funcoes; chamadas %llu, conferidas %llu (completas %llu), com atendimento %llu\n",
+    std::snprintf(b, sizeof b,
+                  "[elevacao] %s: %zu funcoes; chamadas %llu, conferidas %llu (completas %llu), com atendimento %llu (retorno "
+                  "diferente %llu)\n",
                   nome_modo(g_modo), lista().size(), (unsigned long long)g_stats.chamadas,
                   (unsigned long long)g_stats.conferidas, (unsigned long long)g_stats.completas,
-                  (unsigned long long)g_stats.comAtendimento);
+                  (unsigned long long)g_stats.comAtendimento, (unsigned long long)g_stats.atendidasComRetornoDiferente);
     std::string out = b;
     for (size_t i = 0; i < lista().size() && i < g_por.size(); ++i) {
         std::snprintf(b, sizeof b, "[elevacao]   %08X %s: chamadas %llu, conferidas %llu (completas %llu)\n",
@@ -258,6 +286,23 @@ std::string summary() {
         out += b;
     }
     return out;
+}
+
+// Um longjmp pendente (c->redirect) desenrolaria os quadros ate o do setjmp; uma elevada nao sabe desenrolar, e nenhuma
+// das elevadas fica no caminho de um longjmp do jogo: erro explicito em vez de seguir com o contexto errado.
+void sem_longjmp(Sh4Context* c, uint32_t onde) {
+    if (c->redirect) sh4_fatal(c, "elevacao: longjmp atravessando uma elevada (fora do contrato)", onde, c->redirect);
+}
+
+void chamar(Sh4Context* c, uint32_t endereco, Sh4Func f, uint32_t retorno) {
+    const uint32_t expect = c->ret_expect, sp = c->ret_sp, fn = c->cur_fn;
+    c->pr = c->ret_expect = retorno;
+    c->ret_sp             = c->r[15];
+    c->cur_fn             = endereco;  // o HH_FN_ENTER da chamada
+    f(c);
+    c->ret_expect = expect, c->ret_sp = sp, c->cur_fn = fn;
+    sem_longjmp(c, retorno);
+    volta(c, retorno);  // o poll no retorno da chamada (HH_POLL_RET)
 }
 
 void volta(Sh4Context* c, uint32_t retomada) {
@@ -269,6 +314,7 @@ void volta(Sh4Context* c, uint32_t retomada) {
         }
         c->pc = retomada;
         sh4_poll_slow(c);
+        sem_longjmp(c, retomada);
     }
 }
 
