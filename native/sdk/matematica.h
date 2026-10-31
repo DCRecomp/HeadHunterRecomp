@@ -98,7 +98,7 @@ inline Ldexp ldexp_sdk(float x, int32_t n, float invalido) {
         r.resultado = de_bits(xb & kSinal);
         return r;
     }
-    const int32_t e2 = int32_t(e >> 23) + n;
+    const int32_t e2 = int32_t((e >> 23) + uint32_t(n));  // soma com volta em 32 bits, como o SH-4
     if (e2 > 0 && e2 < 255) {
         r.resultado = de_bits((xb & kSinal) | (uint32_t(e2) << 23) | (xb & kMantissa));
         return r;

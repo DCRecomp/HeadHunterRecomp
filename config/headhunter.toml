@@ -192,6 +192,7 @@ slots = [
   0x8C126124,  # atan_interno
   0x8C126030,  # asin_interno
   0x8C1241C0, 0x8C124210, 0x8C124300, 0x8C124368,  # asinf_1/2, atanf, cosf_2
+  0x8C126308, 0x8C126014, 0x8C1242B0, 0x8C124120, 0x8C124170,  # atan2_interno, acos_interno, atan2f, acosf_1/2
 ]
 # HH09.1: back-edges dos lacos que esperam um evento (HH_WAIT no gerado). Inventario medido com
 # HH_WW_VOLTAS (build HH_WRITE_WATCH, roteiro newgame_area1) e disassembly; docs/planos/HH09-PLANO.md.

@@ -59,6 +59,7 @@ constexpr Premissa kLdexp[] = {{0x8C128A70u, 0x00FF6EF6u}, {0x8C128A74u, 0x7F800
                                {0x8C128A7Cu, 0x8C145438u}, {0x8C128A80u, 0x8C145468u}, {0x8C128A84u, 0x007FFFFFu},
                                {0x8C128A88u, 0x8C145430u}, {0x8C128A8Cu, 0x8C145434u}, {0x8C128A90u, 0x8C145464u}};
 void ldexpf_(Sh4Context* c) {
+    exigir_fpu_simples(c, 0x8C1289D4u);
     using Caso      = ns::Ldexp::Caso;
     const uint32_t xb = c->fr[4], sp = c->r[15];
     const int32_t  n  = int32_t(c->r[4]);
@@ -69,7 +70,7 @@ void ldexpf_(Sh4Context* c) {
     c->r[1] = 0x8C145468u, c->r[6] = sp - 8, c->r[7] = xb & 0x7F800000u, c->r[5] = 0x80000000u;
     c->fr[5] = 0xFF800000u, c->fr[7] = 0x7F800000u;
     c->r[2] = 0x8C145438u, c->r[3] = 0x7F800000u;
-    const int32_t e2 = int32_t((xb & 0x7F800000u) >> 23) + n;
+    const int32_t e2 = int32_t(((xb & 0x7F800000u) >> 23) + uint32_t(n));  // com volta em 32 bits
     switch (r.caso) {
     case Caso::Nan: cobrar(c, 15 + 3 + 5), c->r[0] = 0x007FFFFFu, c->r[3] = 0x8C145430u, c->t = 0; break;
     case Caso::MenosInfinito: cobrar(c, 15 + 3 + 2 + 4), c->r[0] = 0x007FFFFFu, c->t = 0; break;
@@ -487,6 +488,48 @@ void asin_interno(Sh4Context* c) {
     c->r[15] = sp0, c->pr = pr0;
 }
 
+// 8C126308: arco-tangente de dois argumentos (sem o errno): atan(fr4 / fr5); com fr5 (x) negativo, mais -pi (fr4, y,
+// negativo) ou pi.
+constexpr Premissa kAtan2[] = {{0x8C126350u, 0x8C126124u}, {0x8C126354u, 0x80000000u}, {0x8C126358u, 0x8C145480u},
+                               {0x8C12635Cu, 0x8C145450u}};
+void atan2_interno(Sh4Context* c) {
+    exigir_fpu_simples(c, 0x8C126308u);
+    const uint32_t pr0 = c->pr, sp0 = c->r[15], yb = c->fr[4], xb = c->fr[5];
+    const uint32_t sp = sp0 - 12;  // o PR salvo e o quadro de 8 bytes
+    c->r[15]          = sp;
+    cobrar(c, 12);
+    c->r[0] = 4, c->r[3] = 0x8C126124u, c->fr[3] = xb, fr(c, 4, ns::de_bits(yb) / ns::de_bits(xb));
+    chamar(c, 0x8C126124u, &atan_interno, 0x8C126320u);
+    cobrar(c, 6);
+    c->r[2] = sp, c->r[3] = xb, c->r[4] = 0x80000000u, c->fr[4] = c->fr[0];
+    c->t = !(xb & ns::kSinal);
+    if (!c->t) {
+        cobrar(c, 5);
+        c->r[1] = sp + 4, c->r[3] = yb, c->t = !(yb & ns::kSinal);
+        if (!c->t) cobrar(c, 4), c->r[2] = 0x8C145480u, c->fr[3] = c->fr[4], fr(c, 4, ler_f(c, 0x8C145480u));
+        else cobrar(c, 3), c->r[3] = 0x8C145450u, c->fr[3] = c->fr[4], fr(c, 4, ler_f(c, 0x8C145450u));
+        cobrar(c, 1);
+        fr(c, 4, fr(c, 4) + fr(c, 3));
+    }
+    cobrar(c, 4);
+    c->fr[0] = c->fr[4];
+    c->r[15] = sp0, c->pr = pr0;
+}
+
+// 8C126014: arco-cosseno (sem o errno): pi/2 - asin(x)
+constexpr Premissa kAcos[] = {{0x8C126028u, 0x8C126030u}, {0x8C12602Cu, 0x8C145458u}};
+void acos_interno(Sh4Context* c) {
+    exigir_fpu_simples(c, 0x8C126014u);
+    const uint32_t pr0 = c->pr, sp0 = c->r[15];
+    c->r[15]           = sp0 - 4;  // o PR salvo
+    cobrar(c, 4);
+    c->r[3] = 0x8C126030u;
+    chamar(c, 0x8C126030u, &asin_interno, 0x8C12601Cu);
+    cobrar(c, 6);
+    c->r[3] = 0x8C145458u, c->fr[3] = c->fr[0], fr(c, 0, ler_f(c, 0x8C145458u) - fr(c, 3));
+    c->r[15] = sp0, c->pr = pr0;
+}
+
 // Os envoltorios publicos (cosf 8C1243B8, sinf 8C1246F8): a funcao interna e o errno (resultado NaN: 0x44D; infinito:
 // 0x44C) na variavel de erro do SDK
 void com_errno(Sh4Context* c, uint32_t endereco, Sh4Func interna, uint32_t retorno) {
@@ -542,6 +585,12 @@ constexpr Elevada kLista[] = {
     elevada_envoltorio<0x8C124210u, 0x8C126030u, &asin_interno>("asinf_2"),
     elevada_envoltorio<0x8C124300u, 0x8C126124u, &atan_interno>("atanf"),
     elevada_envoltorio<0x8C124368u, 0x8C1264D0u, &cosseno_interno>("cosf_2"),
+    {0x8C126308u, "atan2_interno", &atan2_interno, Retorno::Fr0, kAtan2, Contrato::Completo},
+    {0x8C126014u, "acos_interno", &acos_interno, Retorno::Fr0, kAcos, Contrato::Completo},
+    elevada_envoltorio<0x8C1242B0u, 0x8C126308u, &atan2_interno>("atan2f"),
+    elevada_envoltorio<0x8C124120u, 0x8C126014u, &acos_interno>("acosf_1"),
+    elevada_envoltorio<0x8C124170u, 0x8C126014u, &acos_interno>("acosf_2"),
+    // 8C124260 (o segundo envoltorio do atan2, mesmo codigo) fica gerado: a rota da area 1 nao o chama
     // 8C1246A8 (o segundo envoltorio do seno, mesmo codigo) fica gerado: a rota da area 1 nao o chama (sem conferencia)
 };
 

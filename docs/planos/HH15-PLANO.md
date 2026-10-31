@@ -825,3 +825,10 @@ gerado: a rota não o chama, e nenhuma função entra sem conferência. 27 eleva
 conferidas por rota com o contrato completo, 0 divergências. Revisão Codex (`reviews/codex-hh15_11b2.log`): 2 achados
 aceitos (a soma do expoente no `ldexpf` podia estourar `int32_t`; falta o contrato de FPU na entrada do `ldexpf`),
 corrigidos no commit seguinte. Regressão integral 15/15 (`analysis/hh15e/regressao_11b3.log`), ctest 93/93.
+
+Parte 3 (2026-10-31): os achados do Codex da parte 2 corrigidos (a soma do expoente do `ldexpf` em 32 bits com volta,
+como o SH-4; o contrato de FPU na entrada), o `atan2f` interno (8C126308: atan(y/x), com x negativo mais -pi ou pi), o
+`acosf` interno (8C126014: pi/2 - asin) e os envoltórios exercitados pela rota (`atan2f`, os dois `acosf`; o segundo
+envoltório do `atan2f`, 8C124260, fica gerado por não ser chamado). 32 elevadas, cerca de 3,4 milhões de chamadas
+conferidas, 0 divergências. Verificação dirigida (V2): ctest 93/93, rota da área 1, conferência das elevadas e as 18
+referências da HH15.
