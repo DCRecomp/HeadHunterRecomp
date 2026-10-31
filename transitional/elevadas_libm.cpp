@@ -530,6 +530,102 @@ void acos_interno(Sh4Context* c) {
     c->r[15] = sp0, c->pr = pr0;
 }
 
+// 8C128C0C: logaritmo natural (sem o errno). NaN ou negativo: NaN do SDK; zero: -infinito; +infinito: +infinito; 1: 0.
+// Senao m = a mantissa em [1, 2), e = o expoente, s = (m - sqrt2)/(m + sqrt2) e ln x = (e + 1/2) ln2 + s P(s^2), P com
+// 8 coeficientes (Horner com fmac, 7 voltas). Os registradores na ordem da gerada.
+constexpr Premissa kLog[] = {
+    {0x8C128D00u, 0x7F800000u}, {0x8C128D04u, 0x7FFFFFFFu}, {0x8C128D08u, 0x8C145430u}, {0x8C128D0Cu, 0x8C145468u},
+    {0x8C128D10u, 0x8C145438u}, {0x8C128D14u, 0x8C14543Cu}, {0x8C128D18u, 0x8C145434u}, {0x8C128D1Cu, 0x807FFFFFu},
+    {0x8C128D20u, 0x3F800000u}, {0x8C128D24u, 0x8C145440u}, {0x8C128D28u, 0x8C145460u}, {0x8C128D2Cu, 0x8C14540Cu},
+    {0x8C128D30u, 0x8C145408u}, {0x8C128D34u, 0x8C145410u},
+};
+void log_interno(Sh4Context* c) {
+    exigir_fpu_simples(c, 0x8C128C0Cu);
+    const uint32_t xb = c->fr[4];
+    const float    x  = ns::de_bits(xb);
+    const bool     neg = int32_t(xb) < 0;
+    // o quadro de 12 bytes (x em [r15+4] e [r15+8], a mantissa em [r15]): o r15 fica nele durante o corpo, como na gerada
+    const uint32_t sp0 = c->r[15];
+    c->r[15]           = sp0 - 12;
+    c->r[0] = 4, c->r[3] = xb;
+    cobrar(c, 11 + (neg ? 1 : 0) + 5);
+    c->r[4] = neg ? 8 : 0, c->r[5] = 8, c->fr[3] = 0, c->r[6] = 0x7F800000u, c->r[7] = 1;
+    if (x == 0.0f) cobrar(c, 3), c->r[2] = 4, c->r[4] |= 4;
+    else {
+        cobrar(c, 5);
+        c->r[1] = xb & 0x7FFFFFFFu, c->r[3] = 0x7FFFFFFFu;
+        if (c->r[1] == 0x7F800000u) cobrar(c, 3), c->r[1] = 2, c->r[4] |= 2;
+        else if (cobrar(c, 2), x != x) cobrar(c, 1), c->r[4] |= 1;
+    }
+    const uint32_t classe = c->r[4];
+    cobrar(c, 5);
+    c->r[2] = 0x8C145430u, c->r[0] = classe, fr(c, 4, ler_f(c, 0x8C145430u));  // o NaN, no delay slot de todos
+    if (classe & 1) {
+        cobrar(c, 3);
+        c->t = 0, c->fr[0] = c->fr[4];
+        c->r[15] = sp0;
+        return;
+    }
+    cobrar(c, 3);
+    c->r[3] = 4;
+    if (classe & 4) {  // zero
+        cobrar(c, 3 + 3);
+        c->t = 0, c->r[0] = 0x8C145468u, fr(c, 0, ler_f(c, 0x8C145468u));
+        c->r[15] = sp0;
+        return;
+    }
+    cobrar(c, 2);
+    if (classe & 8) {  // negativo
+        cobrar(c, 3);
+        c->t = 0, c->fr[0] = c->fr[4];
+        c->r[15] = sp0;
+        return;
+    }
+    cobrar(c, 3);
+    c->r[1] = 2;
+    if (classe & 2) {  // +infinito
+        cobrar(c, 1 + 3);
+        c->t = 0, c->r[0] = 0x8C145438u, fr(c, 0, ler_f(c, 0x8C145438u));
+        c->r[15] = sp0;
+        return;
+    }
+    cobrar(c, 6);
+    c->r[3] = 0x8C14543Cu, c->r[0] = 8, c->fr[2] = xb, fr(c, 3, ler_f(c, 0x8C14543Cu));
+    if (x == fr(c, 3)) {
+        cobrar(c, 4);
+        c->t = 1, c->r[1] = 0x8C145434u, fr(c, 0, ler_f(c, 0x8C145434u));
+        c->r[15] = sp0;
+        return;
+    }
+    cobrar(c, 43);
+    const uint32_t mb = (xb & 0x807FFFFFu) | 0x3F800000u;
+    const int32_t  e  = int32_t((xb & 0x7F800000u) >> 23) - 127;
+    const float    m  = ns::de_bits(mb);
+    c->r[2] = 0x8C145460u, c->r[1] = 0x8C14540Cu, c->r[0] = xb, c->r[6] = uint32_t(e), c->fpul = uint32_t(e);
+    fr(c, 1, ler_f(c, 0x8C145460u));
+    fr(c, 3, float(e)), fr(c, 3, fr(c, 3) + ler_f(c, 0x8C145440u)), c->fr[7] = c->fr[3], fr(c, 7, fr(c, 7) * fr(c, 1));
+    c->fr[3] = mb, fr(c, 0, ler_f(c, 0x8C14540Cu) + m), c->r[3] = 0x8C145408u;
+    const uint32_t tabela = 0x8C145410u;
+    fr(c, 2, ler_f(c, 0x8C145408u)), fr(c, 4, ler_f(c, tabela)), fr(c, 2, fr(c, 2) + m);
+    c->fr[5] = c->fr[0], fr(c, 5, fr(c, 5) / fr(c, 2)), c->fr[6] = c->fr[5], fr(c, 6, fr(c, 6) * fr(c, 5));
+    for (uint32_t i = 1; i < 8; ++i) {
+        if (i > 1) volta(c, 0x8C128CE2u);
+        cobrar(c, 7);
+        const float k = ler_f(c, tabela + 4 * i);
+        c->r[5]       = tabela + 4 * (i + 1);
+        c->r[4]       = 7 - i;
+        c->fr[0]      = c->fr[6];
+        c->t          = c->r[4] > 0;
+        const float p = fr(c, 0) * fr(c, 4);  // fmac: produto e soma arredondados
+        fr(c, 3, p + k);
+        c->fr[4] = c->fr[3];
+    }
+    cobrar(c, 7);
+    c->fr[6] = c->fr[4], c->fr[4] = c->fr[5], fr(c, 4, fr(c, 4) * fr(c, 6));
+    c->fr[0] = c->fr[7], fr(c, 0, fr(c, 0) + fr(c, 4));
+    c->r[15] = sp0;
+}
+
 // Os envoltorios publicos (cosf 8C1243B8, sinf 8C1246F8): a funcao interna e o errno (resultado NaN: 0x44D; infinito:
 // 0x44C) na variavel de erro do SDK
 void com_errno(Sh4Context* c, uint32_t endereco, Sh4Func interna, uint32_t retorno) {
@@ -587,6 +683,7 @@ constexpr Elevada kLista[] = {
     elevada_envoltorio<0x8C124368u, 0x8C1264D0u, &cosseno_interno>("cosf_2"),
     {0x8C126308u, "atan2_interno", &atan2_interno, Retorno::Fr0, kAtan2, Contrato::Completo},
     {0x8C126014u, "acos_interno", &acos_interno, Retorno::Fr0, kAcos, Contrato::Completo},
+    {0x8C128C0Cu, "log_interno", &log_interno, Retorno::Fr0, kLog, Contrato::Completo},
     elevada_envoltorio<0x8C1242B0u, 0x8C126308u, &atan2_interno>("atan2f"),
     elevada_envoltorio<0x8C124120u, 0x8C126014u, &acos_interno>("acosf_1"),
     elevada_envoltorio<0x8C124170u, 0x8C126014u, &acos_interno>("acosf_2"),

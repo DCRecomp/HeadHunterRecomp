@@ -32,7 +32,7 @@ struct Fatal : std::runtime_error {
 };
 
 // mutacao da "gerada" de teste
-enum class Mut { Nenhuma, EscritaExtra, OutroValor, Ciclos, Voltas, Retorno, Macl, SemVolta };
+enum class Mut { Nenhuma, EscritaExtra, OutroValor, SoNaRam, Ciclos, Voltas, Retorno, Macl, SemVolta };
 Mut g_mut = Mut::Nenhuma;
 
 float lerf(hh::Sh4Context* c, uint32_t a) {
@@ -76,12 +76,18 @@ void gerada_angulo(hh::Sh4Context* c) {
     if (g_mut == Mut::EscritaExtra) hh::sh4_write8(c, 0x8C300000u, 0x5A);
     if (g_mut == Mut::Macl) c->macl = 1;
     c->r[15] += 4;
-    c->r[0] = 0x8C06F678u, c->r[3] = c->r[4];  // temporarios
+    c->r[0] = 0x8C06F678u, c->r[3] = c->r[4];  // temporarios como na real: o ultimo teste
+    c->fr[2] = hh::sh4_read32(c, c->r[4]);
+    float pi = ng::kPi;
+    std::memcpy(&c->fr[3], &pi, 4);
+    c->t = 0;
+    if (g_mut == Mut::SoNaRam) escf(c, c->r[4], lerf(c, c->r[4]) * 0.5f);  // outro valor so na RAM (fr2 ja fixado)
 }
 
 void gerada_global(hh::Sh4Context* c) {
     c->cycles += 4;
-    c->r[0] = hh::sh4_read32(c, hh::sh4_read32(c, 0x8C07398Cu)) + (g_mut == Mut::Retorno ? 1 : 0);
+    c->r[3] = hh::sh4_read32(c, 0x8C07398Cu);
+    c->r[0] = hh::sh4_read32(c, c->r[3]) + (g_mut == Mut::Retorno ? 1 : 0);
 }
 
 hh::Sh4Func g_slotAngulo = &gerada_angulo, g_slotGlobal = &gerada_global;
@@ -194,7 +200,8 @@ HH_TEST(hh15_elevacao_conferir_acusa_cada_divergencia) {
         const char* motivo;
     } casos[] = {
         {Mut::EscritaExtra, "RAM (a gerada escreveu o que a elevada nao)"},
-        {Mut::OutroValor, "escrita da elevada"},
+        {Mut::OutroValor, "fr2"},  // o valor final fica em fr2 (o contrato completo o acusa antes da escrita)
+        {Mut::SoNaRam, "escrita da elevada"},
         {Mut::Ciclos, "ciclos"},
         {Mut::Voltas, "back-edges"},
         {Mut::Retorno, "retorno r0"},

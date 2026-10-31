@@ -166,12 +166,16 @@ void conferir(size_t i, Sh4Context* c) {
         if (c->xf[f] != ce.xf[f]) divergiu(c, e, "banco inativo da FPU (xf)", c->xf[f], ce.xf[f]);
     if (e.retorno == Retorno::R0 && c->r[0] != ce.r[0]) divergiu(c, e, "retorno r0", c->r[0], ce.r[0]);
     if (e.contrato != Contrato::C) {
+        static const char* const kNomes[8] = {"r0 do contrato completo", "r1 do contrato completo", "r2 do contrato completo",
+                                              "r3 do contrato completo", "r4 do contrato completo", "r5 do contrato completo",
+                                              "r6 do contrato completo", "r7 do contrato completo"};
         for (int r = 0; r < 8; ++r)
-            if (c->r[r] != ce.r[r]) divergiu(c, e, "registrador do contrato completo (r0-r7)", c->r[r], ce.r[r]);
+            if (c->r[r] != ce.r[r]) divergiu(c, e, kNomes[r], c->r[r], ce.r[r]);
         if ((e.contrato == Contrato::Completo && c->t != ce.t) || c->fpul != ce.fpul)
             divergiu(c, e, "T/FPUL do contrato completo", c->t, ce.t);
+        static const char* const kFr[12] = {"fr0", "fr1", "fr2", "fr3", "fr4", "fr5", "fr6", "fr7", "fr8", "fr9", "fr10", "fr11"};
         for (int f = 0; f < 12; ++f)
-            if (c->fr[f] != ce.fr[f]) divergiu(c, e, f == 0 ? "fr0 do contrato completo" : "fr1-fr11 do contrato completo", c->fr[f], ce.fr[f]);
+            if (c->fr[f] != ce.fr[f]) divergiu(c, e, kFr[f], c->fr[f], ce.fr[f]);
     }
     if (e.retorno == Retorno::Fr0 && c->fr[0] != ce.fr[0]) divergiu(c, e, "retorno fr0", c->fr[0], ce.fr[0]);
     // o valor final de cada palavra escrita pela elevada (a ultima escrita vale)

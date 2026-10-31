@@ -832,3 +832,12 @@ como o SH-4; o contrato de FPU na entrada), o `atan2f` interno (8C126308: atan(y
 envoltório do `atan2f`, 8C124260, fica gerado por não ser chamado). 32 elevadas, cerca de 3,4 milhões de chamadas
 conferidas, 0 divergências. Verificação dirigida (V2): ctest 93/93, rota da área 1, conferência das elevadas e as 18
 referências da HH15.
+
+Parte 4 (2026-10-31): o `logf` interno (8C128C0C: mantissa em [1, 2), s = (m - sqrt2)/(m + sqrt2),
+(e + 1/2) ln2 + s P(s²)). Revendo os pontos de poll, o estado nos back-edges estava incompleto em três elevadas com
+quadro de pilha e laço (o `logf`, a cópia byte a byte e a normalização de ângulo): o `r15` do quadro e os registradores
+de rascunho no back-edge, que um atendimento salva no contexto da thread (RAM fora das pilhas); corrigido, e as duas
+elevadas do jogo passaram ao contrato completo. 33 elevadas, 0 divergências. Revisão Codex (`reviews/codex-hh15_11b4.log`):
+aceitos a falta de verificação do estado nos back-edges (a sonda dos back-edges, no commit seguinte) e o desmonte de
+análise sem a faixa do `logf` (`analysis/hh15e/libm.dis` refeito até 8C128FFF). Regressão integral 15/15
+(`analysis/hh15e/regressao_11b4.log`), ctest 93/93.

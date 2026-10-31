@@ -124,12 +124,13 @@ void memset_(Sh4Context* c) {
 // 8C123FE0 (auxiliar do compilador): copia r0 bytes de r2 para r1, quatro por volta; r2-r4 preservados (pilha), r1 avanca
 // 4 por grupo completo, r0 fica com o ultimo byte lido (com sinal), T = 0 (ou 1 com r0 = 0).
 void copiar_bytes(Sh4Context* c) {
-    const uint32_t n = c->r[0], s = c->r[2];
+    const uint32_t n = c->r[0], s = c->r[2], sp0 = c->r[15], r4 = c->r[4];
     uint32_t       d = c->r[1];
+    c->r[15]         = sp0 - 12;  // r2, r3 e r4 empilhados durante o corpo
     cobrar(c, 5);
     if (n == 0) {
         cobrar(c, 4);
-        c->t = 1;
+        c->t = 1, c->r[15] = sp0;
         return;
     }
     cobrar(c, 2);
@@ -145,7 +146,10 @@ void copiar_bytes(Sh4Context* c) {
             mais = fim > s + i;  // cmp/hi r2,r4
             if (k == 3) {
                 d += 4;
-                if (mais) volta(c, 0x8C123FEEu);
+                if (mais) {  // os registradores no back-edge: r0 = o byte, r1 = o destino, r2 = a origem, r4 = o fim
+                    c->r[0] = sext8(b), c->r[1] = d, c->r[2] = s + i, c->r[4] = fim, c->t = 1;
+                    volta(c, 0x8C123FEEu);
+                }
             }
         }
     }
@@ -153,6 +157,7 @@ void copiar_bytes(Sh4Context* c) {
     c->r[0] = sext8(b);
     c->r[1] = d;
     c->t    = 0;
+    c->r[2] = s, c->r[4] = r4, c->r[15] = sp0;  // r2 e r4 restaurados da pilha (r3 nao muda aqui)
 }
 
 // 8C123E2C: o ponteiro da tabela de saltos das copias por palavra; 8C123E74: a tabela (entrada i -> rotulo que grava o
