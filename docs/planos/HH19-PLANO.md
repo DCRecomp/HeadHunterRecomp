@@ -54,9 +54,174 @@ Específicas do Head Hunter, a levantar com evidência quando a etapa começar:
 - que recursos da Remastered do BS se aplicam ao HH (o BS impõe a câmera livre; a câmera do HH ainda não foi
   estudada);
 - widescreen real e HUD;
-- legendas no gameplay (o HH tem dublagem por cena; as legendas do jogo só existem nos filmes).
+- legendas no gameplay (o HH tem dublagem por cena; as legendas do jogo só existem nos filmes): passam a ser necessárias
+  para os pacotes de idioma (5.6).
 
 ## 4. Critério de saída
 
 As duas edições instaladas pelo Builder passam as validações próprias; a Original continua equivalente às referências;
 nenhuma camada legada removida no HH15 volta.
+
+## 5. Menu de configurações (pedido do mantenedor, 2026-11-01)
+
+**Situação: só planejado. Não antecipar:** segue a ordem da etapa (HH15 e HH16 concluídos e autorização para começar).
+Pedido: "assim como o BSRecomp", um menu para escolher gráficos, controles e idioma, nas duas edições, com a
+possibilidade de adicionar novos idiomas com dublagem e legendas, ou só legendas. Nada abaixo está implementado.
+
+### 5.1 O que reaproveitar do Blue Stinger (MIT)
+
+| Peça do BS | Papel | Adaptação no HH |
+|---|---|---|
+| `app/settings_menu.{h,cpp}` | modelo: estado, navegação, confirmação de 15 s, restaurar padrões, sem desenho | páginas Gráficos, Controles, Idioma e Áudio; legendas e câmera ficam de fora até serem decididas (seção 3) |
+| `app/menu_overlay.{h,cpp}` | desenho em Direct2D/DirectWrite, numa camada ARGB pré-multiplicada, com teste de mouse | portável; ligar `d2d1` e `dwrite` só no alvo `HeadHunter` |
+| `InGameMenu` em `app/main_sdl.cpp` | ligação com SDL e jogo: abre com ESC ou Back/View, pausa entre VBlanks, soltar teclas sempre chega ao jogo | extrair para arquivo próprio; o `hh_window.cpp` não cresce com essa lógica |
+| `native/platform/graphics_settings`, `user_settings` | `graficos.toml`, `audio.toml`; capacidades, `clamp_to`, gravação atômica | só as opções com efeito real no HH |
+| testes `test_settings_menu`, `test_menu_overlay`, `test_graphics_settings` | modelo, desenho e persistência | portar junto, com casos negativos |
+
+Regra herdada: **nenhuma opção de enfeite**. O que ainda não funciona aparece desativado.
+
+### 5.2 Diferenças do HH que o plano precisa resolver
+
+- **Apresentação.** O HH copia o quadro ARGB para uma textura do `SDL_Renderer` (`app/hh_window.cpp`); o BS apresenta direto
+  no Vulkan. A camada do menu entra como uma segunda textura com blend pré-multiplicado, o que basta para o menu. A
+  resolução interna é outro assunto: `set_scale`, `hires_for` e `read_hires` existem em `transitional/render_devices.h`,
+  mas a janela só recebe a imagem de 640x480. Sem apresentação direta (porta de `window_present.cpp`, com o `present_*` que
+  o `vk_device.h` já tem) ou leitura da imagem maior, resolução e escala ficam desativadas.
+- **ESC.** Hoje fecha o jogo. Passa a abrir o menu, que precisa de um item "Sair do jogo".
+- **Pausa.** O `hh_host` não tem pausa exposta como o `GameHost::setPaused` do BS. Criar entre VBlanks, sem tocar no tempo
+  lógico; provar que pausar e retomar não muda o estado do jogo.
+- **Roteiros e `--headless`.** Menu desligado (no BS, `menu.disable()` no modo espectador), para os hashes não mudarem.
+
+### 5.3 Opções previstas
+
+| Página | Opção | Estado previsto |
+|---|---|---|
+| Gráficos | Renderizador (Vulkan ou software) | real: `opt.render`; a troca em execução não existe, avaliar se vale ao reiniciar |
+| Gráficos | Modo de tela (janela, tela cheia, sem bordas), tamanho da janela | real pelo SDL, com a confirmação de 15 s |
+| Gráficos | V-Sync | real: `SDL_SetRenderVSync` |
+| Gráficos | Filtro da imagem na janela | real: modo de escala da textura |
+| Gráficos | Resolução interna, escala | depende de 5.2 |
+| Gráficos | Proporção 16:9 | desativada: depende da decisão de widescreen e HUD (seção 3) |
+| Gráficos | Filtragem de texturas, efeitos, shaders | avaliar item a item contra `post_shader` e o Vulkan |
+| Controles | Ver o mapa atual | real: `ActionMap` |
+| Controles | Remapear no menu | **novo: o BS só mostra o mapa** ("em breve"). Capturar a próxima tecla ou botão, recusar conflitos, gravar `controles.toml` preservando comentários e perfis, e aplicar sem reiniciar (`InputSystem` hoje recebe o mapa só na criação) |
+| Idioma | Textos e legendas | os idiomas do jogo (5.4) e os dos pacotes instalados (5.6) |
+| Idioma | Dublagem | a original ou a de um pacote; independente dos textos (5.6) |
+| Idioma | Idioma do menu | pt-BR e en-US, como no Builder |
+| Áudio | Volumes | não pedido; há `set_bus_volume` no mixer, mas o som do jogo passa pelo motor de canais: confirmar antes de oferecer |
+
+### 5.4 Idiomas do jogo: cinco, só de texto
+
+Diferente do BS, em que o idioma é só de legendas e interface, aqui há textos do próprio jogo em cinco idiomas. A
+dublagem, não: é uma só.
+
+Fatos verificados em 2026-11-01 (comandos com `hh-disasm` e leitura da tabela AHFF; só endereços e contagens):
+
+- pastas `Locale\English`, `German`, `French`, `Spanish`, `Italian` no `1ST_READ.BIN`; entradas nos AHF: 188, 181, 181, 181
+  e 93;
+- tabela de cinco ponteiros para essas pastas em `0x8C152474`;
+- `0x8C152470`, logo antes da tabela: 26 referências no código, 65 leituras e 8 gravações pelo padrão de carga, valor 0 na
+  imagem do jogo;
+- `0x8C07B670` aloca 16 KB, chama duas rotinas do SDK e grava em `0x8C152470`: 1→0, 2→1, 3→2, 4→3, 5→0, e 0→0;
+- `Locale\<idioma>` nos AHF só tem `.TXT`, de 0,1 a 1 MB por idioma: `SubTitle` (88 arquivos), a raiz (87 ou 88) e
+  `Leila_Help` (6 ou 12). Inglês, alemão, francês e espanhol estão em 37 pacotes;
+- o italiano é parcial: 3 pacotes, 93 arquivos e **nenhuma legenda**;
+- os CSV de `HEADHUNTER\LOCALE` trazem os textos em colunas por idioma, numa só linha;
+- **nenhum áudio fica em `Locale`**: 126 `STREAMS\*.ADP` sem sufixo de idioma, amostras em `SAMPLES\...` e um áudio por
+  filme. Os idiomas do disco não trocam a dublagem.
+
+Hipótese, ainda sem a segunda evidência exigida pelo `AGENTS.md`:
+
+- `0x8C152470` é o índice do idioma, e o valor vem da configuração do console: 16 KB é o tamanho da partição 2 da flash, e
+  os códigos 1 a 5 coincidem com a numeração de idioma do Dreamcast. O serviço nativo mantém essa partição em branco, o que
+  explicaria o inglês de sempre;
+- o código 5 (italiano) cairia em inglês nesse caminho, apesar de existir a pasta italiana; as outras gravações
+  (`0x8C029F60`, que recebe o retorno de uma rotina, e `0x8C0EE7B4`, de um campo de `*0x8C151E84`) podem ser outro caminho.
+
+Levantar antes de implementar:
+
+1. comparar no Flycast o console em alemão, francês, espanhol e italiano com o inglês: valor em `0x8C152470`, tela de título
+   (há `logo_headhunter_<idioma>`) e falas;
+2. o que mais muda por idioma além dos `.TXT`: texturas com texto (`TITLE_LOCALTEXT`, `logo_headhunter_<idioma>`) e quais
+   telas usam cada uma;
+3. se trocar exige reiniciar: o valor é lido na inicialização, então a expectativa é valer na próxima abertura.
+
+Caminho preferido, se a hipótese se confirmar: o sistema nativo entrega o idioma escolhido pela mesma rota que o jogo já
+consulta (bloco de configuração na partição 2), sem remendo no código gerado e sem emulação nova. Com idioma padrão, tudo
+continua igual às referências.
+
+### 5.5 Decisões do mantenedor (ao iniciar)
+
+- **Decidido (mantenedor, 2026-11-01):** o menu existe nas duas edições. Vale sobre a seção 1, que o listava como
+  recurso da Remastered. A Original mantém os padrões fiéis.
+- O idioma do jogo é trocável na Original? Recomendação: sim, porque é uma escolha que o console original já oferecia.
+- Italiano: sem legendas no disco e em só 3 pacotes. Recomendação: oferecer só se o levantamento mostrar que funciona, e
+  avisar no menu que os filmes ficam sem legenda.
+- Pacotes de idioma incluídos no produto: recomendação, nenhum. O projeto entrega o mecanismo e um pacote de exemplo
+  sem conteúdo do jogo; tradução e dublagem são distribuídas à parte (`LEGAL.md`).
+
+### 5.6 Pacotes de idioma: dublagem e legendas, ou só legendas
+
+Objetivo: instalar um idioma novo copiando uma pasta para `mods\`, sem recompilar. Sem pacotes, nada muda.
+
+Base no BS (MIT): `native/localization` (`ModPackages`, `mod.toml`, recuo `pt-BR` → `pt`, caminhos seguros), `SubtitleService` e
+`docs/LOCALIZACAO-PLANO.md`, incluindo a regra de sincronia da dublagem. Base no HH: `mods\assets`, `hh-builder --audio-mod`
+(`docs/MODS-AUDIO.md`) e o `MovieCatalog`, que já resolve `.srt`/`.vtt` por idioma.
+
+O `mod.toml` declara o que o pacote traz, e o menu mostra só o que existe:
+
+```toml
+formato  = 1
+id       = "traducao-ptbr"
+nome     = "Português (Brasil)"
+idiomas  = ["pt-BR"]
+conteudo = ["textos", "legendas"]   # "dublagem" é opcional
+```
+
+| Tipo de pacote | Traz | Resultado no menu |
+|---|---|---|
+| Só legendas | legendas de filmes e falas | novo idioma em Textos e legendas; Dublagem continua a original |
+| Textos e legendas | também a interface do jogo | o jogo inteiro no idioma, com a dublagem original |
+| Dublagem e legendas | também as falas | novo idioma nas duas opções, e o jogador pode combiná-las |
+| Só dublagem | as falas | novo idioma em Dublagem |
+
+Textos e dublagem são escolhas independentes, gravadas em `idioma.toml`. Por exemplo: legendas em português com a dublagem
+original.
+
+Frentes de trabalho, da menor para a maior:
+
+1. **Legendas dos filmes:** quase prontas, pelo `MovieCatalog`. Falta ligar à escolha do menu e ao pacote.
+2. **Legendas das falas no gameplay:** recurso novo. O jogo não as tem no disco: é preciso um evento nativo de início de
+   fala por nome de stream, o `SubtitleService` e o desenho na camada do menu, sem tocar no estado do jogo.
+3. **Textos do jogo:** o jogo lê `.TXT` e CSV dentro dos AHF e só conhece cinco pastas. Caminho preferido: sobrepor os
+   arquivos no provedor nativo, servindo o texto do pacote no lugar do `Locale` ativo, sem remendar código gerado e sem
+   exigir um AHF inteiro por pacote, como os mods de hoje. Levantar:
+   - formato e códigos especiais dos `.TXT`, para recusar tradução que os quebre;
+   - codificação e fonte: os CSV são de 8 bits e as fontes são texturas PVR, então idiomas fora do conjunto delas precisam
+     de fonte própria, e os alfabetos não latinos podem ficar restritos a legendas, que usam DirectWrite;
+   - como sobrepor uma entrada de AHF, já que o formato AHFF é conhecido, mas o jogo lê o pacote pelo próprio código.
+4. **Dublagem das falas:** os `STREAMS` de fala por idioma do pacote, com conversão automática de WAV, FLAC e OGG, sem o
+   passo manual do `--audio-mod`. Se a duração diferir, vale a regra do BS: o jogo vê a duração original.
+5. **Dublagem dos filmes:** faixa de áudio ou MP4 por idioma, no `MovieCatalog`, com a imagem sincronizada.
+6. **Vozes em amostras** (`SAMPLES\HERO`, `SAMPLES\LEILA` e parecidas): levantar quais são fala de verdade. Hoje a troca
+   exige o AHF inteiro, então dependem da mesma sobreposição do item 3.
+
+Ferramentas: exportar a lista de falas e textos para o tradutor, sem distribuir conteúdo do jogo, e validar um pacote antes
+de instalar. O contrato fica nesta etapa; a API geral de mods e o editor ficam na HH17.
+
+### 5.7 Ordem de trabalho e validação
+
+1. Levantamento do idioma (5.4), que define o escopo da página Idioma.
+2. Modelo e persistência, com unitários e negativos (V1).
+3. Pausa no `hh_host`, com prova de que o estado não muda.
+4. Camada do menu na janela, ligação com teclado, controle e mouse.
+5. Opções reais de gráficos; depois, apresentação direta e resolução interna.
+6. Remapeamento de controles.
+7. Idioma do jogo no sistema nativo.
+8. Contrato dos pacotes e legendas dos filmes (5.6, frente 1), com um pacote de exemplo.
+9. Legendas no gameplay, depois textos, depois dublagem (5.6, frentes 2 a 6).
+10. Fechamento V2: integração, comparação com as referências com o menu fechado, revisão do Codex (regra do `AGENTS.md`).
+
+Critério de saída deste item: cada opção oferecida tem efeito comprovado e sobrevive ao reinício; arquivo inválido volta ao
+padrão com aviso; com padrões, roteiros e hashes ficam iguais às referências. Um pacote de exemplo só de legendas e outro
+com dublagem funcionam sem recompilar, e pacote inválido é recusado com o motivo, sem impedir o jogo de abrir.
