@@ -19,10 +19,11 @@ namespace hh::builder {
 // O que o CMake raiz do HH precisa para o HeadHunter.exe com HH_BUILD_TOOLS=OFF e BUILD_TESTS=OFF (o Builder e a
 // documentacao ficam de fora): app, runtime, camadas nativas e transitorias, o tradutor (alvos do CMake raiz), as
 // ferramentas que o runtime liga (hh-extract, dcmap) e o hh-diff (alvo do app), a configuracao e os modulos do CMake.
-const wchar_t* const kKitEntries[19] = {L"CMakeLists.txt", L"LICENSE", L"VERSION", L"app", L"runtime", L"native",
+const wchar_t* const kKitEntries[20] = {L"CMakeLists.txt", L"LICENSE", L"VERSION", L"app", L"runtime", L"native",
                                         L"legacy", L"transitional", L"translator", L"config", L"cmake",
                                         L"tools/CMakeLists.txt", L"tools/hh-extract", L"tools/dcmap", L"tools/hh-diff",
                                         L"tools/dist/LEIA-ME.txt", L"third_party/licenses", L"third_party/README.md",
+                                        L"third_party/vulkan",  // cabecalhos Vulkan (Apache-2.0) do renderizador
                                         L"icone-local"};  // icone da tela de titulo do usuario (so local; opcional)
 
 namespace {

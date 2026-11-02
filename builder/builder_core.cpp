@@ -338,7 +338,8 @@ std::string check_kit(const fs::path& kit, const fs::path& sdl3) {
                              L"runtime/CMakeLists.txt", L"native/CMakeLists.txt", L"legacy/CMakeLists.txt",
                              L"transitional/CMakeLists.txt", L"translator/CMakeLists.txt", L"tools/CMakeLists.txt",
                              L"tools/hh-extract/CMakeLists.txt", L"tools/dist/LEIA-ME.txt", L"cmake/HHProductGuard.cmake",
-                             L"cmake/HHIcone.cmake", L"app/res/headhunter.ico", L"app/res/headhunter.rc.in"})
+                             L"cmake/HHIcone.cmake", L"app/res/headhunter.ico", L"app/res/headhunter.rc.in",
+                             L"third_party/vulkan/vulkan/vulkan.h"})
         if (!fs::is_regular_file(kit / f, ec)) return "kit de fontes incompleto: falta " + path_text(kit / f);
     if (!fs::is_regular_file(sdl3 / L"CMakeLists.txt", ec))
         return "fontes do SDL3 nao encontradas em " + path_text(sdl3);

@@ -67,7 +67,7 @@ Copy-Item (Join-Path $crt.FullName "*.dll") $stage
 $kit = Join-Path $stage "kit"
 $kitEntries = @("CMakeLists.txt", "LICENSE", "VERSION", "app", "runtime", "native", "legacy", "transitional", "translator",
                 "config", "cmake", "tools/CMakeLists.txt", "tools/hh-extract", "tools/dcmap", "tools/hh-diff",
-                "tools/dist/LEIA-ME.txt", "third_party/licenses", "third_party/README.md")
+                "tools/dist/LEIA-ME.txt", "third_party/licenses", "third_party/README.md", "third_party/vulkan")
 $kitList = @(git -C $repo -c core.quotepath=off ls-files --cached --others --exclude-standard -- @kitEntries)
 if ($LASTEXITCODE -ne 0 -or $kitList.Count -lt 20) { Fail "git ls-files falhou ou listou poucos arquivos ($($kitList.Count))" }
 foreach ($rel in $kitList) {
@@ -100,6 +100,8 @@ Copy-Item -LiteralPath (Join-Path $repo "LICENSE") -Destination "$stage\licencas
 Copy-Item -LiteralPath (Join-Path $repo "third_party\licenses\recomp-BStinger-LICENSE.txt") -Destination "$stage\licencas\recomp-BStinger-MIT.txt"
 Copy-Item -LiteralPath (Join-Path $sdl "LICENSE.txt") -Destination "$stage\licencas\SDL3-zlib.txt"
 Copy-Item -LiteralPath (Join-Path $toml "LICENSE") -Destination "$stage\licencas\tomlplusplus-MIT.txt"
+Copy-Item -LiteralPath (Join-Path $repo "third_party\vulkan\LICENSE.md") -Destination "$stage\licencas\Vulkan-Headers-LICENSE.md"
+Copy-Item -LiteralPath (Join-Path $repo "third_party\vulkan\Apache-2.0.txt") -Destination "$stage\licencas\Vulkan-Headers-Apache-2.0.txt"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "LEIA-ME-BUILDER.txt") -Destination "$stage\LEIA-ME.txt"
 
 # dependencias dos executaveis
