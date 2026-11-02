@@ -280,6 +280,21 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
 
+### Primeira publicação (2026-11-01, pedido do mantenedor)
+
+`main` e a tag `v0.11.0` (`1d61333`) publicados em `rodrigo-mendonca/HeadHunterRecomp`, que redireciona para
+`DCRecomp/HeadHunterRecomp` (público). Só esses refs: `refs/codex/*` são locais e não sobem (guardam um PNG de pareamento).
+
+- Auditoria antes do push: 1.071 blobs de `main` sem amostras de bytes dos `1ST_READ.BIN`/`IP.BIN`, sem blocos longos de hex,
+  sem segredos; 13 strings do executável, curtas (diagnósticos citados como evidência ou preenchimento).
+- Defeito achado pelo teste do pacote e corrigido: `third_party/vulkan` faltava no kit (C1083 em `vulkan/vulkan.h`). A
+  Preview não mostrava porque usa o repositório como kit. `check_kit` agora exige o cabeçalho.
+- Pacote `HeadHunter-Builder-v0.11.0-win64.zip`, de uma worktree limpa da tag (sem o WIP da HH15.11b e sem `icone-local`):
+  o `hh-builder` do pacote, só com o próprio kit, foi dos dois CDIs ao `HeadHunter.exe` instalado e verificado. SHA-256
+  `c133b99e0d44e68e6cce3f250f60880b794f25c073168fabdaf74158e9f842d8`.
+- Pendente: criar a release no GitHub (sem `gh` nesta máquina) e apontar o `origin` para `DCRecomp`; ambas dependem do
+  mantenedor.
+
 ### Ícones dos executáveis (2026-11-01, pedido do mantenedor)
 
 Padrão do Blue Stinger (MIT), ampliado a todos os executáveis por `cmake/HHIcone.cmake`:
