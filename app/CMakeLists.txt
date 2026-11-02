@@ -24,10 +24,12 @@ if(HH_GENERATED_DIR)
   # hh-run: execucao sem janela.
   add_executable(hh-run hh_run.cpp)
   target_link_libraries(hh-run PRIVATE hh_host)
+  hh_icone(hh-run)
 
   # hh-diff: testes diferenciais contra estados do Flycast (tools/dev/flycast_oracle.py).
   add_executable(hh-diff ${CMAKE_SOURCE_DIR}/tools/hh-diff/main.cpp)
   target_link_libraries(hh-diff PRIVATE hh_generated hh_runtime)
+  hh_icone(hh-diff)
 
   # HeadHunter (Preview, HH06): janela SDL3. O SDL3 (zlib) fica restrito a este alvo: o runtime
   # e as ferramentas nao dependem dele.
@@ -59,6 +61,7 @@ if(HH_GENERATED_DIR)
                    ${CMAKE_SOURCE_DIR}/runtime/system/pvr_ausente.cpp
                    ${CMAKE_SOURCE_DIR}/transitional/render_capture_ausente.cpp)
     target_link_libraries(HeadHunter PRIVATE hh_host hh_native_install SDL3::SDL3-static shell32 ole32)  # shell32/ole32: pasta Documentos (saves)
+    hh_icone(HeadHunter)
     # HH18: identificacao (--version) e mods em C++ do projeto exportado (com HH_MODS: slots em todas as funcoes)
     set(HH_VERSION_OVERRIDE "" CACHE STRING "Versao gravada no HeadHunter.exe (vazio = arquivo VERSION)")
     if(HH_VERSION_OVERRIDE)

@@ -7,6 +7,7 @@ Este projeto transforma cópias dos discos de **Head Hunter** fornecidas pelo pr
 - CDI, GDI, CHD, ISO, BIN/CUE, faixas brutas ou setores dos discos;
 - BIOS, flash, SDK, headers, bibliotecas ou código-fonte da Sega;
 - executáveis, assets, áudio, vídeo, modelos ou texturas extraídos;
+- `icone-local/`: ícone feito da tela de título da cópia do próprio usuário. Vale só para builds locais; um executável que o embuta não se publica (a distribuição publicável leva o desenho original de `app/res/`);
 - `game-data/`, `generated/`, `analysis/`, `snapshots/`, `reviews/`, saves e dumps;
 - trechos de pseudocódigo ou relatórios que reproduzam quantidade substancial de código proprietário.
 

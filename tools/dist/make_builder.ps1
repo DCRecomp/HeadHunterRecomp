@@ -3,14 +3,19 @@
 # (linha de comando), runtime do MSVC, licencas, instrucoes e o kit de fontes (kKitEntries de
 # builder/project_export.cpp + SDL3 + toml++) que o Builder compila na maquina do usuario.
 #
-#   powershell -ExecutionPolicy Bypass -File tools/dist/make_builder.ps1 [-Out <pasta>] [-NoBuild]
+#   powershell -ExecutionPolicy Bypass -File tools/dist/make_builder.ps1 [-Out <pasta>] [-NoBuild] [-IconeLocal]
 #
 # Compila numa pasta propria (build\dist-builder) com HH_BUILDER_DEV_KIT=OFF: os executaveis nao levam caminhos desta
 # maquina. A distribuicao NAO contem nada do jogo (nem codigo gerado, nem executavel do jogo, nem dados do disco); a
 # montagem confere isso antes de trocar a pasta. Uma tentativa que falha deixa a anterior intacta.
+#
+# -IconeLocal: DISTRIBUICAO LOCAL, NAO PUBLICAR. Os executaveis do Builder e o kit levam icone-local/headhunter.ico
+# (tela de titulo da copia do usuario, tools/dev/gerar_icone.py --titulo, fora do git). Sem ele, o desenho original
+# de app/res e a montagem confere que nada da arte do jogo entrou.
 param(
     [string]$Out = "",
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [switch]$IconeLocal
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
@@ -36,7 +41,7 @@ $exes = @("HeadHunter-Recompiler.exe", "HeadHunter-Developer.exe", "hh-builder.e
 if (-not $NoBuild) {
     Step "compilando o Builder (Release, sem kit de desenvolvimento)"
     cmake -S $repo -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl -DBUILD_TESTS=OFF `
-        -DHH_BUILDER_DEV_KIT=OFF -DHH_GENERATED_DIR= | Out-Null
+        -DHH_BUILDER_DEV_KIT=OFF -DHH_GENERATED_DIR= "-DHH_ICONE_LOCAL=$(if ($IconeLocal) { 'ON' } else { 'OFF' })" | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "configuracao do CMake falhou" }
     cmake --build $build --target HeadHunter-Recompiler HeadHunter-Developer hh-builder
     if ($LASTEXITCODE -ne 0) { Fail "compilacao falhou" }
@@ -107,6 +112,18 @@ foreach ($exe in $exes) {
     }
 }
 
+# icone: o local so com -IconeLocal; lido do recurso dos executaveis montados, nao do build
+$icoEsperado = Join-Path $repo "app\res\headhunter.ico"
+if ($IconeLocal) {
+    $icoEsperado = Join-Path $repo "icone-local\headhunter.ico"
+    if (-not (Test-Path -LiteralPath $icoEsperado)) { Fail "-IconeLocal sem icone-local\headhunter.ico (tools/dev/gerar_icone.py --titulo)" }
+    New-Item -ItemType Directory -Force -Path (Join-Path $kit "icone-local") | Out-Null
+    Copy-Item -LiteralPath $icoEsperado -Destination (Join-Path $kit "icone-local\headhunter.ico")
+    Step "icone local no kit e nos executaveis (uso local: nao publicar)"
+} elseif (Test-Path -LiteralPath (Join-Path $kit "icone-local")) { Fail "icone-local no kit sem -IconeLocal" }
+python (Join-Path $repo "tools\dev\icone_exe.py") $icoEsperado @($exes | ForEach-Object { Join-Path $stage $_ })
+if ($LASTEXITCODE -ne 0) { Fail "icone errado nos executaveis (build\dist-builder configurado sem HH_ICONE_LOCAL coerente? rode sem -NoBuild)" }
+
 # nada do jogo: nomes proibidos e trechos do 1ST_READ.BIN e do IP.BIN locais (dos dois discos)
 # (pastas privadas so na raiz da distribuicao ou do kit: translator\analysis e codigo do analisador)
 $forbidden = Get-ChildItem -LiteralPath $stage -Recurse -Force | Where-Object {
@@ -155,7 +172,7 @@ if ($LASTEXITCODE -ne 2) { Fail "hh-builder.exe montado nao respondeu (codigo $L
 $kitFiles = Get-ChildItem -LiteralPath $kit -Recurse -File
 @"
 Head Hunter Builder $product ($version)
-Distribuicao: Builder (sem conteudo do jogo)
+Distribuicao: Builder ($(if ($IconeLocal) { 'uso local: icone com arte do jogo, nao publicar' } else { 'sem conteudo do jogo' }))
 Montada em: $(Get-Date -Format 'yyyy-MM-dd HH:mm')
 Runtime do MSVC: $($crt.Name) ($([IO.Path]::GetFileName($env:VCToolsRedistDir.TrimEnd('\'))))
 Kit de fontes: $($kitFiles.Count) arquivos, $([math]::Round((($kitFiles | Measure-Object Length -Sum).Sum / 1MB), 1)) MB (SDL3 release-3.2.30, toml++ v3.4.0)

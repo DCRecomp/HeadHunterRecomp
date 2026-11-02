@@ -1,6 +1,6 @@
 # STATUS — Head Hunter Recompiled
 
-Atualizado em 2026-10-28. Este arquivo é a fonte autoritativa do checkpoint.
+Atualizado em 2026-11-01. Este arquivo é a fonte autoritativa do checkpoint.
 
 ## Estado das etapas
 
@@ -279,6 +279,28 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
   `--headless` ficam no legado (roteiro de referencia sem memory card).
 - Builder: `saves\` e `controles.toml` sobrevivem a reinstalacao. Revisao Codex: 5 achados, aceitos.
 - Pendente para o HH16: saves de partida (`H_HUNTER.001..008`) em gameplay e a passagem real do disco 1 para o 2.
+
+### Ícones dos executáveis (2026-11-01, pedido do mantenedor)
+
+Padrão do Blue Stinger (MIT), ampliado a todos os executáveis por `cmake/HHIcone.cmake`:
+
+- `app/res/headhunter.ico` (versionado): desenho original, só geometria; é o das distribuições publicáveis.
+- `icone-local/headhunter.ico` (ignorado, `LEGAL.md`): tela de título da cópia do usuário
+  (`python tools/dev/gerar_icone.py --titulo analysis/hh05/run3/frame_010800.png`). Rosto com logotipo em 128/256 px;
+  rosto de perto de 16 a 64 px. Usado nos builds locais; `-DHH_ICONE_LOCAL=OFF` o desliga.
+- Executáveis: HeadHunter, HeadHunter-Recompiler, HeadHunter-Developer, hh-builder, hh-run, hh-diff, hh-recomp, hh-disasm,
+  hh-hwscan, hh-extract. Recompiler e Developer agora usam o recurso 1 na classe da janela. `icone-local` entrou em
+  `kKitEntries` (opcional).
+- `tools/dist/make_builder.ps1` sai com o desenho original por padrão e confere o recurso dos executáveis montados;
+  `-IconeLocal` leva a arte do jogo aos executáveis e ao kit, marca `VERSAO.txt` como uso local e **não se publica**.
+
+Evidências: ctest `hh_icones` e `hh18_builder_tests` passam (`hh_icones` lê o recurso dos 10 executáveis e recusa um .ico
+alterado em um byte). Builder sem `-IconeLocal`: 3 executáveis iguais a `app/res`, e diferentes do ícone local (saída 1).
+`-NoBuild -IconeLocal` sobre executáveis originais é recusado (saída 1). `dist/` remontado em `be7de69-dirty`: Preview e
+Builder com o ícone local conferido. Janelas abertas de Recompiler, Developer e HeadHunter mostram ícone próprio na classe
+(`GetClassLongPtr`; o SDL3 usa o primeiro `RT_GROUP_ICON`). A regressão integral não foi rodada: a mudança só acrescenta recursos e troca o `hIcon`.
+Limitações: a Preview e o Builder de `dist/` levam as alterações ainda não commitadas da HH15.11b. Hipótese aberta: as
+texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiável, por isso a fonte é a captura composta.
 
 ### HH15 (2026-10-28, em andamento; parte 2 desde 2026-10-30)
 

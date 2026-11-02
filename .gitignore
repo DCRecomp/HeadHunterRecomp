@@ -18,6 +18,9 @@ tmp_run/
 *.dll
 *.exe
 *.app
+# icone feito da tela de titulo da copia do proprio usuario (tools/dev/gerar_icone.py --titulo): arte do jogo, so uso
+# local. Nao versionar.
+/icone-local/
 # Other temporary files
 *.tmp
 *.log

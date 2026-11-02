@@ -19,9 +19,11 @@ hh_mark_tool_only(hh_recomp_lib)
 
 add_executable(hh-recomp app/main.cpp)
 target_link_libraries(hh-recomp PRIVATE hh_recomp_lib)
+hh_icone(hh-recomp)
 
 add_executable(hh-disasm app/disasm_main.cpp)
 target_link_libraries(hh-disasm PRIVATE hh_translator)
+hh_icone(hh-disasm)
 
 # HH07: varredura de dependencias de hardware (manifesto, grafo, bibliotecas do SDK, fronteira,
 # fechamento, metricas). Portado do Blue Stinger (bs-hwscan, MIT). Ferramenta de analise.
@@ -40,3 +42,4 @@ hh_mark_tool_only(hh_hwscan)
 
 add_executable(hh-hwscan hwscan/main.cpp)
 target_link_libraries(hh-hwscan PRIVATE hh_hwscan)
+hh_icone(hh-hwscan)

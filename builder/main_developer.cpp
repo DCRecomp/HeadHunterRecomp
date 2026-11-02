@@ -804,7 +804,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     wc.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = HBRUSH(COLOR_BTNFACE + 1);
     wc.lpszClassName = L"HeadHunterDeveloper";
-    wc.hIcon         = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon         = LoadIconW(inst, MAKEINTRESOURCEW(1));  // o do executavel (cmake/HHIcone.cmake)
     RegisterClassExW(&wc);
     const UINT dpi = GetDpiForSystem();
     HWND w = CreateWindowExW(0, wc.lpszClassName, tr("dev.title").c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,

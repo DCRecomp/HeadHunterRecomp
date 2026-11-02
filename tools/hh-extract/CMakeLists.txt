@@ -16,6 +16,7 @@ target_compile_features(hh_extract_core PUBLIC cxx_std_20)
 
 add_executable(hh-extract src/main.cpp)
 target_link_libraries(hh-extract PRIVATE hh_extract_core)
+hh_icone(hh-extract)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX "hh-extract" FILES
   src/cdi.cpp src/extract.cpp src/hash.cpp src/iso9660.cpp src/ip_bin.cpp

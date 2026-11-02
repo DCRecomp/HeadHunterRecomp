@@ -1,0 +1,6 @@
+// Recursos dos executaveis (Windows), gerado pelo CMake (cmake/HHIcone.cmake escolhe o icone). O primeiro icone e o do
+// arquivo no Explorer e, pelo SDL3 (sem icone definido pelo programa), o da janela e da barra de tarefas; o Recompiler e
+// o Developer o carregam na classe da janela (recurso 1).
+// icone: sha256 @HH_ICONE_HASH@
+// (copiado do icone escolhido para a pasta do build e achado pelo /I dela: nenhum caminho do usuario passa pelo rc)
+1 ICON "headhunter.ico"
