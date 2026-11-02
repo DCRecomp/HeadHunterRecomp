@@ -292,8 +292,8 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - Pacote `HeadHunter-Builder-v0.11.0-win64.zip`, de uma worktree limpa da tag (sem o WIP da HH15.11b e sem `icone-local`):
   o `hh-builder` do pacote, só com o próprio kit, foi dos dois CDIs ao `HeadHunter.exe` instalado e verificado. SHA-256
   `c133b99e0d44e68e6cce3f250f60880b794f25c073168fabdaf74158e9f842d8`.
-- Pendente: criar a release no GitHub (sem `gh` nesta máquina) e apontar o `origin` para `DCRecomp`; ambas dependem do
-  mantenedor.
+- O mantenedor confirmou a migração para a organização `DCRecomp`; o `origin` aponta para lá. Release `v0.11.0` publicada
+  como pré-lançamento, com o zip acima; o download público confere com o SHA-256.
 
 ### Ícones dos executáveis (2026-11-01, pedido do mantenedor)
 
