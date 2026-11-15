@@ -151,6 +151,8 @@ slots = [
   0x8C15D150,  # gdFsGetDrvStat (stub, tabela[84]): drive sempre pronto (sem troca de disco)
   0x8C15D042,  # gdFsLoadDir (stub, tabela[32]): diretorio dos dirrec pelo provedor nativo
   0x8C15D06E,  # gdFsSetDir (stub): dirrec de \Streams vira o corrente antes de cada stream (HH14)
+  0x8C09EC68,  # HH16.P1: getter do disco atual (0x8C15174C); no menu de LOAD (retorno 0x8C0EEC34) passa ao disco do save
+  0x8C09C34C,  # HH16.P1: save do jogo; no fim do disco 1 (retorno 0x8C086C18) segue no disco 2 sem INSERT DISC 2
   # HH10: controles (pd 1.50; transitional/pad_adapter)
   0x8C15DB3A,  # servidor pd (chamado pelo jogo em 0x8C0915F8)
   0x8C15DC40,  # pdGetPeripheral

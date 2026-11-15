@@ -32,7 +32,7 @@ struct Fatal : std::runtime_error {
 };
 
 // mutacao da "gerada" de teste
-enum class Mut { Nenhuma, EscritaExtra, OutroValor, SoNaRam, Ciclos, Voltas, Retorno, Macl, SemVolta };
+enum class Mut { Nenhuma, EscritaExtra, OutroValor, SoNaRam, Ciclos, Voltas, Retorno, Macl, SemVolta, SoNoBackEdge, RamNoBackEdge };
 Mut g_mut = Mut::Nenhuma;
 
 float lerf(hh::Sh4Context* c, uint32_t a) {
@@ -47,41 +47,53 @@ void escf(hh::Sh4Context* c, uint32_t a, float f) {
     hh::sh4_write32(c, a, u);
 }
 
-// back-edge da gerada de teste: o tick de vivacidade simulado (o atendimento muda next_poll)
-void backEdge(hh::Sh4Context* c) {
+// back-edge da gerada de teste: o HH_POLL (a retomada e o caminho lento quando o contador pede)
+void backEdge(hh::Sh4Context* c, uint32_t retomada) {
     if (g_mut == Mut::SemVolta) return;
-    if (++c->polls >= c->next_poll) c->next_poll = c->polls + 1000;
+    ++c->polls;
+    // revisao Codex HH15.11b5: o angulo diferente na RAM so durante o back-edge (registradores e valor final iguais)
+    const uint32_t p = c->r[3], salvo = g_mut == Mut::RamNoBackEdge ? hh::sh4_read32(c, p) : 0;
+    if (g_mut == Mut::RamNoBackEdge) hh::sh4_write32(c, p, salvo ^ 0x00800000u);
+    if (g_mut == Mut::SoNoBackEdge) c->r[3] ^= 1;  // um temporario diferente so no back-edge (restaurado depois)
+    if (c->cycles >= c->next_event || c->polls >= c->next_poll) {
+        c->pc = retomada;
+        hh::sh4_poll_slow(c);
+    }
+    if (g_mut == Mut::RamNoBackEdge) hh::sh4_write32(c, p, salvo);
+    if (g_mut == Mut::SoNoBackEdge) c->r[3] ^= 1;
 }
 
-// o que a gerada de 8C06F62C faz (custo, back-edges, local na pilha morta, escrita a cada volta), com as mutacoes
+// o que a gerada de 8C06F62C faz (custo, back-edges, o quadro de 4 bytes, escrita a cada volta, e os registradores de
+// cada teste: r3 = p, r0 = a constante (mova), fr3 = ela, fr2 = o angulo lido), com as mutacoes
 void gerada_angulo(hh::Sh4Context* c) {
     c->cycles += 4;
     c->r[15] -= 4;
     hh::sh4_write32(c, c->r[15], c->r[4]);
+    const uint32_t p = c->r[4];
+    c->r[3]          = p;
+    auto teste       = [&](uint32_t k) {
+        c->r[0] = k, c->fr[3] = hh::sh4_read32(c, k), c->fr[2] = hh::sh4_read32(c, p);
+        return lerf(c, p);
+    };
+    auto corpo = [&](float sinal) {
+        c->cycles += 6;
+        c->r[0] = 0x8C06F670u, c->fr[3] = hh::sh4_read32(c, 0x8C06F670u);
+        escf(c, p, lerf(c, p) + sinal * ng::kVolta);
+        c->fr[2] = hh::sh4_read32(c, p);
+        c->cycles += 6;
+    };
     c->cycles += 6;
-    while (lerf(c, c->r[4]) < -ng::kPi) {
-        backEdge(c);
-        c->cycles += 12;
-        escf(c, c->r[4], lerf(c, c->r[4]) + ng::kVolta);
-    }
+    while (teste(0x8C06F674u) < -ng::kPi) c->t = 1, backEdge(c, 0x8C06F634u), corpo(1);
     c->cycles += 8;
-    while (lerf(c, c->r[4]) > ng::kPi) {
-        backEdge(c);
-        c->cycles += 12;
-        escf(c, c->r[4], lerf(c, c->r[4]) - ng::kVolta);
-    }
-    if (g_mut == Mut::OutroValor) escf(c, c->r[4], lerf(c, c->r[4]) * 0.5f);  // mesmas voltas, outro valor
+    while (teste(0x8C06F678u) > ng::kPi) c->t = 1, backEdge(c, 0x8C06F650u), corpo(-1);
+    if (g_mut == Mut::OutroValor) escf(c, p, lerf(c, p) * 0.5f), c->fr[2] = hh::sh4_read32(c, p);  // mesmas voltas
     c->cycles += 3 + (g_mut == Mut::Ciclos ? 1 : 0);
     c->polls += g_mut == Mut::Voltas ? 1 : 0;
     if (g_mut == Mut::EscritaExtra) hh::sh4_write8(c, 0x8C300000u, 0x5A);
     if (g_mut == Mut::Macl) c->macl = 1;
     c->r[15] += 4;
-    c->r[0] = 0x8C06F678u, c->r[3] = c->r[4];  // temporarios como na real: o ultimo teste
-    c->fr[2] = hh::sh4_read32(c, c->r[4]);
-    float pi = ng::kPi;
-    std::memcpy(&c->fr[3], &pi, 4);
     c->t = 0;
-    if (g_mut == Mut::SoNaRam) escf(c, c->r[4], lerf(c, c->r[4]) * 0.5f);  // outro valor so na RAM (fr2 ja fixado)
+    if (g_mut == Mut::SoNaRam) escf(c, p, lerf(c, p) * 0.5f);  // outro valor so na RAM (fr2 ja fixado)
 }
 
 void gerada_global(hh::Sh4Context* c) {
@@ -194,6 +206,7 @@ HH_TEST(hh15_elevacao_conferir_acusa_cada_divergencia) {
     g_slotGlobal(&m.c);
     HH_CHECK(ev::stats().chamadas == 4 && ev::stats().conferidas == 4 && ev::stats().completas == 4);
     HH_CHECK(ev::stats(0).conferidas == 3 && ev::stats(1).conferidas == 1);
+    HH_CHECK(ev::stats().ramNasVoltas == 2 && ev::stats().semRamNasVoltas == 0);  // -13 e 9 tem back-edges; 0,5 nao
     HH_CHECK(lerf(&m.c, kDado) == 0.5f);  // a trajetoria e a da gerada
     const struct {
         Mut         mut;
@@ -202,6 +215,8 @@ HH_TEST(hh15_elevacao_conferir_acusa_cada_divergencia) {
         {Mut::EscritaExtra, "RAM (a gerada escreveu o que a elevada nao)"},
         {Mut::OutroValor, "fr2"},  // o valor final fica em fr2 (o contrato completo o acusa antes da escrita)
         {Mut::SoNaRam, "escrita da elevada"},
+        {Mut::SoNoBackEdge, "r3 (back-edge 0)"},
+        {Mut::RamNoBackEdge, "no back-edge 0"},
         {Mut::Ciclos, "ciclos"},
         {Mut::Voltas, "back-edges"},
         {Mut::Retorno, "retorno r0"},

@@ -225,3 +225,71 @@ de instalar. O contrato fica nesta etapa; a API geral de mods e o editor ficam n
 Critério de saída deste item: cada opção oferecida tem efeito comprovado e sobrevive ao reinício; arquivo inválido volta ao
 padrão com aviso; com padrões, roteiros e hashes ficam iguais às referências. Um pacote de exemplo só de legendas e outro
 com dublagem funcionam sem recompilar, e pacote inválido é recusado com o motivo, sem impedir o jogo de abrir.
+
+## 6. Filmes remasterizados com IA (registrado em 2026-11-14; equivalente ao N9.13 do BS)
+
+**Situação: só planejado.** Pedido do mantenedor (2026-11-14), apontando que o BS fez e funcionou. Segue a ordem da
+etapa: nada começa antes da HH19 autorizada.
+
+### 6.1 O que o BS fez (referência MIT, conferida em 2026-11-14)
+
+- Plano `docs/N9-13-FILMES-IA.md` (branch `n9-8` do BS, ainda fora do `master`): versão **A** (widescreen) e versão **B**
+  (modernizada, vídeo para vídeo a 60 fps), fases 13.0–13.4, decisões D13-1 a D13-6, decisão de distribuição na seção 7.
+- Método da versão A, **aprovado pelo mantenedor no filme E017** e em produção local desde 2026-11-14
+  (`tmp/sessao-20261113/filmes-ia/` do BS: `prova_a.py`, `produz_a.py`, `roda_filmes.py`, `valida_a.py`):
+  - o centro 4:3 é **sempre o quadro original ampliado** (Real-ESRGAN x4plus, BSD-3, carregado pelo `spandrel`, MIT); nada é
+    gerado no centro;
+  - só as laterais do 16:9 são criadas pelo **Wan2.1-VACE-1.3B** (Apache-2.0, `diffusers`), **plano a plano** (corte de cena
+    detectado por diferença entre quadros; um pedido nunca atravessa um corte), com o centro como condição;
+  - geometria na mesma escala do centro (correção da v1, que esticava as laterais); emenda de 48 px; casamento de cor por
+    linha com suavização temporal sem atravessar cortes (correção da v1, o centro parecia mais escuro);
+  - **áudio copiado** sem recodificar; mesma contagem de quadros, 30 fps, duração igual;
+  - produção retomável por pedaço, parada por falta de RAM, uma execução por vez, arquivo `PARAR`, `progresso.tsv`;
+    caches de modelos e temporários dentro da pasta de trabalho, Hugging Face offline e sem telemetria;
+  - validação automática por filme: 1920×1080, mesmos quadros e fps, duração com até 1 quadro de diferença, MD5 do áudio
+    igual ao original, PSNR ≥ 22 dB do centro reduzido contra o original, laterais não pretas nos quadros não pretos.
+- Medida de custo no BS: E017, 238 quadros, 221 s de geração na GPU do mantenedor (NVIDIA; ~27 GB de modelos, caches e
+  venv na pasta da sessão).
+- Distribuição (decisão do mantenedor no BS, 2026-11-13): os filmes gerados nunca vão no git nem na release; o pacote
+  identificado vai para um repositório público fora do GitHub (recomendado Hugging Face Hub), e o instalador baixa sob
+  demanda com SHA-256, desmarcado por padrão, sem bloquear a instalação se falhar.
+
+### 6.2 O que muda no Head Hunter (medido no HH12)
+
+O HH tem **53 filmes** (25 + 28, 4 933,9 s, 148 010 quadros, 30 fps), em formatos já largos, o que muda a técnica por
+grupo:
+
+| Grupo | Quadro | Proporção | Em 16:9 | Técnica |
+|---|---|---|---|---|
+| 37 filmes | 480×204 | ~2,35:1 (mais largo que 16:9) | cabe na largura com faixas finas em cima e embaixo | **só ampliação**; a extensão vertical para encher a tela é opcional (D-F2) |
+| 11 filmes | 480×270/272 | ~16:9 | tela cheia | **só ampliação** |
+| 5 filmes | 480×360 | 4:3 | precisa das laterais | **ampliação + laterais** pelo método do BS |
+
+Consequências: o custo grande do BS (geração das laterais) se aplica a 5 filmes (4 410 quadros, 2,5 min: `SCENE0` nas
+duas variantes, `SCENE0L`, `SCENE18`, `SCENE54_55`; `docs/planos/HH16-PREPARACAO.md` seção 6), não a 53; os outros 48 só passam pela
+ampliação, muito mais barata. A lista exata por filme sai do `data\video\manifest.toml` (tamanho exibido `vtrk`). As
+legendas do jogo são desenhadas pelo jogo sobre o filme (HH12), não estão na imagem: não atrapalham a geração. O
+`SCENE0` tem variante por disco (`.D2`), e o contrato de mods já cobre (`<NOME>.D2.mp4`).
+
+### 6.3 Fases (cada uma com autorização, como no BS)
+
+| Fase | Conteúdo | Aceitação |
+|---|---|---|
+| F0 | inventário por filme (grupo, cortes, movimento de câmera, texto na imagem); licenças conferidas no texto (código e pesos); porte do processo do BS para `tools/filmes-ia/` com a entrada pelos MP4 do Builder; amostra de 10 s de um filme de cada grupo | amostras locais avaliadas pelo mantenedor; tabela de tempo e VRAM |
+| F1 | contrato no jogo: versões de filme por pacote, escolha no menu (Filmes: original / remasterizados), o filme 16:9 em tela cheia na Remastered 16:9, recuo por filme, legendas na posição certa; a Original sempre com os filmes do disco | pacote **sintético** (barras e contador): duração e passo lógico do fim iguais, estado por passo idêntico, sessão gravada da campanha reproduzida igual |
+| F2 | versão A dos 53 (ampliação; laterais nos 5 de 4:3), produção retomável | `valida_a` por filme; revisão visual do mantenedor filme a filme |
+| F3 | versão B (modernizada), se o mantenedor quiser, sobre a A | as mesmas medidas, mais consistência temporal; filme reprovado fica na A |
+| F4 | bateria e documentação nas duas plataformas | sem falhas; Original igual às referências |
+
+**Contrato inegociável (HH16, seção 4.1):** cada filme remasterizado termina no **mesmo passo lógico**: mesma contagem de
+quadros a 30 fps (ou o equivalente exato a 60 fps na B), áudio original. A gravação da campanha valida isso por
+`reproduzir-em` com o pacote instalado.
+
+### 6.4 Decisões ao iniciar
+
+| | Pergunta | Recomendação |
+|---|---|---|
+| D-F1 | Onde roda: ferramenta local (R1) ou etapa opcional do Recompiler (R2) | R1, como o BS; R2 depois da medida |
+| D-F2 | Os 37 filmes 2,35:1: manter as faixas (fiel ao enquadramento) ou estender em cima e embaixo para encher o 16:9 | manter as faixas; a extensão vertical só como opção depois de amostra |
+| D-F3 | Distribuição: a mesma do BS (pacote identificado fora do GitHub, baixado pelo instalador, desmarcado por padrão) | a mesma, com decisão explícita do mantenedor para o HH |
+| D-F4 | Versão B (modernizada) entra no HH | decidir depois de ver a A |

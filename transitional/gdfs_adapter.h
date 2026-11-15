@@ -39,6 +39,13 @@ struct Addresses {
     uint32_t discVar;  // variavel do jogo: disco atual (0/1 = disco 1, 2 = disco 2)
     uint32_t loadDir;  // gdFsLoadDir (stub, tabela[32]): (nome, dirrec)
     uint32_t setDir;   // gdFsSetDir (stub): (dirrec) -> o diretorio carregado vira o corrente (HH14)
+    // HH16.P1 (LOAD de um save do outro disco): o getter do disco atual (devolve a variavel discVar) e o endereco de
+    // retorno da chamada dele no menu de LOAD, que compara o disco do save (r8, preservado pelo chamador) com o atual.
+    uint32_t discGetter, loadMenuDiscRet;
+    // HH16.P1 (fim do disco 1 sem troca): o save do menu aberto pelo comando 596 (chamada em 0x8C086C14, retorno
+    // saveEndRet), o "modo fim de disco" que leva a tela INSERT DISC 2, a funcao que o LOAD usa para aplicar a imagem
+    // do save (0x8C09C6C2, chamada por 0x8C117B2A) e o buffer da imagem (o mesmo que o save acabou de gravar).
+    uint32_t saveCall, saveEndRet, endOfDiscFlag, applySave, saveImage;
 };
 
 // Head Hunter (hedhunter_v1006_a/b: o executavel e o mesmo nos dois discos fora de um dword).
@@ -46,6 +53,8 @@ constexpr Addresses kHeadHunter = {
     0x8C15D09A, 0x8C15C7A0, 0x8C15C7B8, 0x8C15C7F0, 0x8C15C80A, 0x8C15C824, 0x8C15C83E, 0x8C15C88A,
     0x8C15C8A0, 0x8C15C8C8, 0x8C15C8E2, 0x8C15C970, 0x8C15CA48, 0x8C15C6B4, 0x8C15CD68, 0x8C15CD80,
     0x8C15CD96, 0x8C15CEC4, 0x8C15C746, 0x8C15D150, 0x8C15174C, 0x8C15D042, 0x8C15D06E,
+    0x8C09EC68, 0x8C0EEC34,
+    0x8C09C34C, 0x8C086C18, 0x8C14D780, 0x8C09C6C2, 0x8C2F1748,
 };
 
 constexpr uint32_t kTokenTag = 0x7E000000;
@@ -64,6 +73,8 @@ void check_sizes(const native::files::DataFileSystem& fs);
 
 struct Stats {
     uint64_t opens = 0, reads = 0, bytes = 0, notFound = 0, legacyPassThrough = 0;
+    uint64_t loadDiscSwitches = 0;  // LOAD de um save do outro disco aceito pelo menu (HH16.P1)
+    uint64_t endOfDiscContinues = 0;  // fim do disco 1 seguido no disco 2 sem a tela INSERT DISC 2 (HH16.P1)
 };
 Stats stats();
 

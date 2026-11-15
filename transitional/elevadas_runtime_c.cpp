@@ -16,7 +16,8 @@ void strlen_(Sh4Context* c) {
     const uint32_t s = c->r[4];
     cobrar(c, 2 + 3);  // bra (com o delay slot) e o primeiro teste
     uint32_t n = 0;
-    while (ler8(c, s + n)) {
+    for (uint8_t b; (b = ler8(c, s + n)) != 0;) {
+        c->r[3] = sext8(b), c->r[4] = s + n + 1, c->r[5] = n, c->t = 0;  // no back-edge: o byte, o ponteiro, a contagem
         volta(c, 0x8C1247ECu);
         cobrar(c, 1 + 3);
         ++n;
@@ -109,8 +110,12 @@ void memset_(Sh4Context* c) {
     const uint32_t d = c->r[4], n = c->r[6];
     const uint8_t  v = uint8_t(c->r[5]);
     cobrar(c, 5);
+    c->r[3] = 0;
     for (uint32_t i = 0; i < n; ++i) {
-        if (i) volta(c, 0x8C12464Au);
+        if (i) {  // no back-edge: r0 = o destino, r7 = o contador, T = 0 (cmp/hs que nao chegou)
+            c->r[0] = d + i, c->r[7] = i, c->t = 0;
+            volta(c, 0x8C12464Au);
+        }
         cobrar(c, 5);
         escrever8(c, d + i, v);
     }

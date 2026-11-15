@@ -65,6 +65,8 @@ void sh4_poll_slow(Sh4Context* c);
 void sh4_set_logical_cadence(bool on);
 bool sh4_logical_cadence();
 void sh4_set_session_context(Sh4Context* c);  // registrado no boot; nullptr no encerramento
+// O contexto da sessao (nullptr fora dela). HH16.0: o estado por leitura do controle le a RAM na thread do jogo.
+Sh4Context* sh4_session_context();
 // Pede atendimento no proximo poll se ha nivel de interrupcao entregavel agora (SR.BL = 0, nivel IRL > SR.IMASK), sem
 // avaliar eventos: chamado quando uma fonte acende ou uma mascara muda. Sem efeito no tempo por ciclos.
 void sh4_irq_wakeup();
@@ -92,5 +94,9 @@ void sh4_set_fatal_handler(Sh4FatalFn fn);
 [[noreturn]] void sh4_fatal(Sh4Context* c, const char* what, uint32_t pc, uint32_t extra);
 extern Sh4TraceFn g_sh4_trace;
 inline void sh4_set_trace(Sh4TraceFn fn) { g_sh4_trace = fn; }
+// HH15.11 (so a conferencia das funcoes elevadas, transitional/elevacao): chamada na entrada do caminho lento do poll; true
+// = o poll foi so observado (nada mais acontece). Nula no produto.
+using Sh4PollProbe = bool (*)(Sh4Context* c);
+extern Sh4PollProbe g_sh4_poll_probe;
 
 } // namespace hh

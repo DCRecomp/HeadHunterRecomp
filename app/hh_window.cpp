@@ -27,6 +27,14 @@
 //   --saves-exportar <pasta>                      cada save vira <pasta>\<NOME>.VMS
 //   --saves-importar <arquivo.vms> [--saves-nome <NOME>]  (padrao: o nome do arquivo, em maiusculas)
 // operam na pasta dos saves (as mesmas opcoes acima) e saem sem abrir o jogo.
+// Campanha (HH16.0, docs/planos/HH16-PLANO.md): --gravar <arquivo> (so na janela) grava a entrada efetiva do jogador
+// como roteiro indexado pela leitura do controle (transitional/input_bridge ReadRecorder), uma linha por mudanca, com
+// flush a cada linha; --reproduzir <arquivo> toca esse roteiro (janela ou --headless). As duas correm no tempo logico
+// (--tempo experimental; outro --tempo e recusado): a gravacao e a reproducao tem de correr no mesmo tempo.
+// --estado <arquivo> [--estado-cada K] (HH16.0, docs/planos/HH16-PREPARACAO.md 7.2): a cada K leituras do controle (padrao
+// 60), "estado <leitura> <hash>" da regiao de variaveis do jogo (.data e .bss do 1ST_READ, 0x8C147B20-0x8C32EF60; as
+// pilhas das threads ficam fora dela), tirado na thread do jogo no ponto de amostragem: a primeira leitura em que a
+// reproducao diverge da gravacao.
 // Os dois discos estao juntos em data\ (HH08): nao ha troca de disco; o jogo continua do disco
 // 1 para o 2 sozinho.
 // --log grava "quadro N: LxA hash H" a cada K VBlanks (mesmo hash do hh-run): prova que a
@@ -35,6 +43,7 @@
 // setas = direcional, ENTER = START, Z/X/A/S = A/B/X/Y. ESC fecha.
 //
 // Fase hibrida: liga o runtime temporario (removido do produto no HH15).
+#include "cpu/sh4_runtime.h"  // HH16.0: sh4_session_context (--estado)
 #include "hh_discs.h"
 #include "hh_host.h"
 
@@ -61,6 +70,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -236,6 +246,9 @@ int main(int argc, char** argv) {
     bool            timeSet = false;
     fs::path        vmsExport, vmsImport;
     std::string     vmsName;
+    std::string     recordPath, replayPath;  // HH16.0
+    std::string     statePath;               // HH16.0: --estado
+    uint64_t        stateEvery = 60;         // --estado-cada
     opt.realtime = true;
     opt.saves    = hh::SavesProvider::Native;
     opt.video    = hh::VideoProvider::Native;  // HH12: filmes nativos padrao na janela (promovido; legado como reserva)
@@ -282,12 +295,17 @@ int main(int argc, char** argv) {
         else if (a == "--saves-exportar" && i + 1 < argc) vmsExport = argv[++i];
         else if (a == "--saves-importar" && i + 1 < argc) vmsImport = argv[++i];
         else if (a == "--saves-nome" && i + 1 < argc) vmsName = argv[++i];
+        else if (a == "--gravar" && i + 1 < argc) recordPath = argv[++i];
+        else if (a == "--estado" && i + 1 < argc) statePath = argv[++i];
+        else if (a == "--estado-cada" && i + 1 < argc) stateEvery = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--reproduzir" && i + 1 < argc) replayPath = argv[++i];
         else {
             std::fprintf(stderr, "uso: HeadHunter [--data <pasta>] [--vblanks N] [--rtc <segundos Unix>] "
                                  "[--log <arquivo> --hash-every K] [--headless] [--arquivos legado|nativo] "
                                  "[--tempo legado|nativo|experimental] [--controles legado|nativo] [--saves legado|nativo] "
                                  "[--saves-pasta <pasta> | --saves-portatil] [--video legado|nativo] [--audio legado|nativo] [--render software|nativo] "
-                                 "[--mods <pasta>]\n"
+                                 "[--mods <pasta>] [--gravar <arquivo> | --reproduzir <arquivo>] "
+                                 "[--estado <arquivo> [--estado-cada K]]\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-exportar <pasta>\n"
                                  "       HeadHunter [--saves-pasta <pasta> | --saves-portatil] --saves-importar <arquivo.vms> "
                                  "[--saves-nome <NOME>]\n");
@@ -356,6 +374,22 @@ int main(int argc, char** argv) {
     TempSaves tempSaves;
     // HH15.1: tempo logico (--tempo experimental) padrao na janela (portao hh15_tempo); o --headless fica no estavel
     if (!headless && !timeSet) opt.time = hh::TimeProvider::Experimental;
+    // HH16.0: gravacao so na janela, com os controles nativos e sem roteiro; reproducao no tempo logico, como a gravacao
+    if (!recordPath.empty() || !replayPath.empty()) {
+        const char* why = !recordPath.empty() && !replayPath.empty()   ? "--gravar e --reproduzir juntos"
+                          : !recordPath.empty() && headless             ? "--gravar exige a janela (sem --headless)"
+                          : std::getenv("HH_INPUT_SCRIPT")              ? "--gravar/--reproduzir com HH_INPUT_SCRIPT"
+                          : opt.controls != hh::ControlsProvider::Native ? "--gravar/--reproduzir exigem --controles nativo"
+                          // revisao Codex HH16.P1: a gravacao e a reproducao correm no mesmo tempo, sempre o logico
+                          : timeSet && opt.time != hh::TimeProvider::Experimental
+                              ? "--gravar/--reproduzir correm no tempo logico (--tempo experimental)"
+                              : nullptr;
+        if (why) {
+            std::fprintf(stderr, "%s\n", why);
+            return 2;
+        }
+        opt.time = hh::TimeProvider::Experimental;
+    }
     // o --headless (verificacao do produto: o roteiro newgame_area1_nativo) usa os provedores nativos, com os saves num
     // cartao temporario (abaixo), sem audio no dispositivo e o render por software (verificacao sem depender da GPU)
     if (headless && !renderSet) opt.render = hh::RenderProvider::Software;  // HH13: verificacao sem depender da GPU
@@ -391,6 +425,54 @@ int main(int argc, char** argv) {
     hh::KeyEventInput*               keys = nullptr;
     std::unique_ptr<ni::InputSystem> input;
     const char*                      script = std::getenv("HH_INPUT_SCRIPT");
+    if (!replayPath.empty()) script = replayPath.c_str();  // HH16.0: a reproducao e um roteiro por leitura
+    struct Recording {  // HH16.0: o arquivo da gravacao, fechado com o comentario de fim
+        std::FILE*                                                    f = nullptr;
+        std::unique_ptr<hh::transitional::input_bridge::ReadRecorder> rec;
+        std::atomic<bool>                                             failed{false};  // E/S falhou (disco cheio...)
+        // fecha com o comentario de fim; false se alguma escrita falhou (revisao Codex HH16.P1: nada silencioso)
+        bool close() {
+            if (rec) rec->comment("fim da sessao, ultima leitura " + std::to_string(rec->last_sample()));
+            rec.reset();
+            if (f && std::fclose(f) != 0) failed = true;
+            f = nullptr;
+            return !failed;
+        }
+        ~Recording() { close(); }
+    } recording;
+    struct StateLog {  // HH16.0: --estado, o hash da regiao de variaveis a cada K leituras do controle
+        const uint32_t            kIni = 0x147B20, kFim = 0x32EF60;  // .data/.bss do 1ST_READ (deslocamento na RAM)
+        std::FILE*                f     = nullptr;
+        uint64_t                  every = 60;
+        std::atomic<bool>         failed{false};
+        void at(uint64_t sample) {  // na thread do jogo, no ponto de amostragem
+            if (!f || sample % every) return;
+            const hh::Sh4Context* c = hh::sh4_session_context();
+            if (!c || !c->ram) return;
+            uint64_t h = 1469598103934665603ull;  // FNV-1a em palavras de 64 bits
+            for (uint32_t o = kIni; o < kFim; o += 8) {
+                uint64_t w;
+                std::memcpy(&w, c->ram + o, 8);
+                h = (h ^ w) * 1099511628211ull;
+            }
+            if (std::fprintf(f, "estado %llu %016llx\n", (unsigned long long)sample, (unsigned long long)h) < 0 ||
+                std::fflush(f) != 0)
+                failed = true;
+        }
+        bool close() {
+            if (f && std::fclose(f) != 0) failed = true;
+            f = nullptr;
+            return !failed;
+        }
+        ~StateLog() { close(); }
+    } stateLog;
+    if (!statePath.empty()) {
+        if (!stateEvery || !(stateLog.f = std::fopen(statePath.c_str(), "w"))) {
+            std::fprintf(stderr, "nao foi possivel gravar o estado %s (--estado-cada > 0)\n", statePath.c_str());
+            return 2;
+        }
+        stateLog.every = stateEvery;
+    }
     if (opt.controls == hh::ControlsProvider::Native) {
         try {
             if (script && *script) {
@@ -402,7 +484,29 @@ int main(int argc, char** argv) {
             } else {
                 input = std::make_unique<ni::InputSystem>(loadActionMap());
                 if (input->map().options.backend == "xinput") input->enable_xinput();
+                if (!recordPath.empty()) {
+                    // nunca sobrescreve uma gravacao: criacao exclusiva ("x", C11), sem janela entre conferir e abrir
+                    // (revisao Codex HH16.P1)
+                    if (!(recording.f = std::fopen(recordPath.c_str(), "wx")))
+                        throw std::runtime_error("a gravacao " + recordPath +
+                                                 " ja existe ou nao pode ser criada (nunca e sobrescrita)");
+                    std::FILE* f      = recording.f;
+                    auto*      failed = &recording.failed;
+                    recording.rec = std::make_unique<hh::transitional::input_bridge::ReadRecorder>([f, failed](const std::string& l) {
+                        // uma queda nao perde o que ja foi gravado (fflush por linha); falha de E/S fica registrada
+                        if (std::fputs((l + "\n").c_str(), f) < 0 || std::fflush(f) != 0) *failed = true;
+                    });
+                    recording.rec->comment("HH16.0 gravacao: indice = leitura do controle (porta A)");
+                    auto* rec = recording.rec.get();
+                    input->set_filter([rec](const ni::SampleContext& ctx, const ni::ControllerState& s) {
+                        return rec->filter(ctx.sample, s);
+                    });
+                }
             }
+            // o estado e tirado no mesmo ponto na gravacao e na reproducao: uma vez por latch (revisao Codex HH16.P2;
+            // a fonte de teste tambem e chamada pela sondagem de presenca, que o observador nao ve)
+            if (stateLog.f)
+                input->set_latch_observer([sl = &stateLog](const ni::SampleContext& ctx) { sl->at(ctx.sample); });
         } catch (const std::exception& e) {
             std::printf("PARADA: %s\n", e.what());
             return 1;
@@ -510,6 +614,9 @@ int main(int argc, char** argv) {
         SDL_Quit();
     }
     if (log && std::fclose(log) != 0) presentError = "falha ao gravar o log " + logPath;
+    if (!recording.close() && presentError.empty())  // HH16.0: a gravacao incompleta nunca passa por sessao valida
+        presentError = "falha ao gravar a entrada em " + recordPath + " (gravacao incompleta)";
+    if (!stateLog.close() && presentError.empty()) presentError = "falha ao gravar o estado em " + statePath;
 
     if (!presentError.empty()) {
         std::printf("PARADA: %s\n", presentError.c_str());

@@ -213,7 +213,7 @@ constexpr Premissa kSeno[] = {
 };
 void seno_interno(Sh4Context* c) {
     exigir_fpu_simples(c, 0x8C126744u);
-    const uint32_t pr0 = c->pr, sp0 = c->r[15], xb = c->fr[4];
+    const uint32_t pr0 = c->pr, sp0 = c->r[15], xb = c->fr[4], r13 = c->r[13], r14 = c->r[14];
     const float    x   = ns::de_bits(xb);
     c->r[15]           = sp0 - 20;  // r14, r13 e PR salvos e o quadro de 8 bytes (o octante em [r15])
     const bool neg     = int32_t(xb) < 0;
@@ -227,6 +227,7 @@ void seno_interno(Sh4Context* c) {
     // r5 = 8, r6 = 0, fr5 = x; depois o que as chamadas deixam
     const uint32_t classeBits = (neg ? 8 : 0) | (x == 0.0f ? 4 : 0) | classe;
     c->r[0] = classe == 2 ? 2 : 4, c->r[4] = classeBits, c->r[5] = 8, c->r[6] = 0, c->fr[5] = xb, c->fr[3] = 0;
+    c->r[13] = 1, c->r[14] = classeBits;  // os temporarios salvos da rotina: r13 = 1, r14 = a classe (depois o sinal)
     if (x != 0.0f) c->r[1] = xb & 0x7FFFFFFFu, c->r[3] = 0x7FFFFFFFu, c->r[2] = 0x7F800000u;
     if (x == 0.0f) c->r[2] = 4;
     float r;
@@ -237,6 +238,7 @@ void seno_interno(Sh4Context* c) {
     } else {
         cobrar(c, 2 + (neg ? 3 : 1) + 5);
         c->fr[4] = neg ? xb ^ ns::kSinal : xb;
+        c->r[14] = neg ? 1 : 0;
         c->fr[5] = ns::bits(ler_f(c, 0x8C14545Cu));
         c->r[4]  = c->r[15];
         c->r[2] = 0x8C1263C0u, c->r[3] = 0x8C14545Cu;
@@ -276,7 +278,7 @@ void seno_interno(Sh4Context* c) {
     }
     cobrar(c, 5);
     c->fr[0] = ns::bits(r);
-    c->r[15] = sp0, c->pr = pr0;
+    c->r[13] = r13, c->r[14] = r14, c->r[15] = sp0, c->pr = pr0;
 }
 
 // 8C126124: arco-tangente (sem o errno). NaN da o NaN do SDK; |x| >= 2^32, +-pi/2; zero, x; |x| = 1, +-pi/4. Senao t = |x|
@@ -323,7 +325,7 @@ void  atan_interno(Sh4Context* c) {
     } else {
         cobrar(c, 12);
         const int32_t e = int32_t((axb & 0x7F800000u) >> 23) - 127;
-        c->r[3] = 0x7F800000u, c->r[2] = uint32_t(-23), c->r[0] = 32, c->r[1] = uint32_t(e);
+        c->r[3] = 0x7F800000u, c->r[2] = uint32_t(-23), c->r[0] = 32, c->r[1] = uint32_t(e), c->r[13] = classe & 8;
         if (e >= 32) {
             cobrar(c, 4 + 2);
             c->r[1] = 0x8C145458u, c->fr[5] = ns::bits(ler_f(c, 0x8C145458u)), c->t = !neg;

@@ -22,10 +22,11 @@ Atualizado em 2026-11-01. Este arquivo é a fonte autoritativa do checkpoint.
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
 | HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática em curso) |
-| HH16 | PENDENTE | — |
+| HH16 | PENDENTE | `docs/planos/HH16-PLANO.md` (campanha por gravação única do mantenedor, decidida em 2026-11-14; HH16.0 começa depois da HH15.11b). Preparação de 2026-11-14 em `docs/planos/HH16-PREPARACAO.md` (seção "HH16 — preparação" abaixo): **passagem do disco 1 para o 2 contínua e LOAD de save do disco 2 corrigidos e testados no produto sem janela** (dois P0), créditos (`SCENE84` + `GameEnd`) mapeados, `--gravar`/`--reproduzir` e `ReadRecorder` compilados (unitário aprovado; portão de reprodução pendente), rascunho de `tools/dev/campanha.py` |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
 | HH18 | PENDENTE | — (Builder com Recompiler/Developer antecipado em 2026-10-25; distribuição final pendente) |
+| HH20 | PROPOSTA | `docs/planos/PLANO-ETAPAS-RESTANTES.md` seção 5 (Linux nativo, equivalente ao N9-L do BS; proposta de 2026-11-14, D-P4 pendente; antes da HH19.1) |
 
 ## Fatos já verificados
 
@@ -316,6 +317,78 @@ Builder com o ícone local conferido. Janelas abertas de Recompiler, Developer e
 (`GetClassLongPtr`; o SDL3 usa o primeiro `RT_GROUP_ICON`). A regressão integral não foi rodada: a mudança só acrescenta recursos e troca o `hIcon`.
 Limitações: a Preview e o Builder de `dist/` levam as alterações ainda não commitadas da HH15.11b. Hipótese aberta: as
 texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiável, por isso a fonte é a captura composta.
+
+### HH16 — preparação (2026-11-14, só CPU: a GPU estava ocupada pelo BS)
+
+- Build Release (`cmake --build build --config Release -- /m:8`): sem erro nem aviso. Suíte sem GPU: `ctest -C Release
+  -j2 -E "^(hh13_render_tests|hh13_capture_tests|hh13_render|hh15_tempo)$"` com os dados privados (`HH_DATA_DIR`,
+  `HH_DATA_DIR2`, `HH_SNAPSHOT_DIR`, `HH_AREA1_HASHES`, `HH07_BIN`, `HH07_SONDA`, `HH11_ORACULO`, `HH14_*`): **90/90**
+  antes das correções (2 112 s), **90/90** depois do slot do LOAD (1 998 s), **90/90** depois do slot do fim de
+  disco (2 018 s) e, com todas as correções das duas revisões e os testes novos `hh16_campanha` e `hh16_reproducao`
+  (`HH_DATA_UNICO`), **92/92** (2 222 s), sem SKIP. Os 4 testes excluídos usam o
+  Vulkan e ficam para quando a GPU estiver livre. Esconder o driver com `VK_DRIVER_FILES` não funciona: o terminal
+  roda elevado e o carregador do Vulkan ignora a variável (o `hh13_render_tests` e o `hh13_capture_tests` usaram a GPU
+  por cerca de 4 s cada; o portão de desempenho em 4K falhou com a GPU ocupada, 16,9 ms contra 4 ms, sem regressão).
+- Temporários dentro do workspace (regra de 2026-11-14): `tests/CMakeLists.txt` dá `TMP`/`TEMP` = `tmp/ctest` a todos
+  os testes; `tools/dev/regressao.py` guarda o estado em `tmp/regressao` (o antigo foi copiado; nada apagado).
+- `ReadRecorder` (`transitional/input_bridge.*`) e `--gravar`/`--reproduzir` (`app/hh_window.cpp`) compilados; unitário
+  `input_native_read_recorder` aprovado. Sonda dos back-edges da HH15.11b compilada e coberta pela suíte.
+- **LOAD de um save do disco 2 (P0):** slot nativo `0x8C09EC68` (getter do disco) no menu de LOAD (retorno
+  `0x8C0EEC34`): com os discos juntos e o save do outro disco, o jogo passa para o disco do save. 7 chamadas do getter
+  pelo slot, que cobra os 4 ciclos da gerada; hashes da suíte inalterados. Unitários `hh16_load_save_other_disc*` (sem o
+  slot, 28 verificações falham). No produto sem janela: um save "Disc 2, Aquadome" carregado pelo título abre
+  `SXX_AQ_MAIN.AHF` e o SCENE46_48.
+- **Fim do disco 1 sem troca (P0):** o comando 596 abre o menu "End of Disc" e, depois do save, o jogo mostrava INSERT
+  DISC 2 para sempre (no console: reiniciar pelo disco 2 e fazer LOAD; tampa aberta simulada leva ao BIOS). Slot
+  nativo do save `0x8C09C34C` (retorno `0x8C086C18`): desliga o modo fim de disco e aplica a imagem recém-salva
+  (`0x8C2F1748`, idêntica byte a byte à que o LOAD lê) pela função do próprio LOAD `0x8C09C6C2`. Cenário local (mod
+  privado em `tmp/p1` que põe a área `S65_MOVIE` no lugar da primeira): SCENE43/44/45, save, `SXX_AQ_MAIN` e SCENE46_48
+  sem tela de troca; a arena do disco 2 jogável. Unitários `hh16_end_of_disc_*` com 4 negativos.
+- `generated/disc1` e `disc2` regenerados (`hh-recomp config/headhunter.toml ...`); o disco 2 estava atrasado desde antes
+  da HH15.1 e recebeu os slots e a espera `0x8C118346` que já estavam na configuração.
+- Revisão Codex (`reviews/codex-hh16_p1.log`), 5 achados, todos aceitos e corrigidos: (alta) a chamada sintética do
+  `fSave` sem o poll de retorno do `HH_CALL` (poll acrescentado); (média) os testes `hh16_*` sem o contrato de chamada
+  (o positivo agora confere `pr`, `ret_expect`, `ret_sp`, a restauração de `cur_fn` e o poll; os negativos continuam
+  provando que nada muda fora do filtro); (média) `--gravar` com corrida entre conferir e abrir (criação exclusiva
+  `"wx"`); (média) `--tempo` explícito diferente na gravação e na reprodução (recusado); (baixa) falhas de E/S da
+  gravação silenciosas (marcadas e informadas no fim, rc 1).
+- Segunda revisão Codex (`reviews/codex-hh16_p2.log`), 5 achados, todos aceitos: (média) a RAM nos back-edges por
+  palavra dava divergência falsa com escritas sobrepostas de tamanhos diferentes (passou a ser por byte); (média) o
+  estado era tirado também nas sondagens de presença da fonte de teste e não na gravação (agora um observador do
+  `latch` do `InputSystem`, `set_latch_observer`, uma vez por amostra nos dois caminhos; unitário
+  `input_native_latch_observer`), e uma sessão sem estado era aprovada (agora `REPROVADA`); (média) uma reprodução
+  reprovada alimentava a sessão seguinte (agora só uma reprodução aprovada, pelo `resultado.json`); (média) os créditos
+  aprovados só pelo fim do SCENE84, sem o "GameEnd" — resolvido: o comando 229 (`0x8C025F66`) tira o nome da pilha do
+  script e chama `0x8C095444`, e "GameEnd" carrega `AHFDATA/GAMEEND.AHF`; medido no produto sem janela com a área
+  `S92_MOVIE` no lugar da primeira (mod privado em `tmp/p2`): fim natural do SCENE84 no V12002, `GAMEEND.AHF` no V12003,
+  `STREAMS/CREDITSGM.ADP` no V12006. O monitor exige os dois sinais (stderr e `HH_FILE_LOG` da reprodução); (baixa) o
+  poll sintético sem o diagnóstico do `HH_WRITE_WATCH` (acrescentado). Monitor 12/12.
+- Achados abertos da revisão `reviews/codex-hh15_11b5.log` (31/10), aceitos e corrigidos: a RAM escrita pela elevada
+  passa a ser conferida em cada back-edge, byte a byte (orçamento de 2^18 bytes × back-edges por chamada; acima dele a
+  chamada é contada como "acima do orçamento"), com a mutação `RamNoBackEdge` no unitário. Conferência no roteiro da
+  área 1: 3 387 116 chamadas conferidas, 264 312 com a RAM nos back-edges (103 acima do orçamento), 0 divergências, os
+  94 quadros iguais à referência; a sonda entra na lista antes de o gancho
+  ser instalado (exceção no `push_back` não deixa o gancho). A etapa `elevacao` da regressão exige "RAM nos
+  back-edges" > 0.
+- **Estado por leitura (HH16.0):** `HeadHunter.exe --estado <arquivo> [--estado-cada K]`, hash FNV-1a da região
+  `0x8C147B20`–`0x8C32EF60` a cada K leituras do controle, na thread do jogo (`sh4_session_context`). As pilhas das
+  threads ficam fora dela (despejo de hoje: `0x8CFFxxxx` e `0x8C00Fxxx`).
+- **Portão da reprodução (`tests/diff/hh16_reproducao.py`, `HH_DATA_UNICO`): 10/10.** Duas reproduções sem janela do
+  `newgame_area1_nativo` com 106 quadros e 90 estados idênticos; igual ao mesmo roteiro por `HH_INPUT_SCRIPT` no tempo
+  lógico; uma entrada trocada na leitura 4500 dá estados iguais antes e o primeiro diferente na leitura 4560; `--tempo
+  nativo` e `--gravar --headless` recusados; gravação existente intocada.
+- **Monitor de campanha:** cadeia de saves entre sessões, créditos (fim natural do SCENE84), estado por leitura, sem
+  remoção recursiva; `tests/campanha/test_campanha.py` com programa falso, 9/9 (ctest `hh16_campanha`).
+- **Cópia de segurança automática (pedida pelo portão da HH16.P):** ao fim de cada `jogar`, cópia incremental para
+  `campanhas/_copias/<id>` ou para `nova --copia <pasta>` (`HH_CAMPANHA_COPIA` pelo atalho), com `os.replace` por
+  arquivo, nunca apagando no destino e conferindo os selos; comando `copiar [--para]`. A suíte achou um defeito antes
+  da entrega: pastas vazias (a `saves_inicio` da sessão 1) não eram copiadas e a cópia não reproduzia. Três testes
+  novos (a cópia sozinha verificada até os créditos, a cópia alterada consertada pelo `copiar`, a cópia dentro da
+  campanha recusada): **15/15**. `docs/CAMPANHA.md` atualizado (fim do disco 1 sem troca, cópia de segurança).
+- `config/fronteiras.toml`: os 27 rótulos `legado` → `nativo` dos slots (só os rótulos; a geração completa esvaziaria
+  listas de subsistemas), `hh07_fechamento` 0 falhas.
+- Pendências: os 4 testes de GPU (a GPU segue ocupada pelo BS); a gravação de verdade na janela (sessão piloto da
+  HH16.P); a passagem real do disco pela campanha, sem o mod de teste.
 
 ### HH15 (2026-10-28, em andamento; parte 2 desde 2026-10-30)
 
@@ -613,7 +686,18 @@ dentro dos AHF.
 
 ## Decisões pendentes
 
-Nenhuma decisão humana está pendente. Descobertas que contradigam estas premissas podem exigir `BLOQUEADA_DECISAO`, mas somente depois de esgotar investigação e testes independentes:
+**Revisão do planejamento (2026-11-14, pedido do mantenedor):** `docs/planos/PLANO-ETAPAS-RESTANTES.md`, comparado com o
+BS em `fbc6761` (2026-11-12). Decisões levantadas, nenhuma bloqueando a HH15.11, a HH16.0 e a HH16.1:
+- **D-P1 decidida (mantenedor, 2026-11-14): A.** "Vou gravar a campanha inteira para testar o jogo completo. Para não
+  precisar zerar mais de uma vez." A gravação vem antes da HH15.F e dá a cobertura das funções fora da área 1.
+- **D-P2 decidida (2026-11-14): sim.** Campanha como gravação humana única, reproduzida em cada programa seguinte.
+  Plano: `docs/planos/HH16-PLANO.md`.
+- **D-P3:** na Remastered, saves do jogo sem sistema novo (o BS cancelou o N9.3). Recomendado: sim.
+- **D-P4:** HH20 (Linux) antes da HH19.1. Recomendado: incluir.
+- **D-P5:** codec dos filmes convertidos no Linux (hoje H.264/AAC pelo Media Foundation). Recomendado: decidir na HH20.L4
+  com medição.
+
+Até esta revisão, nenhuma decisão humana estava pendente. Descobertas que contradigam estas premissas podem exigir `BLOQUEADA_DECISAO`, mas somente depois de esgotar investigação e testes independentes:
 
 - um middleware essencial exige incorporação incompatível com MIT;
 - a arquitetura observada exige código dinâmico/overlay não coberto pelo plano.

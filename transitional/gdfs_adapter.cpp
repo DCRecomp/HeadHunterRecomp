@@ -415,6 +415,75 @@ void fGetErr(Sh4Context* c) {
 // do host (pausa, ou tampa aberta para a troca de disco); nada do drive do legado.
 void fDriveStat(Sh4Context* c) { GuestCall(c).ret(uint32_t(kDrivePause)); }
 
+// Save do jogo (0x8C09C34C) com os discos juntos, no fim do disco 1 (docs/planos/HH16-PREPARACAO.md, 7.7). O comando 596
+// grava disco 2, liga o modo fim de disco (0x8C14D780) e abre o menu "End of Disc / Please save your game"; depois do
+// save, o menu (0x8C086C2E) ve o modo e mostra INSERT DISC 2 para sempre: no console, o jogador reiniciava pelo disco 2 e
+// carregava esse save. Sem troca de disco, so nesta chamada (retorno 0x8C086C18), com o modo ligado, a variavel em 2 e o
+// save gravado: o modo e desligado (o menu segue como num save comum) e a imagem que o save acabou de gravar (o buffer
+// 0x8C2F1748, o mesmo que o LOAD le do cartao) e aplicada pela funcao do proprio LOAD (0x8C09C6C2, chamada por
+// 0x8C117B2A), que copia o estado e entra na area do save (0x8C0DCB04 -> 0x8C095444). Qualquer outra chamada e o
+// original sem mudanca.
+void fSave(Sh4Context* c) {
+    State&         s   = st();
+    const uint32_t ret = c->pr;
+    sh4_lookup_generated(s.a.saveCall)(c);
+    if (c->redirect || !s.merged || ret != s.a.saveEndRet || c->r[0] == 0) return;
+    GuestMemory mem(c);
+    if (mem.load<uint32_t>(s.a.endOfDiscFlag).value_or(0) != 1 || mem.load<uint32_t>(s.a.discVar).value_or(0) != 2)
+        return;
+    const uint32_t r0 = c->r[0];
+    mem.store<uint32_t>(s.a.endOfDiscFlag, 0);
+    ++s.stats.endOfDiscContinues;
+    const auto area = mem.cstring(s.a.saveImage + 76, 31);
+    std::fprintf(stderr, "[arquivos] fim do disco 1: o jogo segue no disco 2 pelo save gravado (area %s), sem troca\n",
+                 area ? area->c_str() : "?");
+    // a chamada como o codigo gerado a faria (jsr com o retorno da chamada do save): r4 = a imagem
+    const uint32_t expect = c->ret_expect, sp = c->ret_sp, fn = c->cur_fn;
+    c->r[4]               = s.a.saveImage;
+    c->pr = c->ret_expect = ret;
+    c->ret_sp             = c->r[15];
+    c->cur_fn             = s.a.applySave;
+    sh4_lookup(s.a.applySave)(c);
+    c->ret_expect = expect, c->ret_sp = sp, c->cur_fn = fn;
+    if (c->redirect) return;
+    // o poll no retorno da chamada, como o HH_POLL_RET do HH_CALL (revisao Codex HH16.P1; o diagnostico do HH_WRITE_WATCH
+    // tambem, revisao HH16.P2)
+    ++c->polls;
+#if HH_WRITE_WATCH
+    ww_poll_note(c, ret, true);
+#endif
+    if (c->cycles >= c->next_event || c->polls >= c->next_poll) {
+        c->pc = ret;
+        sh4_poll_slow(c);
+        if (c->redirect) return;
+    }
+    c->r[0] = r0, c->pr = ret;  // o chamador testa o resultado do save
+}
+
+// Getter do disco atual (0x8C09EC68: r2 = &discVar; r0 = @r2; rts), chamado em 7 lugares. No console o jogo so descobre
+// o disco no boot (0x8C09EBC4), e o menu de LOAD (0x8C0EEA20) recusa um save gravado no outro disco (compara o disco do
+// save, r8, com este getter em 0x8C0EEC30); o jogador ligava o console com aquele disco. Com os discos juntos nao ha
+// boot pelo disco 2: so nessa chamada (retorno 0x8C0EEC34) e so com o disco do save valido (1 ou 2) e diferente, a
+// variavel recebe o disco do save, como se o boot tivesse sido por ele. As outras chamadas e a instalacao de um disco
+// so devolvem a variavel sem mudanca, como o original.
+void fDiscGetter(Sh4Context* c) {
+    c->cycles += 4;  // o custo da gerada (HH_CYCLES(4)): o tempo do jogo nao muda com o slot
+    State&         s   = st();
+    GuestMemory    mem(c);
+    const uint32_t var = mem.load<uint32_t>(s.a.discVar).value_or(0);
+    uint32_t       r0  = var;
+    const uint32_t save = c->r[8];
+    if (s.merged && c->pr == s.a.loadMenuDiscRet && (save == 1 || save == 2) && save != (var == 2 ? 2u : 1u)) {
+        mem.store<uint32_t>(s.a.discVar, save);
+        r0 = save;
+        ++s.stats.loadDiscSwitches;
+        std::fprintf(stderr, "[arquivos] LOAD de um save do disco %u (estava no disco %u): o jogo passa para o disco %u\n",
+                     save, var == 2 ? 2u : 1u, save);
+    }
+    c->r[2] = s.a.discVar;
+    GuestCall(c).ret(r0);
+}
+
 // Funcoes internas sem equivalente nativo: um handle nativo aqui e erro de integracao, nao dado.
 template <int Which>
 void fGuard(Sh4Context* c) {
@@ -454,6 +523,8 @@ std::vector<std::pair<uint32_t, Sh4Func>> functions(const Addresses& a) {
         {a.getErr, &fGetErr},
         {a.initGdfs, &fGuard<3>},
         {a.driveStat, &fDriveStat},
+        {a.discGetter, &fDiscGetter},
+        {a.saveCall, &fSave},
     };
 }
 

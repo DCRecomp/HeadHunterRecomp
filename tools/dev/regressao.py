@@ -14,7 +14,7 @@ entrada alterada muda a chave e a etapa roda de novo. Nunca enfraquece uma etapa
   python -I tools/dev/regressao.py --desde NOME    refaz a partir da etapa NOME
   python -I tools/dev/regressao.py --gravar-area1  grava a referencia do roteiro (HH_AREA1_HASHES)
   python -I tools/dev/regressao.py --gravar-produto  grava a referencia do --headless do produto (HH15_PRODUTO_HASHES)
-Estado: %LOCALAPPDATA%\\HeadHunterRecomp\\regressao\\estado.json (fora do repositorio).
+Estado: tmp\\regressao\\estado.json (no workspace, ignorado; o antigo de %LOCALAPPDATA% e copiado uma vez).
 Dados privados (sem eles as etapas que dependem deles falham com mensagem clara):
   HH_DATA_DIR      dados de execucao do disco 1 (hh-extract --runtime)
   HH_SNAPSHOT_DIR  snapshots do oraculo (portoes do HH05)
@@ -33,7 +33,16 @@ import sys
 import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-STATE = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'HeadHunterRecomp', 'regressao', 'estado.json')
+# Regra de temporarios (2026-11-14, AGENTS.md): estado e temporarios dentro do workspace, em tmp/ (ignorado). O estado
+# antigo (%LOCALAPPDATA%) e copiado uma vez, nunca apagado; os processos filhos recebem TMP/TEMP em tmp/regressao/temp.
+STATE = os.path.join(ROOT, 'tmp', 'regressao', 'estado.json')
+STATE_ANTIGO = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'HeadHunterRecomp', 'regressao',
+                            'estado.json')
+TEMP_DIR = os.path.join(ROOT, 'tmp', 'regressao', 'temp')
+if not os.path.exists(STATE) and os.path.exists(STATE_ANTIGO):
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE_ANTIGO, 'rb') as _a, open(STATE, 'wb') as _n:
+        _n.write(_a.read())
 SRC_DIRS = ['app', 'builder', 'cmake', 'config', 'runtime', 'tests', 'tools/hh-extract', 'tools/hh-diff', 'tools/dev',
             'tools/sh4-tablegen', 'tools/dist', 'tools/dcmap', 'translator', 'native', 'transitional', 'legacy',
             'CMakeLists.txt', 'CMakePresets.json']
@@ -124,7 +133,10 @@ def private_inputs(names):
 
 def sh(cmd, env=None, timeout=3600):
     print('  >', ' '.join(cmd), flush=True)
-    r = subprocess.run(cmd, cwd=ROOT, env=dict(os.environ, **(env or {})), timeout=timeout,
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    full = dict(os.environ, TMP=TEMP_DIR, TEMP=TEMP_DIR)
+    full.update(env or {})
+    r = subprocess.run(cmd, cwd=ROOT, env=full, timeout=timeout,
                        capture_output=True, text=True, encoding='utf-8', errors='replace')
     for line in (r.stdout + r.stderr).strip().splitlines()[-12:]:
         print('    ' + line)
@@ -345,6 +357,10 @@ def step_elevacao():
     m = re.search(r'\[elevacao\] conferir: (\d+) funcoes; chamadas (\d+), conferidas (\d+) \(completas (\d+)\)', r.stderr)
     if not m or int(m.group(3)) == 0 or int(m.group(4)) == 0:
         raise RuntimeError('a conferencia das elevadas nao conferiu nada')
+    # revisao Codex HH15.11b5: a RAM escrita pela elevada tambem e conferida em cada back-edge
+    mv = re.search(r'RAM nos back-edges (\d+)', r.stderr)
+    if not mv or int(mv.group(1)) == 0:
+        raise RuntimeError('a conferencia das elevadas nao conferiu a RAM em nenhum back-edge')
     por = re.findall(r'\[elevacao\]   ([0-9A-F]{8}) \S+: chamadas \d+, conferidas (\d+) \(completas (\d+)\)', r.stderr)
     if len(por) != int(m.group(1)) or any(int(k) == 0 or int(f) == 0 for _, k, f in por):
         raise RuntimeError('elevada sem conferencia no roteiro: %s' % ', '.join(a for a, k, f in por if int(k) == 0 or int(f) == 0))

@@ -839,5 +839,18 @@ quadro de pilha e laço (o `logf`, a cópia byte a byte e a normalização de â
 de rascunho no back-edge, que um atendimento salva no contexto da thread (RAM fora das pilhas); corrigido, e as duas
 elevadas do jogo passaram ao contrato completo. 33 elevadas, 0 divergências. Revisão Codex (`reviews/codex-hh15_11b4.log`):
 aceitos a falta de verificação do estado nos back-edges (a sonda dos back-edges, no commit seguinte) e o desmonte de
-análise sem a faixa do `logf` (`analysis/hh15e/libm.dis` refeito até 8C128FFF). Regressão integral 15/15
+análise sem a faixa do `logf` (`analysis/hh15e/libm.dis` refeito de 8C125600 a 8C129500). Regressão integral 15/15
 (`analysis/hh15e/regressao_11b4.log`), ctest 93/93.
+
+Parte 5 (2026-11-14, compilada e testada só na CPU): a sonda dos back-edges. Na trajetória de referência a conferência
+força cada `HH_POLL` da gerada ao caminho lento, e o gancho `g_sh4_poll_probe` (na entrada de `sh4_poll_slow`) guarda o
+estado em todos os níveis ativos e volta sem efeito; um atendimento de verdade restaura o `next_poll` real e segue
+normal. Cada back-edge compara a retomada, o custo, os registradores do contrato e, depois da revisão Codex
+(`reviews/codex-hh15_11b5.log`, os dois achados aceitos), a RAM que a elevada escreve: o valor de cada palavra escrita
+naquele ponto, tirado do diário do ensaio (orçamento de palavras × back-edges por chamada, o excedente contado). A sonda
+entra na lista antes de o gancho ser instalado. Unitário com as mutações `SoNoBackEdge` e `RamNoBackEdge`. Conferência
+no roteiro da área 1 (`HH_ELEVACAO=conferir`, a etapa `elevacao` da regressão feita à mão): 33 elevadas, 3 471 191
+chamadas, 3 387 116 conferidas (10 758 completas), 84 075 com atendimento, **264 312 com a RAM conferida nos
+back-edges** (103 acima do orçamento), 0 divergências; os 94 quadros iguais a `snapshots/hh06/area1_hashes.txt`. Na
+segunda revisão Codex (`reviews/codex-hh16_p2.log`) a conferência passou a ser por byte (escritas sobrepostas de
+tamanhos diferentes davam divergência falsa); o orçamento é de 2^18 bytes × back-edges por chamada.

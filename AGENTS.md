@@ -46,6 +46,14 @@ O estado autoritativo está em `STATUS.md`.
   registradores em `runtime/` existe apenas na fase híbrida, não ganha escopo novo e é
   removida no HH15; o Flycast é só processo externo de comparação.
 
+- **Dependências** (regra permanente do mantenedor no Blue Stinger, 2026-11-03, adotada aqui em 2026-11-14): nenhuma
+  dependência de compilação, execução ou distribuição pode exigir licença paga, royalties, assinatura, autorização comercial
+  individual ou restrição incompatível com distribuição pública, gratuita e open source. Permissivas são preferidas; GPL,
+  LGPL e MPL valem com as obrigações cumpridas (a regra MIT do produto continua). Conferir patentes (codecs), marcas e
+  ativos. Não trocar componente funcional só por preferência.
+- **Arquivos temporários** (regra urgente do mantenedor no Blue Stinger, 2026-11-08, adotada aqui em 2026-11-14): nada é
+  criado fora da pasta de trabalho; logs, cópias de executáveis, worktrees e evidências vão para pastas ignoradas do
+  workspace, e as suítes recebem a pasta de saída.
 - Nunca versione imagens de disco, BIOS/flash, SDK Sega, executáveis ou assets extraídos, saves, dumps de RAM/VRAM, capturas com conteúdo do jogo, código gerado do binário ou relatórios que incorporem bytes proprietários.
 - Antes e depois de cada etapa, execute `git status --short` e `git check-ignore` sobre amostras dos caminhos privados.
 - Não enfraqueça, remova ou pule testes para obter aprovação.

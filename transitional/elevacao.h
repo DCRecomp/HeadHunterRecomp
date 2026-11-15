@@ -63,6 +63,8 @@ struct Stats {
     uint64_t completas      = 0;  // das conferidas, com a RAM inteira
     uint64_t comAtendimento = 0;  // a gerada foi atendida: so contadas
     uint64_t atendidasComRetornoDiferente = 0;  // diagnostico: dessas, o retorno da elevada (ensaio) difere do da gerada
+    uint64_t ramNasVoltas    = 0;  // conferidas com back-edges: a RAM escrita conferida em cada um
+    uint64_t semRamNasVoltas = 0;  // acima do orcamento (palavras x back-edges): sem a RAM nos back-edges
 };
 const Stats& stats();                // total
 const Stats& stats(size_t indice);   // por elevada (indice de lista())

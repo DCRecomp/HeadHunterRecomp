@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdlib>
 #include <deque>
+#include <map>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -33,8 +34,50 @@ struct Escrita {
     uint32_t off;
     uint32_t n;
     uint8_t  antes[4];
+    uint8_t  depois[4];  // o valor escrito (a RAM em cada back-edge do ensaio, revisao Codex HH15.11b5)
 };
 std::vector<Escrita> g_diario;
+std::vector<Sh4Context> g_voltasElevada;  // o estado em cada back-edge do ensaio (com o PC de retomada)
+std::vector<size_t>     g_voltasDiario;   // quantas escritas o diario tinha em cada back-edge do ensaio
+// RAM nos back-edges: so as palavras que a elevada escreve, ate este produto (palavras x back-edges) por chamada; acima,
+// a chamada fica sem essa verificacao e e contada (um memset grande teria palavras x voltas proibitivo)
+constexpr uint64_t kOrcamentoRamVoltas = 1u << 18;  // bytes x back-edges (o mesmo de 2^16 palavras de 4 bytes)
+
+// A sonda dos back-edges da gerada (conferencia): cada HH_POLL da gerada e forcado ao caminho lento (next_poll = polls + 1),
+// onde g_sh4_poll_probe guarda o estado em todos os niveis ativos (a gerada da mae chama as elevadas filhas pelo slot) e
+// volta sem efeito; um atendimento de verdade (o next_poll real ou o next_event) segue normal e encerra a sonda.
+struct Sonda {
+    std::vector<Sh4Context> voltas;
+    bool                    atendida = false;
+    // as palavras (deslocamento, tamanho) que a elevada escreve e, em cada back-edge da gerada, os bytes delas
+    const std::vector<std::pair<uint32_t, uint32_t>>* palavras = nullptr;
+    std::vector<std::vector<uint8_t>>                 ram;
+};
+std::vector<Sonda*> g_sondas;
+uint64_t            g_npReal = 0;  // o next_poll real enquanto a sonda forca o caminho lento
+
+uint64_t next_poll_real(const Sh4Context* c) { return g_sondas.empty() ? c->next_poll : g_npReal; }
+
+bool sonda_poll(Sh4Context* c) {
+    if (g_sondas.empty()) return false;
+    if (c->cycles >= c->next_event || c->polls >= g_npReal) {  // atendimento de verdade: segue normal, sem sonda
+        c->next_poll = g_npReal;
+        for (Sonda* s : g_sondas) s->atendida = true;
+        g_sh4_poll_probe = nullptr;
+        return false;
+    }
+    for (Sonda* s : g_sondas) {
+        s->voltas.push_back(*c);
+        if (s->palavras) {
+            std::vector<uint8_t> v;
+            v.reserve(s->palavras->size() * 4);
+            for (const auto& [off, n] : *s->palavras) v.insert(v.end(), c->ram + off, c->ram + off + n);
+            s->ram.push_back(std::move(v));
+        }
+    }
+    c->next_poll = c->polls + 1;
+    return true;
+}
 // RAM antes da chamada (conferencia completa), uma por nivel: a gerada de uma elevada chama outra elevada pelo slot, e a
 // conferencia dela roda dentro da da mae
 std::deque<std::vector<uint8_t>> g_copias;  // deque: crescer no nivel filho nao invalida a referencia da mae
@@ -48,8 +91,9 @@ uint32_t offsetRam(Sh4Context* c, uint32_t a, uint32_t n, const char* what) {
 void escrever(Sh4Context* c, uint32_t a, const void* v, uint32_t n) {
     const uint32_t off = offsetRam(c, a, n, "elevacao: escrita fora da RAM principal ou desalinhada");
     if (g_ensaio) {
-        Escrita e{off, n, {}};
+        Escrita e{off, n, {}, {}};
         std::memcpy(e.antes, c->ram + off, n);
+        std::memcpy(e.depois, v, n);
         g_diario.push_back(e);
     }
     std::memcpy(c->ram + off, v, n);
@@ -101,6 +145,39 @@ struct Final {
     uint8_t  depois[4];
 };
 
+// Os registradores do contrato da elevada `e`: gerada `g` x elevada `v`; `onde` diz o ponto (retorno ou back-edge N).
+void comparar_registradores(Sh4Context* c, const Elevada& e, const Sh4Context& g, const Sh4Context& v, const char* onde) {
+    char        what[96];
+    const auto  dif = [&](const char* nome, uint64_t a, uint64_t b) {
+        std::snprintf(what, sizeof what, "%s (%s)", nome, onde);
+        divergiu(c, e, what, a, b);
+    };
+    for (int r = 8; r < 16; ++r)
+        if (g.r[r] != v.r[r]) dif(r == 15 ? "r15" : "registrador preservado (r8-r14)", g.r[r], v.r[r]);
+    for (int r = 0; r < 8; ++r)
+        if (g.rbank[r] != v.rbank[r]) dif("banco inativo (rbank)", g.rbank[r], v.rbank[r]);
+    if (g.pr != v.pr) dif("pr", g.pr, v.pr);
+    const uint32_t mascaraSr = e.contrato == Contrato::Auxiliar ? ~(kSrM | kSrQ) : ~0u;
+    if ((g.sr & mascaraSr) != (v.sr & mascaraSr)) dif("sr", g.sr, v.sr);
+    if (g.gbr != v.gbr || g.vbr != v.vbr || g.ssr != v.ssr || g.spc != v.spc || g.sgr != v.sgr || g.dbr != v.dbr)
+        dif("gbr/vbr/ssr/spc/sgr/dbr", g.gbr, v.gbr);
+    if (g.mach != v.mach || g.macl != v.macl) dif("mach/macl", g.macl, v.macl);
+    if (g.fpscr != v.fpscr) dif("fpscr", g.fpscr, v.fpscr);
+    for (int f = 12; f < 16; ++f)
+        if (g.fr[f] != v.fr[f]) dif("fr12-fr15", g.fr[f], v.fr[f]);
+    for (int f = 0; f < 16; ++f)
+        if (g.xf[f] != v.xf[f]) dif("banco inativo da FPU (xf)", g.xf[f], v.xf[f]);
+    if (e.contrato != Contrato::C) {
+        static const char* const kR[8] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"};
+        for (int r = 0; r < 8; ++r)
+            if (g.r[r] != v.r[r]) dif(kR[r], g.r[r], v.r[r]);
+        if ((e.contrato == Contrato::Completo && g.t != v.t) || g.fpul != v.fpul) dif("T/FPUL", g.t, v.t);
+        static const char* const kFr[12] = {"fr0", "fr1", "fr2", "fr3", "fr4", "fr5", "fr6", "fr7", "fr8", "fr9", "fr10", "fr11"};
+        for (int f = 0; f < 12; ++f)
+            if (g.fr[f] != v.fr[f]) dif(kFr[f], g.fr[f], v.fr[f]);
+    }
+}
+
 void conferir(size_t i, Sh4Context* c) {
     const Elevada& e = lista()[i];
     Stats&         s = g_por[i];
@@ -120,9 +197,18 @@ void conferir(size_t i, Sh4Context* c) {
     Sh4Context         ce;
     std::vector<Final> finais;
     bool               atenderia = false;
+    std::vector<Sh4Context> voltasElevada;
+    // RAM nos back-edges (revisao Codex HH15.11b5): as palavras escritas pela elevada e o valor de cada uma em cada
+    // back-edge do ensaio (a ultima escrita antes dele, ou o valor de antes da chamada)
+    std::vector<std::pair<uint32_t, uint32_t>> palavras;
+    std::vector<std::vector<uint8_t>>          ramVoltas;
+    bool                                       ramNasVoltas = false;
     {
         Ensaio guarda(c);
+        g_voltasElevada.clear();
+        g_voltasDiario.clear();
         e.funcao(c);
+        voltasElevada.swap(g_voltasElevada);
         ce        = *c;
         atenderia = g_atendimento;
         finais.reserve(g_diario.size());
@@ -131,11 +217,64 @@ void conferir(size_t i, Sh4Context* c) {
             std::memcpy(f.depois, c->ram + w.off, w.n);
             finais.push_back(f);
         }
+        if (!voltasElevada.empty() && !g_diario.empty()) {
+            // por byte: escritas de tamanhos diferentes no mesmo endereco se sobrepoem (revisao Codex HH16.P2)
+            std::map<uint32_t, size_t> indice;  // deslocamento do byte -> posicao em palavras
+            std::vector<uint8_t>       atual;   // o valor de cada byte antes da chamada (o antes da primeira escrita)
+            for (const Escrita& w : g_diario) {
+                for (uint32_t b = 0; b < w.n; ++b)
+                    if (indice.emplace(w.off + b, palavras.size()).second) {
+                        palavras.push_back({w.off + b, 1});
+                        atual.push_back(w.antes[b]);
+                    }
+                if (palavras.size() * voltasElevada.size() > kOrcamentoRamVoltas) break;
+            }
+            ramNasVoltas = palavras.size() * voltasElevada.size() <= kOrcamentoRamVoltas;
+            if (ramNasVoltas) {
+                size_t aplicadas = 0;
+                for (size_t k = 0; k < voltasElevada.size(); ++k) {
+                    for (; aplicadas < g_voltasDiario[k]; ++aplicadas) {
+                        const Escrita& w = g_diario[aplicadas];
+                        for (uint32_t b = 0; b < w.n; ++b) atual[indice.at(w.off + b)] = w.depois[b];
+                    }
+                    ramVoltas.push_back(atual);
+                }
+            } else {
+                ++g_stats.semRamNasVoltas, ++s.semRamNasVoltas;
+            }
+        }
     }
 
-    // a gerada, de verdade (a trajetoria de referencia)
-    mods::original(e.endereco)(c);
-    if (c->next_event != c0.next_event || c->next_poll != c0.next_poll) {  // a gerada foi atendida
+    // a gerada, de verdade (a trajetoria de referencia), com a sonda dos back-edges
+    Sonda      sonda;
+    if (ramNasVoltas) sonda.palavras = &palavras;
+    const bool externa = g_sondas.empty();
+    // dentro de uma conferencia em que a sonda ja parou (um atendimento de verdade), a gerada nao pode ser observada: so
+    // conta, como as chamadas com atendimento
+    if (!externa && !g_sh4_poll_probe) sonda.atendida = true;
+    struct Fim {
+        Sh4Context* c;
+        bool        externa;
+        Sonda*      s;
+        ~Fim() {
+            g_sondas.pop_back();
+            if (externa) {
+                if (g_sh4_poll_probe) c->next_poll = g_npReal;  // sem atendimento: o next_poll real de volta
+                g_sh4_poll_probe = nullptr;
+            }
+        }
+    };
+    {
+        // a sonda entra na lista antes de o gancho e o next_poll mudarem, e o Fim os desfaz: uma excecao no push_back
+        // nao deixa o gancho instalado (revisao Codex HH15.11b5)
+        g_sondas.push_back(&sonda);
+        Fim fim{c, externa, &sonda};
+        if (externa) g_npReal = c->next_poll, g_sh4_poll_probe = &sonda_poll;
+        if (g_sh4_poll_probe) c->next_poll = c->polls + 1;
+        mods::original(e.endereco)(c);
+    }
+    // a gerada foi atendida (no nivel interno o next_poll e o forcado pela sonda: so a marca dela vale)
+    if (sonda.atendida || c->next_event != c0.next_event || (externa && c->next_poll != c0.next_poll)) {
         ++g_stats.comAtendimento, ++s.comAtendimento;
         const bool difere = (e.retorno == Retorno::R0 && c->r[0] != ce.r[0]) || (e.retorno == Retorno::Fr0 && c->fr[0] != ce.fr[0]);
         if (difere && s.atendidasComRetornoDiferente++ < 3)
@@ -178,6 +317,36 @@ void conferir(size_t i, Sh4Context* c) {
             if (c->fr[f] != ce.fr[f]) divergiu(c, e, kFr[f], c->fr[f], ce.fr[f]);
     }
     if (e.retorno == Retorno::Fr0 && c->fr[0] != ce.fr[0]) divergiu(c, e, "retorno fr0", c->fr[0], ce.fr[0]);
+    // o estado em cada back-edge (a ordem, a retomada, os ciclos e os polls, e os registradores do contrato)
+    if (sonda.voltas.size() != voltasElevada.size())
+        divergiu(c, e, "numero de back-edges", sonda.voltas.size(), voltasElevada.size());
+    for (size_t k = 0; k < sonda.voltas.size(); ++k) {
+        const Sh4Context& g = sonda.voltas[k];
+        const Sh4Context& v = voltasElevada[k];
+        char              onde[48];
+        std::snprintf(onde, sizeof onde, "back-edge %zu", k);
+        if (g.pc != v.pc) divergiu(c, e, "retomada de um back-edge", g.pc, v.pc);
+        if (g.cycles - c0.cycles != v.cycles - c0.cycles || g.polls - c0.polls != v.polls - c0.polls)
+            divergiu(c, e, "custo ate um back-edge", g.cycles - c0.cycles, v.cycles - c0.cycles);
+        comparar_registradores(c, e, g, v, onde);
+        // a RAM que a elevada escreve, no mesmo back-edge: uma escrita antecipada ou atrasada em relacao a um ponto de
+        // atendimento seria vista por outra thread (revisao Codex HH15.11b5)
+        if (ramNasVoltas && sonda.ram[k] != ramVoltas[k]) {
+            size_t   o = 0, j = 0;
+            uint32_t gv = 0, vv = 0, a = 0;
+            for (; j < palavras.size(); o += palavras[j].second, ++j)
+                if (std::memcmp(sonda.ram[k].data() + o, ramVoltas[k].data() + o, palavras[j].second) != 0) break;
+            if (j < palavras.size()) {
+                std::memcpy(&gv, sonda.ram[k].data() + o, palavras[j].second);
+                std::memcpy(&vv, ramVoltas[k].data() + o, palavras[j].second);
+                a = 0x0C000000u | palavras[j].first;
+            }
+            char what[96];
+            std::snprintf(what, sizeof what, "RAM %08X no %s", a, onde);
+            divergiu(c, e, what, gv, vv);
+        }
+    }
+    if (ramNasVoltas && !sonda.voltas.empty()) ++g_stats.ramNasVoltas, ++s.ramNasVoltas;
     // o valor final de cada palavra escrita pela elevada (a ultima escrita vale)
     for (auto it = finais.rbegin(); it != finais.rend(); ++it) {
         bool depois = false;  // uma escrita posterior a mesma palavra ja foi conferida
@@ -275,13 +444,14 @@ const Stats& stats(size_t indice) { return g_por.at(indice); }
 bool em_ensaio() { return g_ensaio; }
 
 std::string summary() {
-    char b[256];
+    char b[320];
     std::snprintf(b, sizeof b,
                   "[elevacao] %s: %zu funcoes; chamadas %llu, conferidas %llu (completas %llu), com atendimento %llu (retorno "
-                  "diferente %llu)\n",
+                  "diferente %llu); RAM nos back-edges %llu (acima do orcamento %llu)\n",
                   nome_modo(g_modo), lista().size(), (unsigned long long)g_stats.chamadas,
                   (unsigned long long)g_stats.conferidas, (unsigned long long)g_stats.completas,
-                  (unsigned long long)g_stats.comAtendimento, (unsigned long long)g_stats.atendidasComRetornoDiferente);
+                  (unsigned long long)g_stats.comAtendimento, (unsigned long long)g_stats.atendidasComRetornoDiferente,
+                  (unsigned long long)g_stats.ramNasVoltas, (unsigned long long)g_stats.semRamNasVoltas);
     std::string out = b;
     for (size_t i = 0; i < lista().size() && i < g_por.size(); ++i) {
         std::snprintf(b, sizeof b, "[elevacao]   %08X %s: chamadas %llu, conferidas %llu (completas %llu)\n",
@@ -311,7 +481,12 @@ void chamar(Sh4Context* c, uint32_t endereco, Sh4Func f, uint32_t retorno) {
 
 void volta(Sh4Context* c, uint32_t retomada) {
     ++c->polls;
-    if (c->cycles >= c->next_event || c->polls >= c->next_poll) {
+    if (g_ensaio) {
+        g_voltasElevada.push_back(*c);
+        g_voltasElevada.back().pc = retomada;
+        g_voltasDiario.push_back(g_diario.size());
+    }
+    if (c->cycles >= c->next_event || c->polls >= next_poll_real(c)) {
         if (g_ensaio) {
             g_atendimento = true;
             return;

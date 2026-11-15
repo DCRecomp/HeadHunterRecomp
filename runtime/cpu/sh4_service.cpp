@@ -51,6 +51,7 @@ void sh4_set_session_context(Sh4Context* c) {
     g_session = c;
     if (c) c->next_poll = g_logical ? c->polls + kProgressTick : UINT64_MAX;
 }
+Sh4Context* sh4_session_context() { return g_session; }
 
 void sh4_irq_wakeup() {
     Sh4Context* c = g_session;
@@ -63,6 +64,7 @@ void sh4_irq_wakeup() {
 }
 
 void sh4_poll_slow(Sh4Context* c) {
+    if (g_sh4_poll_probe && g_sh4_poll_probe(c)) return;  // HH15.11: so a conferencia das elevadas observa o back-edge
     if (c->cycles >= c->next_event) return sh4_service(c);
     if (!g_logical) {  // contexto zerado (sh4_reset): no tempo por ciclos o tick nao existe
         c->next_poll = UINT64_MAX;

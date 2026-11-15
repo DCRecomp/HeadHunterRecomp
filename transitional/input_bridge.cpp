@@ -106,4 +106,26 @@ void SessionRecorder::comment(const std::string& text) {
     write_("# " + text);
 }
 
+ni::ControllerState ReadRecorder::filter(uint64_t sample, const ni::ControllerState& live) {
+    const PadState  p = to_pad(live);
+    std::lock_guard lk(mu_);
+    if (sample_ != UINT64_MAX && sample < sample_)
+        throw std::runtime_error("gravacao: a leitura do controle voltou de " + std::to_string(sample_) + " para " +
+                                 std::to_string(sample));
+    sample_             = sample;
+    const std::string t = pad_state_text(p);
+    if (t != last_) write_(std::to_string(sample) + " " + t), last_ = t;
+    return to_controller(p);
+}
+
+void ReadRecorder::comment(const std::string& text) {
+    std::lock_guard lk(mu_);
+    write_("# " + text);
+}
+
+uint64_t ReadRecorder::last_sample() const {
+    std::lock_guard lk(mu_);
+    return sample_;
+}
+
 } // namespace hh::transitional::input_bridge

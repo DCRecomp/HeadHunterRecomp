@@ -37,6 +37,12 @@ Uma etapa só termina quando:
 | HH19 | Remasterização: edições Original e Remastered do mesmo núcleo (executada depois do HH16 e antes do HH17) | V3 |
 | HH17 | Gameplay nomeado, projeto editável e mods | V3 |
 | HH18 | Recompiler/Developer finais, pacote e revisão de lançamento | V3 |
+| HH20 | Linux nativo (equivalente ao N9-L do BS; proposta de 2026-11-14, D-P4 pendente; executada antes da HH19.1) | V3 |
+
+**Revisão de 2026-11-14** (`docs/planos/PLANO-ETAPAS-RESTANTES.md`): plano das etapas restantes comparado com o Blue
+Stinger de 2026-11-12. Muda a HH16 (gravação humana única e monitor de campanha, HH16.0–HH16.G), propõe a HH20 (Linux) e
+ajustes na HH19, e registra as decisões D-P1 a D-P5. Até o mantenedor decidir, as subetapas abaixo valem como estão;
+HH15.11 e HH16.0/HH16.1 (ferramentas de verificação) seguem sem depender delas.
 
 ## HH00 — Fundação e governança
 
@@ -247,6 +253,13 @@ Entregáveis:
 
 Critério de saída: duas execuções limpas completam a campanha; uma delas parte de instalação recém-gerada pelo Builder.
 
+**Decidido pelo mantenedor em 2026-11-14 (D-P1 = A, D-P2 = sim; plano `docs/planos/HH16-PLANO.md`):** no modelo do BS (`docs/N8-PLANO.md` 9.1, `docs/N9-PLANO.md` 14,
+`docs/CAMPANHA.md`), a campanha passa a ser **uma gravação do mantenedor** por passo de jogo, provada por reprodução
+headless e reutilizada em cada programa seguinte (produto sem AOT, edições da HH19, Linux). Subetapas: HH16.0 gravação e
+estado por passo; HH16.1 monitor de campanha com testes; HH16.2 gravação; HH16.3 cobertura e P0/P1; HH16.G gate final
+depois da HH19. Contratos congelados desde a HH16.0: entrada efetiva, passos, estado lógico, saves, VBlanks e fins de
+fala e de filme. Detalhes: `docs/planos/PLANO-ETAPAS-RESTANTES.md` seção 4.
+
 ## HH19 — Remasterização (equivalente ao N9 do Blue Stinger)
 
 Incluída pelo mantenedor em 2026-10-28. O número é o próximo livre (as etapas existentes não são renumeradas); a ordem
@@ -288,6 +301,23 @@ Entregáveis:
 
 Critério de saída: V3 integral, instalação limpa, campanha completa, pacote sem dados proprietários e aceite explícito do mantenedor.
 
+Acrescentado em 2026-11-14 (lições do BS): inventário de licenças no modelo `docs/N9-L-LICENCAS.md` do BS antes de
+qualquer pacote; varredura do histórico Git e dos pacotes antes de cada publicação (`docs/PUBLICACAO-GITHUB.md` do BS);
+pacotes Windows e Linux (HH20) com instalador gráfico nas duas plataformas.
+
+## HH20 — Linux nativo (proposta de 2026-11-14)
+
+Equivalente ao N9-L do BS (`docs/N9-L-PLANO.md`). Número livre seguinte; ordem de execução depois da HH16.3 e antes da
+HH19.1, para o instalador e a interface da HH19 nascerem portáveis. Depende da D-P4.
+
+Entregáveis: build por plataforma com as opções de fidelidade (`-fno-strict-aliasing -fwrapv -ffp-contract=off`);
+núcleo POSIX; prova de fidelidade com as referências e as sessões gravadas no executável Linux; janela, Vulkan, áudio e
+entrada pelo SDL3; filmes e texto sem Media Foundation nem DirectWrite (codec: D-P5); Builder Linux com compilador
+portátil; SteamOS/Bazzite com desempenho medido; Windows sem regressão.
+
+Critério de saída: instalação limpa em Linux real, referências e sessões gravadas iguais às do Windows, sessão de 30 min
+sem queda e pacote com inventário de licenças. Plano: `docs/planos/PLANO-ETAPAS-RESTANTES.md` seção 5.
+
 ## Reuso da referência MIT e entradas conhecidas por etapa
 
 Mapeamento completo de etapas e regras: `docs/planos/COMPARACAO-BSTINGER.md`.
@@ -305,7 +335,10 @@ Planos detalhados ficam em `docs/planos/HHxx-PLANO.md`.
 | HH12 | `docs/MODS-VIDEO.md` | vídeos `MOVIES/*.4XM` (4X Movie); `SCENE0.4XM` difere por disco |
 | HH13 | `docs/DECISAO-VULKAN-LINUX.md`, `docs/MODS-SHADERS.md` | — |
 | HH14 | `runtime/aica` (apenas referência de comportamento) | driver `AUDIO64.DRV` idêntico nos dois discos |
-| HH18 | `docs/DISTRIBUICAO-COMPILADOR.md`, `docs/RECOMPILER-UI.md` | — |
+| HH16 | `docs/CAMPANHA.md`, `tools/dev/campanha.py`, `tools/dev/gravacoes.py`, `app/assist.h`, `docs/N9-PLANO.md` seção 14 | — |
+| HH18 | `docs/DISTRIBUICAO-COMPILADOR.md`, `docs/RECOMPILER-UI.md`, `docs/N9-L-LICENCAS.md`, `docs/PUBLICACAO-GITHUB.md` | — |
+| HH19 | `docs/N9-PLANO.md` (seções 5, 13–17), `docs/N9-6-TESTES-FINAIS.md`, `docs/TELEMETRIA.md`, `docs/N9-13-FILMES-IA.md` (branch `n9-8`) e o processo local da versão A | 53 filmes: 37 em 480×204, 11 em 480×270/272, 5 em 480×360 (só estes precisam das laterais) |
+| HH20 | `docs/N9-L-PLANO.md`, `docs/N9-L-ROTEIRO-BAZZITE.md`, `docs/DECISAO-VULKAN-LINUX.md` | dependências Win32 medidas em 2026-11-14: `sh4_threads`, `mf_movie`, `subtitles`, `saves_store`, `audio_output` |
 
 ## Política de decisões e revisão
 

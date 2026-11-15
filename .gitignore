@@ -11,6 +11,10 @@ generated/
 reviews/
 snapshots/
 tmp_run/
+# HH16: campanhas gravadas (saves, programa derivado do disco, entrada do jogador): nunca versionar nem publicar
+/campanhas/
+# arquivos temporarios do projeto (regra de 2026-11-14: nada fora da pasta de trabalho)
+/tmp/
 # Ignored compiled binaries and object files
 *.o
 *.obj

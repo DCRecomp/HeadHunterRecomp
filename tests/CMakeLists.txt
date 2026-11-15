@@ -431,3 +431,25 @@ if(HH_GENERATED_DIR)
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_tempo.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh15_tempo PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
 endif()
+
+# HH16.1: monitor de campanha (tools/dev/campanha.py) com o programa falso: sessoes, cadeia de saves, creditos, queda,
+# divergencia, arquivo alterado (sem jogo nem dados privados).
+add_test(NAME hh16_campanha COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/campanha/test_campanha.py)
+# HH16.0: portao da reproducao sem janela (determinismo, reproducao = roteiro, estado por leitura, negativos; HH_DATA_DIR,
+# senao SKIP)
+if(HH_GENERATED_DIR AND HH_BUILD_WINDOW)
+  add_test(NAME hh16_reproducao
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh16_reproducao.py $<TARGET_FILE:HeadHunter>
+            ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh16_reproducao PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600)
+endif()
+
+# Regra de temporarios (2026-11-14, AGENTS.md): nada fora da pasta de trabalho. Todos os testes deste diretorio recebem
+# TMP/TEMP em tmp/ctest do workspace (ignorado), o que o std::filesystem::temp_directory_path do Windows segue (os
+# cartoes temporarios do --headless e do hh-run, os diretorios dos unitarios).
+set(HH_TEST_TMP "${PROJECT_SOURCE_DIR}/tmp/ctest")
+file(MAKE_DIRECTORY "${HH_TEST_TMP}")
+get_property(_hh_testes DIRECTORY PROPERTY TESTS)
+foreach(_t IN LISTS _hh_testes)
+  set_property(TEST ${_t} APPEND PROPERTY ENVIRONMENT "TMP=${HH_TEST_TMP}" "TEMP=${HH_TEST_TMP}")
+endforeach()

@@ -62,4 +62,26 @@ private:
     std::mutex                    mu_;
 };
 
+// HH16.0 (campanha, docs/planos/HH16-PLANO.md): gravacao indexada pela LEITURA do controle, nao pelo passo de jogo. No Head
+// Hunter os passos de jogo estao desligados (transitional/time_adapter.cpp, kVblankWaitPc = 0: o jogo nao tem espera propria
+// do VBlank), e os roteiros do HH sao por leitura (o indice padrao do make_scripted_input). Filtro do InputSystem: recebe o
+// numero da amostra (SampleContext::sample, o mesmo `seq` que o roteiro le) e o estado ao vivo, passa o estado pelos bytes do
+// controle (to_pad/to_controller: o jogo ve na gravacao exatamente o que a reproducao entrega) e grava "<amostra> <estado>"
+// so quando o texto muda. O roteiro gravado, lido sem cabecalho, reproduz o mesmo estado em cada leitura. Amostra que volta
+// para tras (outra sessao no mesmo gravador) e erro explicito. Seguro entre threads.
+class ReadRecorder {
+public:
+    using Writer = std::function<void(const std::string& line)>;
+    explicit ReadRecorder(Writer write) : write_(std::move(write)) {}
+    native::input::ControllerState filter(uint64_t sample, const native::input::ControllerState& live);
+    void                           comment(const std::string& text);  // "# <texto>" (checkpoints, fim de sessao)
+    uint64_t                       last_sample() const;               // UINT64_MAX antes da primeira leitura
+
+private:
+    Writer             write_;
+    uint64_t           sample_ = UINT64_MAX;
+    std::string        last_;
+    mutable std::mutex mu_;
+};
+
 } // namespace hh::transitional::input_bridge

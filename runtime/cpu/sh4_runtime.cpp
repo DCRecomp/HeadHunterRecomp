@@ -33,6 +33,7 @@ std::unordered_map<uint32_t, Sh4Func> g_hle;
 } // namespace
 
 Sh4TraceFn g_sh4_trace = nullptr;
+Sh4PollProbe g_sh4_poll_probe = nullptr;
 
 void sh4_set_fatal_handler(Sh4FatalFn fn) { g_fatal = fn; }
 

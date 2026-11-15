@@ -161,6 +161,10 @@ public:
     // estado ja combinado e devolve o que o jogo ve. Nao vale com a fonte de teste.
     using FilterFn = std::function<ControllerState(const SampleContext&, const ControllerState&)>;
     void set_filter(FilterFn fn);
+    // Observador do ponto de amostragem (HH16.0, estado por leitura): chamado uma vez por latch(), com a fonte de teste
+    // ou com os dispositivos, depois de a amostra estar decidida (a sondagem de presenca nao o chama).
+    using ObserverFn = std::function<void(const SampleContext&)>;
+    void set_latch_observer(ObserverFn fn);
 
     // Amostra do jogador 1 no ponto de amostragem; fica guardada como a ultima amostra.
     ControllerState latch(const SampleContext& ctx);

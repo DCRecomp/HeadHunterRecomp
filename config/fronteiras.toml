@@ -744,7 +744,7 @@ endereco = 0x8C11E9D2
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = ["tempo", "audio", "render", "sistema"]
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -752,7 +752,7 @@ endereco = 0x8C11EB32
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -768,7 +768,7 @@ endereco = 0x8C11EBE0
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -776,7 +776,7 @@ endereco = 0x8C11ECA4
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = ["tempo", "audio", "render", "sistema"]
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -896,7 +896,7 @@ endereco = 0x8C12250E
 tipo = "direta"
 familia = "som"
 subsistemas = ["audio", "sistema"]
-provedor = "legado"
+provedor = "nativo"
 chamadas = 4
 
 [[fronteira]]
@@ -904,7 +904,7 @@ endereco = 0x8C122784
 tipo = "direta"
 familia = "som"
 subsistemas = ["audio", "sistema"]
-provedor = "legado"
+provedor = "nativo"
 chamadas = 16
 
 [[fronteira]]
@@ -1024,7 +1024,7 @@ endereco = 0x8C123B38
 tipo = "direta"
 familia = "runtime_c"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 73
 
 [[fronteira]]
@@ -1032,7 +1032,7 @@ endereco = 0x8C123BEC
 tipo = "direta"
 familia = "runtime_c"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 16
 
 [[fronteira]]
@@ -1040,7 +1040,7 @@ endereco = 0x8C123C94
 tipo = "direta"
 familia = "runtime_c"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 96
 
 [[fronteira]]
@@ -1048,7 +1048,7 @@ endereco = 0x8C123D5C
 tipo = "direta"
 familia = "runtime_c"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]
@@ -1056,7 +1056,7 @@ endereco = 0x8C123E14
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 170
 
 [[fronteira]]
@@ -1064,7 +1064,7 @@ endereco = 0x8C123E20
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 866
 
 [[fronteira]]
@@ -1088,7 +1088,7 @@ endereco = 0x8C123FE0
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 73
 
 [[fronteira]]
@@ -1104,7 +1104,7 @@ endereco = 0x8C124068
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 26
 
 [[fronteira]]
@@ -1120,7 +1120,7 @@ endereco = 0x8C124120
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 11
 
 [[fronteira]]
@@ -1128,7 +1128,7 @@ endereco = 0x8C124170
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 13
 
 [[fronteira]]
@@ -1136,7 +1136,7 @@ endereco = 0x8C1241C0
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
@@ -1144,7 +1144,7 @@ endereco = 0x8C124210
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 10
 
 [[fronteira]]
@@ -1160,7 +1160,7 @@ endereco = 0x8C1242B0
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 33
 
 [[fronteira]]
@@ -1168,7 +1168,7 @@ endereco = 0x8C124300
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
@@ -1192,7 +1192,7 @@ endereco = 0x8C124368
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 4
 
 [[fronteira]]
@@ -1200,7 +1200,7 @@ endereco = 0x8C1243B8
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 49
 
 [[fronteira]]
@@ -1264,7 +1264,7 @@ endereco = 0x8C124640
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 129
 
 [[fronteira]]
@@ -1288,7 +1288,7 @@ endereco = 0x8C1246F8
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 41
 
 [[fronteira]]
@@ -1336,7 +1336,7 @@ endereco = 0x8C1247E8
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 73
 
 [[fronteira]]
@@ -1520,7 +1520,7 @@ endereco = 0x8C159820
 tipo = "direta"
 familia = "desconhecida"
 subsistemas = ["render"]
-provedor = "legado"
+provedor = "nativo"
 chamadas = 2
 
 [[fronteira]]
@@ -1888,7 +1888,7 @@ endereco = 0x8C15D06E
 tipo = "direta"
 familia = "shinobi"
 subsistemas = []
-provedor = "legado"
+provedor = "nativo"
 chamadas = 1
 
 [[fronteira]]

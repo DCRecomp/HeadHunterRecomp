@@ -63,17 +63,23 @@ bool throwsWith(const std::function<void()>& fn, const std::string& needle) {
 
 // Guest sintetico: funcoes "legadas" nos enderecos do gdFs, com slots (como o codigo gerado com
 // [native] slots), para o adaptador trocar o provedor.
-int  g_legacyCalls = 0;
+int      g_legacyCalls = 0;
+uint32_t g_legacyRet   = 0x1234;
+struct LegacyCall {
+    uint32_t fn, r4, pr, retExpect, retSp;
+};
+std::vector<LegacyCall> g_legacyLog;  // o contexto de cada chamada
 void legacyFn(Sh4Context* c) {
     ++g_legacyCalls;
-    c->r[0] = 0x1234;
+    g_legacyLog.push_back({c->cur_fn, c->r[4], c->pr, c->ret_expect, c->ret_sp});
+    c->r[0] = g_legacyRet;
 }
 
 constexpr gd::Addresses kA = gd::kHeadHunter;
 const uint32_t kAll[] = {kA.open,  kA.changeDir, kA.close,   kA.getFileSize, kA.getFileSctSize, kA.getFileFad,
                          kA.seek,  kA.tell,      kA.eof,     kA.setTransMode, kA.read,          kA.reqPio,
                          kA.reqRd32, kA.wait,    kA.getStat, kA.getTransStat, kA.stop,          kA.getErr,
-                         kA.initGdfs, kA.driveStat, kA.loadDir};
+                         kA.initGdfs, kA.driveStat, kA.loadDir, kA.discGetter, kA.saveCall, kA.applySave};
 
 struct Guest {
     std::vector<Sh4FuncEntry> table;
@@ -127,7 +133,8 @@ HH_TEST(hh08_gdfs_adapter_contracts) {
     nf::DataFileSystem fsys(t.root / "disc");
     Guest              g;
     gd::install(g.registry, fsys);
-    HH_CHECK(g.registry.count(transitional::Provider::Native) == std::size(kAll));
+    // todos os enderecos de kAll viram provedor nativo, menos a funcao do LOAD que o fim de disco so chama (HH16.P1)
+    HH_CHECK(g.registry.count(transitional::Provider::Native) == std::size(kAll) - 1);
     file_log_init("hh_hh08_log_teste.tsv");
 
     g.str(0x8C100000, "\\");  // raiz (o jogo chama ChangeDir("\") antes de cada pasta)
@@ -270,6 +277,132 @@ HH_TEST(hh08_gdfs_merged_discs_follow_game_variable) {
     HH_CHECK(!opens("/DISC/disk1.id;1") && opens("/DISC/disk2.id;1") && size("/MOVIES/Scene0.4xm") == 5);
     HH_CHECK(gd::current_disc() == 2 && !opens("/_DISCO2/MOVIES/SCENE0.4XM"));
     HH_CHECK(g.call(kA.driveStat) == 1);  // o drive nunca abre
+}
+
+// HH16.P1: LOAD de um save do outro disco. No console o menu de LOAD (0x8C0EEA20) so aceita um save do disco 2 com o
+// console ligado pelo disco 2; com os discos juntos o boot e sempre pelo disco 1. O getter do disco (0x8C09EC68), so na
+// chamada do menu de LOAD (retorno 0x8C0EEC34) e com o disco do save em r8, passa o jogo para o disco do save; as
+// outras chamadas, um disco invalido, o mesmo disco e a instalacao de um disco so ficam como o original.
+HH_TEST(hh16_load_save_other_disc) {
+    TempTree t;
+    t.write("disc/DISC/DISK1.ID", "1");
+    t.write("disc/DISC/DISK2.ID", "2");
+    t.write("disc/MOVIES/SCENE0.4XM", "um");
+    t.write("disc/_DISCO2/MOVIES/SCENE0.4XM", "dois!");
+    nf::DataFileSystem fsys(t.root / "disc");
+    Guest              g;
+    gd::install(g.registry, fsys);
+    auto var  = [&] { return g.u32(kA.discVar); };
+    auto setv = [&](uint32_t v) { std::memcpy(g.ram.data() + (kA.discVar & 0xFFFFFF), &v, 4); };
+    auto get  = [&](uint32_t pr, uint32_t r8) {
+        g.c.pr = pr, g.c.r[8] = r8, g.c.r[2] = 0;
+        const uint64_t ciclos = g.c.cycles;
+        const uint32_t r0     = g.call(kA.discGetter);
+        HH_CHECK(g.c.r[2] == kA.discVar && g.c.r[8] == r8);  // r2 como o original; r8 do chamador intacto
+        HH_CHECK(g.c.cycles - ciclos == 4);                    // o custo da gerada
+        return r0;
+    };
+    auto size = [&] {
+        g.str(0x8C100010, "/MOVIES/Scene0.4xm");
+        const uint32_t h = g.call(kA.open, 0x8C100010, 0);
+        if (!h) return uint32_t(0);
+        g.call(kA.getFileSize, h, 0x8C100100);
+        g.call(kA.close, h);
+        return g.u32(0x8C100100);
+    };
+    g_legacyCalls = 0;
+    setv(1);  // boot pelo disco 1 (0x8C09EBC4)
+    // outras chamadas do getter: so devolvem a variavel
+    HH_CHECK(get(0x8C0EEC48, 2) == 1 && var() == 1);
+    HH_CHECK(get(0x8C09EC00, 2) == 1 && var() == 1);
+    // disco do save invalido ou igual ao atual: o menu compara como o original
+    HH_CHECK(get(kA.loadMenuDiscRet, 0) == 1 && get(kA.loadMenuDiscRet, 3) == 1 && var() == 1);
+    HH_CHECK(get(kA.loadMenuDiscRet, 1) == 1 && var() == 1 && gd::stats().loadDiscSwitches == 0);
+    HH_CHECK(size() == 2);
+    // save do disco 2 no menu de LOAD: o jogo passa para o disco 2 e ve os arquivos dele
+    HH_CHECK(get(kA.loadMenuDiscRet, 2) == 2 && var() == 2 && gd::stats().loadDiscSwitches == 1);
+    HH_CHECK(size() == 5 && gd::current_disc() == 2);
+    HH_CHECK(get(kA.loadMenuDiscRet, 2) == 2 && gd::stats().loadDiscSwitches == 1);  // ja no disco 2
+    // e de volta: save do disco 1 carregado no disco 2
+    HH_CHECK(get(kA.loadMenuDiscRet, 1) == 1 && var() == 1 && gd::stats().loadDiscSwitches == 2);
+    HH_CHECK(size() == 2 && gd::current_disc() == 1);
+    // variavel 0 (antes da checagem do boot) = disco 1: um save do disco 1 nao muda nada
+    setv(0);
+    HH_CHECK(get(kA.loadMenuDiscRet, 1) == 0 && var() == 0 && gd::stats().loadDiscSwitches == 2);
+    HH_CHECK(g_legacyCalls == 0);  // o getter nunca foi ao legado
+}
+
+// HH16.P1: fim do disco 1 sem troca. O save do menu "End of Disc" (retorno 0x8C086C18) com o modo fim de disco ligado,
+// a variavel em 2 e o save gravado desliga o modo e aplica a imagem salva pela funcao do LOAD (0x8C09C6C2, r4 = buffer);
+// qualquer outra combinacao e so o save original.
+HH_TEST(hh16_end_of_disc_continues_on_disc_2) {
+    TempTree t;
+    t.write("disc/DISC/DISK1.ID", "1");
+    t.write("disc/DISC/DISK2.ID", "2");
+    nf::DataFileSystem fsys(t.root / "disc");
+    Guest              g;
+    gd::install(g.registry, fsys);
+    auto put  = [&](uint32_t a, uint32_t v) { std::memcpy(g.ram.data() + (a & 0xFFFFFF), &v, 4); };
+    auto save = [&](uint32_t pr, uint32_t flag, uint32_t disc, uint32_t ret) {
+        put(kA.endOfDiscFlag, flag), put(kA.discVar, disc);
+        g_legacyRet = ret, g_legacyCalls = 0, g_legacyLog.clear();
+        g.c.pr = pr, g.c.r[8] = 0xCAFE;
+        const uint32_t r0 = g.call(kA.saveCall, 7);
+        HH_CHECK(g.c.pr == pr && g.c.r[8] == 0xCAFE);
+        return r0;
+    };
+    auto applied = [&] {
+        return std::count_if(g_legacyLog.begin(), g_legacyLog.end(),
+                             [](const auto& e) { return e.fn == kA.applySave && e.r4 == kA.saveImage; });
+    };
+    g.str(kA.saveImage + 76, "SXX_AQ_MAIN");
+    // negativos: outra chamada do save, modo desligado, disco 1, save que falhou
+    HH_CHECK(save(0x8C0EEBDA, 1, 2, 0x1234) == 0x1234 && g_legacyCalls == 1 && g.u32(kA.endOfDiscFlag) == 1);
+    HH_CHECK(save(kA.saveEndRet, 0, 2, 0x1234) == 0x1234 && g_legacyCalls == 1);
+    HH_CHECK(save(kA.saveEndRet, 1, 1, 0x1234) == 0x1234 && g_legacyCalls == 1 && g.u32(kA.endOfDiscFlag) == 1);
+    HH_CHECK(save(kA.saveEndRet, 1, 2, 0) == 0 && g_legacyCalls == 1 && g.u32(kA.endOfDiscFlag) == 1);
+    HH_CHECK(gd::stats().endOfDiscContinues == 0);
+    // o caso: o save e a aplicacao da imagem, o modo desligado, o resultado do save devolvido ao menu; a chamada como o
+    // HH_CALL da gerada (revisao Codex HH16.P1): pr e ret_expect = o retorno do save, ret_sp = r15, um poll no retorno,
+    // e o contexto do chamador (ret_expect, ret_sp, cur_fn) restaurado
+    g.c.ret_expect = 0xAAAA0001u, g.c.ret_sp = 0xBBBB0002u, g.c.cur_fn = 0xCCCC0003u, g.c.r[15] = 0x8C0FFF00u;
+    g.c.next_poll = ~0ull;
+    const uint64_t polls = g.c.polls;
+    HH_CHECK(save(kA.saveEndRet, 1, 2, 0x1234) == 0x1234 && g_legacyCalls == 2 && applied() == 1);
+    HH_CHECK(g.u32(kA.endOfDiscFlag) == 0 && g.u32(kA.discVar) == 2 && gd::stats().endOfDiscContinues == 1);
+    HH_CHECK(g_legacyLog.size() == 2 && g_legacyLog[1].pr == kA.saveEndRet && g_legacyLog[1].retExpect == kA.saveEndRet &&
+             g_legacyLog[1].retSp == 0x8C0FFF00u);
+    HH_CHECK(g.c.ret_expect == 0xAAAA0001u && g.c.ret_sp == 0xBBBB0002u && g.c.cur_fn == 0xCCCC0003u);
+    HH_CHECK(g.c.polls == polls + 1);
+    g_legacyRet = 0x1234;
+}
+
+HH_TEST(hh16_end_of_disc_single_disc_keeps_original) {
+    TempTree t;
+    t.write("disc/DISC/DISK1.ID", "1");
+    nf::DataFileSystem fsys(t.root / "disc");
+    Guest              g;
+    gd::install(g.registry, fsys);
+    const uint32_t one = 1, two = 2;
+    std::memcpy(g.ram.data() + (kA.endOfDiscFlag & 0xFFFFFF), &one, 4);
+    std::memcpy(g.ram.data() + (kA.discVar & 0xFFFFFF), &two, 4);
+    g_legacyCalls = 0, g_legacyLog.clear();
+    g.c.pr = kA.saveEndRet;
+    HH_CHECK(g.call(kA.saveCall) == 0x1234 && g_legacyCalls == 1 && g.u32(kA.endOfDiscFlag) == 1);
+    HH_CHECK(gd::stats().endOfDiscContinues == 0);
+}
+
+// Instalacao com um disco so: nao ha outro disco para onde ir; o menu recusa como no console.
+HH_TEST(hh16_load_save_other_disc_single_disc) {
+    TempTree t;
+    t.write("disc/DISC/DISK1.ID", "1");
+    nf::DataFileSystem fsys(t.root / "disc");
+    Guest              g;
+    gd::install(g.registry, fsys);
+    const uint32_t one = 1;
+    std::memcpy(g.ram.data() + (kA.discVar & 0xFFFFFF), &one, 4);
+    g.c.pr = kA.loadMenuDiscRet, g.c.r[8] = 2;
+    HH_CHECK(g.call(kA.discGetter) == 1 && g.u32(kA.discVar) == 1 && gd::stats().loadDiscSwitches == 0);
 }
 
 // gdFsLoadDir com dirrec (revisao Codex HH08): a funcao original preenche o registro e o

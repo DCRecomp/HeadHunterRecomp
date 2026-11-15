@@ -254,6 +254,71 @@ HH_TEST(input_native_session_recorder) {
     input_set_step_counter(nullptr);
 }
 
+// HH16.0: gravacao por leitura do controle (ReadRecorder; o HH nao tem passos de jogo). Grava so mudancas, com o indice da
+// amostra; o texto gravado, lido como roteiro sem cabecalho (indice = leitura), da o mesmo estado em cada leitura, inclusive
+// os bytes do gatilho e do analogico; leitura que volta para tras e erro explicito.
+// HH16.0 (revisao Codex HH16.P2): o observador do ponto de amostragem e chamado uma vez por latch, com a fonte de teste
+// ou com os dispositivos; a sondagem de presenca (connected) nao o chama.
+HH_TEST(input_native_latch_observer) {
+    for (int teste = 0; teste < 2; ++teste) {
+        ni::InputSystem          in;
+        std::vector<uint64_t>    vistas;
+        if (teste) in.set_test_source([](const ni::SampleContext&) { return ni::ControllerState{}; });
+        in.set_latch_observer([&](const ni::SampleContext& ctx) { vistas.push_back(ctx.sample); });
+        in.connected(ni::SampleContext{7});
+        HH_CHECK(vistas.empty());
+        in.latch(ni::SampleContext{7});
+        in.latch(ni::SampleContext{8});
+        HH_CHECK((vistas == std::vector<uint64_t>{7, 8}));
+    }
+}
+
+HH_TEST(input_native_read_recorder) {
+    std::vector<std::string> lines;
+    ib::ReadRecorder         rec([&](const std::string& l) { lines.push_back(l); });
+    HH_CHECK(rec.last_sample() == UINT64_MAX);
+    ni::InputSystem sys;
+    sys.set_filter([&](const ni::SampleContext& ctx, const ni::ControllerState& s) { return rec.filter(ctx.sample, s); });
+    std::vector<std::pair<uint64_t, PadState>> seen;
+    auto latch = [&](uint64_t n) {
+        const PadState p = ib::to_pad(sys.latch({n}));
+        seen.push_back({n, p});
+        return p;
+    };
+    HH_CHECK(latch(0).buttons == 0);
+    HH_CHECK(latch(1).buttons == 0);  // sem mudanca: nenhuma linha nova
+    sys.key("ENTER", true);
+    HH_CHECK(latch(2).buttons == kPadStart);
+    HH_CHECK(latch(3).buttons == kPadStart);
+    sys.key("ENTER", false);
+    sys.key("L", true);  // analogico no extremo direito
+    sys.gamepad_added(1, "pad");
+    sys.gamepad_axis(1, "lefttrigger", 0.5f);  // valor intermediario do gatilho
+    latch(7);                                  // leituras 4-6 nao aconteceram (indice da amostra, nao contagem local)
+    sys.key("L", false);
+    sys.gamepad_axis(1, "lefttrigger", 0.0f);
+    HH_CHECK(latch(8).buttons == 0);
+    rec.comment("checkpoint 1 leitura 8");
+    HH_CHECK(rec.last_sample() == 8);
+    HH_CHECK(lines.size() == 5 && lines[0] == "0 -" && lines[1] == "2 START" && lines[2].rfind("7 ", 0) == 0 &&
+             lines[2].find("LT=") != std::string::npos && lines[3] == "8 -" && lines[4] == "# checkpoint 1 leitura 8");
+    std::string script;
+    for (const auto& l : lines) script += l + "\n";
+    auto replay = make_scripted_input(script);
+    for (const auto& [n, p] : seen) {
+        const PadState r = replay->read(0, n);
+        HH_CHECK(r.buttons == p.buttons && r.joyx == p.joyx && r.joyy == p.joyy && r.ltrig == p.ltrig && r.rtrig == p.rtrig);
+    }
+    // negativo: a leitura voltou (duas sessoes no mesmo gravador, ou contador reiniciado)
+    bool threw = false;
+    try {
+        sys.latch({5});
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    HH_CHECK(threw);
+}
+
 // Controles: botoes, eixos, gatilhos, zona morta, conexao/desconexao, troca automatica, preferido.
 HH_TEST(input_native_gamepads_and_connection) {
     ni::InputSystem sys;

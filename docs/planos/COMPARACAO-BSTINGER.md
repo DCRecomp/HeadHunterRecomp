@@ -77,3 +77,11 @@ independente, presets CMake e lições de ordem/tempo do port nativo.
   e o resultado vai para `analysis/formatos/`.
 - Não se sabe ainda se o HH usa Ninja/Kamui como o BS: será medido no HH04 por
   assinaturas (`dc-re-ghidra/sdk-symbols.txt`) + grafo de chamadas.
+
+## 6. Atualização de 2026-11-14 (BS em `fbc6761`, 2026-11-12)
+
+O BS acrescentou depois desta comparação: o gate de campanha por gravação única do mantenedor (D-N8-4 transferida ao
+pós-N9), o N9-L (Linux, v0.8.0), o cancelamento do N9.3 (saves de PC), o N9.12 (estabilização), presets seguros, a política
+permanente de dependências e a regra de arquivos temporários. O N10 (elevação) não começou no BS; o HH já está nele (D-HH15-1).
+Mapeamento novo: HH16 ↔ gate de campanha pós-N9; HH20 ↔ N9-L; HH19.E ↔ N9.12. Lições e decisões D-P1 a D-P5:
+`docs/planos/PLANO-ETAPAS-RESTANTES.md`.
