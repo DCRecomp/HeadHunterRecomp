@@ -376,12 +376,16 @@ add_executable(hh13_render_tests unit/main.cpp unit/test_hh13_render_native.cpp 
 target_include_directories(hh13_render_tests PRIVATE unit)
 target_link_libraries(hh13_render_tests PRIVATE hh_native_render hh_native_render_vk)
 add_test(NAME hh13_render_tests COMMAND hh13_render_tests)
+# Rotulo "gpu": os testes que usam o Vulkan/GPU (o portao de desempenho em 4K reprova com a GPU ocupada). Rodada so na
+# CPU: ctest -LE gpu; so eles: ctest -L gpu (docs/planos/TESTES-FUTUROS.md).
+set_tests_properties(hh13_render_tests PROPERTIES LABELS gpu)
 # HH13: captura da IR (texturas nativas contra o legado, VRAM sintetica)
 add_executable(hh13_capture_tests unit/main.cpp unit/test_hh13_capture.cpp unit/test_hh13_render_capture.cpp
                unit/test_hh15_render_devices.cpp)
 target_include_directories(hh13_capture_tests PRIVATE unit)
 target_link_libraries(hh13_capture_tests PRIVATE hh_transitional)
 add_test(NAME hh13_capture_tests COMMAND hh13_capture_tests)
+set_tests_properties(hh13_capture_tests PROPERTIES LABELS gpu)
 
 # HH14: nucleo de audio portado do N6 do BS (ADPCM, mixer, WAV, DSP; HH14_REVERB = pasta do HHREV, senao o caso do
 # programa do jogo e SKIP)
@@ -416,7 +420,7 @@ endif()
 if(HH_GENERATED_DIR)
   add_test(NAME hh13_render
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh13_render.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
-  set_tests_properties(hh13_render PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
+  set_tests_properties(hh13_render PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200 LABELS gpu)
   # HH13.6: provedor nativo da camada Kamui (K1 sombra, K2 hashes, K3 sonda de hardware; HH_DATA_DIR, senao SKIP).
   add_test(NAME hh13_kamui
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh13_kamui.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
@@ -429,12 +433,19 @@ if(HH_GENERATED_DIR)
   # senao SKIP).
   add_test(NAME hh15_tempo
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh15_tempo.py $<TARGET_FILE:hh-run> ${PROJECT_SOURCE_DIR})
-  set_tests_properties(hh15_tempo PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200)
+  set_tests_properties(hh15_tempo PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 7200 LABELS gpu)
 endif()
 
 # HH16.1: monitor de campanha (tools/dev/campanha.py) com o programa falso: sessoes, cadeia de saves, creditos, queda,
 # divergencia, arquivo alterado (sem jogo nem dados privados).
 add_test(NAME hh16_campanha COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/campanha/test_campanha.py)
+set_tests_properties(hh16_campanha PROPERTIES LABELS campanha)
+# HH16.1: a tela da gravacao (HeadHunter-Gravador) com o programa falso: iniciar, fechar o jogo, Parar, campanha de teste
+if(WIN32 AND HH_BUILD_TOOLS)  # o alvo e de tools/gravador (configurado depois deste diretorio)
+  add_test(NAME hh16_gravador
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/campanha/test_gravador.py $<TARGET_FILE:HeadHunter-Gravador>)
+  set_tests_properties(hh16_gravador PROPERTIES LABELS campanha TIMEOUT 900)
+endif()
 # HH16.0: portao da reproducao sem janela (determinismo, reproducao = roteiro, estado por leitura, negativos; HH_DATA_DIR,
 # senao SKIP)
 if(HH_GENERATED_DIR AND HH_BUILD_WINDOW)
@@ -442,6 +453,12 @@ if(HH_GENERATED_DIR AND HH_BUILD_WINDOW)
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/diff/hh16_reproducao.py $<TARGET_FILE:HeadHunter>
             ${PROJECT_SOURCE_DIR})
   set_tests_properties(hh16_reproducao PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600)
+  # HH16.1: o monitor com o HeadHunter.exe de verdade, sem janela (HH_DATA_UNICO, senao SKIP)
+  add_test(NAME hh16_campanha_real
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/campanha/test_campanha_real.py $<TARGET_FILE:HeadHunter>
+            ${PROJECT_SOURCE_DIR})
+  set_tests_properties(hh16_campanha_real PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 3600 LABELS campanha)
+  set_tests_properties(hh16_reproducao PROPERTIES LABELS campanha)
 endif()
 
 # Regra de temporarios (2026-11-14, AGENTS.md): nada fora da pasta de trabalho. Todos os testes deste diretorio recebem

@@ -1,7 +1,8 @@
 # Plano das etapas restantes (HH15 parte 2 → HH18), revisto com o Blue Stinger de 2026-11-12
 
-**Situação (2026-11-14):** planejamento. Nada abaixo foi implementado nesta revisão. O estado autoritativo continua em
-`STATUS.md`; as decisões marcadas **D-P** estão pendentes com o mantenedor (seção 9) e não bloqueiam a HH15.11.
+**Situação (2026-11-14, revista em 2026-11-15):** planejamento. O estado autoritativo continua em `STATUS.md`; D-P1 e
+D-P2 decididas, D-P3 a D-P5 pendentes com o mantenedor (seção 9), sem bloquear a HH15.11. Depois desta revisão: HH16.0 e
+HH16.1 implementadas (seção 4); a matriz dos testes futuros fica em `docs/planos/TESTES-FUTUROS.md`.
 
 Fonte da comparação: `C:\Source\recomp-BStinger` (MIT, somente leitura), commit `fbc6761` (2026-11-12): `CLAUDE.md`,
 `STATUS.md` (roadmap N0–N10), `docs/N8-PLANO.md` (9.1), `docs/N8-8-FECHAMENTO.md`, `docs/N9-PLANO.md` (seções 5, 13–16),
@@ -14,7 +15,7 @@ Fonte da comparação: `C:\Source\recomp-BStinger` (MIT, somente leitura), commi
 |---|---|---|
 | Sem simulação de hardware no produto | N8.8, fechamento técnico com ressalvas (2026-11-02) | HH15 parte 1, concluída com V3 14/14 (2026-10-30) |
 | Substrato AOT (gerado, RAM guest, `Sh4Context`, fibras) | fica até o N10 (D-N8-1); N10 não iniciado | sai na HH15 (D-HH15-1 = B); 33 funções elevadas, HH15.11b em curso, parado desde 2026-10-31 |
-| Campanha completa | obrigatória, **transferida ao gate pós-N9**: uma gravação do mantenedor valida as duas edições; monitor `campanha.py` pronto e testado (C1–C10) | HH16, prevista como roteiros do agente; **não existe** gravação, estado por passo nem monitor |
+| Campanha completa | obrigatória, **transferida ao gate pós-N9**: uma gravação do mantenedor valida as duas edições; monitor `campanha.py` pronto e testado (C1–C10) | HH16 por gravação única (D-P2); em 2026-11-15 gravação, estado por leitura e monitor prontos e testados sem janela; falta a sessão piloto (HH16-PLANO seção 9) |
 | Remasterização | N9 em curso (N9.0–N9.2, N9.5–N9.7 feitos; N9.3 cancelado; N9.12 criado) | HH19 só planejada |
 | Linux | N9-L (L0–L5), v0.8.0 publicada; pendências P-L1 (desempenho) e P-L2 (instalador) | só a premissa A2 do `ARCHITECTURE.md`; nenhuma etapa |
 | Publicação | cada etapa aprovada vira release (mantenedor, 2026-11-08) | v0.11.0 publicada na DCRecomp; `dist/` por etapa |
@@ -81,7 +82,7 @@ BS descartou. Novo desenho:
 
 | ID | Entrega | Portão |
 |---|---|---|
-| **HH16.0** | infraestrutura (antecipável, independe de decisão): `HH_GRAVAR` (entrada efetiva por passo de jogo, mesmo formato do `HH_INPUT_SCRIPT`), `HH_STATE_PASSO` (estado lógico por passo, máscara de pilhas da HH15), reprodução headless conferindo estado, VBlanks, LOAD/SAVE e saves; gameplay assistido para o agente (pausa entre VBlanks, capturas, roteiro gravado) | gravar → reproduzir igual em 3/3; divergência injetada acusada no passo certo |
+| **HH16.0** | infraestrutura: `HeadHunter --gravar` (entrada efetiva por **leitura do controle**, o HH não tem passo de jogo; mesmo formato do `HH_INPUT_SCRIPT`), `--estado` (RAM do jogo por leitura; as pilhas ficam fora da região), `--reproduzir` headless conferindo estado, quadros e saves; gameplay assistido para o agente (pausa entre VBlanks, capturas, roteiro gravado) ainda não feito | gravar → reproduzir igual em 3/3; divergência injetada acusada na leitura certa |
 | **HH16.1** | monitor de campanha (`tools/dev/campanha.py`, modelo `docs/CAMPANHA.md` do BS): sessões, cartão próprio, selos SHA-256, programa fixado, vereditos, `reproduzir-em`, recuperação de queda; detecção dos créditos do HH; a passagem do disco 1 ao 2 dentro da mesma instalação (sem troca, HH08) | suíte `test_campanha` C1–C10 equivalente, com o jogo de verdade |
 | **HH16.2** | gravação da campanha pelo mantenedor (humano; o agente não joga a campanha) | `CAMPANHA REPRODUZIDA ATE OS CREDITOS` |
 | **HH16.3** | matriz de cobertura (capítulos, áreas, chefes, filmes, arquivos lidos, funções executadas por sessão), triagem P0/P1 e correção | matriz completa; nenhum P0/P1 aberto |

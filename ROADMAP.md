@@ -254,9 +254,10 @@ Entregáveis:
 Critério de saída: duas execuções limpas completam a campanha; uma delas parte de instalação recém-gerada pelo Builder.
 
 **Decidido pelo mantenedor em 2026-11-14 (D-P1 = A, D-P2 = sim; plano `docs/planos/HH16-PLANO.md`):** no modelo do BS (`docs/N8-PLANO.md` 9.1, `docs/N9-PLANO.md` 14,
-`docs/CAMPANHA.md`), a campanha passa a ser **uma gravação do mantenedor** por passo de jogo, provada por reprodução
-headless e reutilizada em cada programa seguinte (produto sem AOT, edições da HH19, Linux). Subetapas: HH16.0 gravação e
-estado por passo; HH16.1 monitor de campanha com testes; HH16.2 gravação; HH16.3 cobertura e P0/P1; HH16.G gate final
+`docs/CAMPANHA.md`), a campanha passa a ser **uma gravação do mantenedor** indexada pela leitura do controle (o HH não
+tem passo de jogo como o BS), provada por reprodução headless e reutilizada em cada programa seguinte (produto sem AOT,
+edições da HH19, Linux). Subetapas: HH16.0 gravação e estado por leitura; HH16.1 monitor de campanha com testes; HH16.P
+prontidão (sessão piloto); HH16.2 gravação; HH16.3 cobertura e P0/P1; HH16.G gate final
 depois da HH19. Contratos congelados desde a HH16.0: entrada efetiva, passos, estado lógico, saves, VBlanks e fins de
 fala e de filme. Detalhes: `docs/planos/PLANO-ETAPAS-RESTANTES.md` seção 4.
 

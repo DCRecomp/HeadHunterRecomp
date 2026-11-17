@@ -105,6 +105,12 @@ try:
     check('B8: experimental deterministico (94 hashes iguais em duas execucoes)',
           len(E1['hashes']) == VBLANKS // 50 and E1['hashes'] == E2['hashes'])
     check('experimental: quadro final nao preto', bool(E1['black']) and not E1['black'][-1])
+    if fails:  # diagnostico (G2, 2026-11-16: uma queda intermitente sem a saida): codigo e fim do stderr de cada execucao
+        for k, v in r.items():
+            print('  %s: rc %d, %d quadros' % (k, v['rc'], len(v['hashes'])))
+            if v['rc'] or k.startswith('exp'):
+                for l in v['err'].strip().splitlines()[-6:]:
+                    print('    ' + l)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)  # traces com dados de execucao do jogo
 

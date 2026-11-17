@@ -7,7 +7,9 @@ e da autorização explícita do mantenedor para começar.
 
 Numeração: HH19 é o próximo número livre; as etapas existentes não foram renumeradas porque o código, os testes e os
 relatórios as citam. A ordem de execução é **HH16 → HH19 → HH17 → HH18**, como o N9 do BS fica entre o N8 (sem legado)
-e o N10 (mods e elevação do gameplay).
+e o N10 (mods e elevação do gameplay). Revisão de 2026-11-14 (`PLANO-ETAPAS-RESTANTES.md` seção 8): a HH19 começa
+depois da HH15.F e da HH20 (Linux, se a D-P4 a incluir), termina com a HH19.E (estabilização) e o gate da campanha
+(HH16.G) roda depois dela, nas duas edições.
 
 ## 1. Visão
 
@@ -19,7 +21,7 @@ um jogo moderno de PC. Base que já existe:
 | Instalação moderna | Builder/Recompiler (HH18 antecipado), instalação única dos dois discos (HH08) |
 | Menus e configurações dentro do jogo | a construir (o BS tem o menu interno do N7c) |
 | Controles modernos | HH10: SDL3 Gamepad, `controles.toml` |
-| Saves sem a interface de VMU | HH11: saves nativos, importar/exportar VMS |
+| Saves sem a interface de VMU | HH11: saves nativos, importar/exportar VMS. **Em revisão (D-P3, pendente):** a recomendação é manter os saves do jogo, como o BS fez ao cancelar o N9.3, porque a campanha gravada depende deles |
 | Legendas ligadas por padrão | HH12: legendas do jogo nos filmes; legendas no gameplay a construir |
 | Widescreen, iluminação, texturas HD, resolução interna | HH13: Vulkan sobre a IR, substituição de texturas e shaders portados do BS |
 | Filmes e áudio remasterizáveis | HH12 (`mods\video`) e HH14 (`mods\assets\STREAMS`, `hh-builder --audio-mod`) |
@@ -30,7 +32,8 @@ um jogo moderno de PC. Base que já existe:
 1. Duas edições do **mesmo núcleo C++**, sem projeto separado, fork ou branch por edição.
 2. O Builder escolhe o perfil de edição e o grava na instalação.
 3. Experiência de PC completa na Remastered.
-4. A Original preservada e validada contra as referências existentes (estado por passo, quadros do modo fiel, Flycast).
+4. A Original preservada e validada contra as referências existentes (estado por leitura do controle e a campanha
+   gravada da HH16, quadros do modo fiel, Flycast).
 5. Recursos audiovisuais substituíveis sem recompilar o executável.
 
 ### 1.2 Fora do escopo
@@ -276,7 +279,7 @@ legendas do jogo são desenhadas pelo jogo sobre o filme (HH12), não estão na 
 | Fase | Conteúdo | Aceitação |
 |---|---|---|
 | F0 | inventário por filme (grupo, cortes, movimento de câmera, texto na imagem); licenças conferidas no texto (código e pesos); porte do processo do BS para `tools/filmes-ia/` com a entrada pelos MP4 do Builder; amostra de 10 s de um filme de cada grupo | amostras locais avaliadas pelo mantenedor; tabela de tempo e VRAM |
-| F1 | contrato no jogo: versões de filme por pacote, escolha no menu (Filmes: original / remasterizados), o filme 16:9 em tela cheia na Remastered 16:9, recuo por filme, legendas na posição certa; a Original sempre com os filmes do disco | pacote **sintético** (barras e contador): duração e passo lógico do fim iguais, estado por passo idêntico, sessão gravada da campanha reproduzida igual |
+| F1 | contrato no jogo: versões de filme por pacote, escolha no menu (Filmes: original / remasterizados), o filme 16:9 em tela cheia na Remastered 16:9, recuo por filme, legendas na posição certa; a Original sempre com os filmes do disco | pacote **sintético** (barras e contador): duração e leitura do controle do fim iguais, estado por leitura idêntico, sessão gravada da campanha reproduzida igual |
 | F2 | versão A dos 53 (ampliação; laterais nos 5 de 4:3), produção retomável | `valida_a` por filme; revisão visual do mantenedor filme a filme |
 | F3 | versão B (modernizada), se o mantenedor quiser, sobre a A | as mesmas medidas, mais consistência temporal; filme reprovado fica na A |
 | F4 | bateria e documentação nas duas plataformas | sem falhas; Original igual às referências |

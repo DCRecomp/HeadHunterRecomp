@@ -37,10 +37,11 @@ independente, presets CMake e lições de ordem/tempo do port nativo.
 | HH13 | N7a + N7b | IR de render + Vulkan (antes do áudio: decisão do mantenedor 2026-10-25) |
 | HH14 | N6 | Áudio |
 | HH15 | N2c + N8 | Fim do tempo guest e remoção do legado |
-| HH16 | (dentro do N8/N10) | Campanha completa; o HH a torna etapa explícita |
+| HH16 | gate de campanha pós-N9 (`docs/CAMPANHA.md` do BS) | Campanha por gravação única do mantenedor (2026-11-14); no HH o índice é a leitura do controle, não o passo de jogo |
 | HH17 | N10 | Gameplay elevado, mods |
 | HH18 | N10 / revisão final | Recompiler/Developer, pacote |
 | HH19 | N9 | Remasterização (incluída pelo mantenedor em 2026-10-28; número livre seguinte, executada entre o HH16 e o HH17) |
+| HH20 | N9-L | Linux nativo (proposta de 2026-11-14, D-P4 pendente; antes da HH19.1) |
 
 ## 3. Regras equivalentes
 

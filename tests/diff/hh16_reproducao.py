@@ -77,6 +77,21 @@ prim = next((n for n in sorted(la) if ld.get(n) != la[n]), None)
 check('entrada trocada: estados iguais antes da leitura 4500', all(ld.get(n) == la[n] for n in la if n < 4500))
 check('entrada trocada: o primeiro estado diferente logo depois', prim is not None and 4500 <= prim <= 4620, 'leitura %s' % prim)
 
+# fim da gravacao (HH16.1): "# fim da sessao, ultima leitura N" faz a reproducao parar na leitura N + 1
+fim = os.path.join(tmp, 'roteiro_com_fim.txt')
+with open(ROTEIRO) as f, open(fim, 'w') as g:
+    g.write(''.join(l for l in f if not l[:1].isdigit() or int(l.split()[0]) <= 3000))
+    g.write('# fim da sessao, ultima leitura 3000\n')
+e_, qe, ee = roda('e', ['--reproduzir', fim])
+le = leit(ee)
+check('fim da gravacao: a reproducao para na leitura seguinte', e_.returncode == 0 and
+      'fim da gravacao reproduzido: leitura 3000' in e_.stdout and max(le) == 3000, '%s; ultimo estado %s' % (
+          e_.stdout.strip()[-100:], max(le) if le else None))
+check('fim da gravacao: estados iguais aos da reproducao inteira ate ali', all(la[n] == le[n] for n in le))
+check('fim da gravacao: a ultima leitura informada', '[entrada] ultima leitura 3001' in e_.stderr,
+      [l for l in e_.stderr.splitlines() if 'ultima leitura' in l])
+check('sem o comentario de fim, vale o --vblanks', 'limite de VBlanks' in a.stdout)
+
 # negativos de uso
 n1 = subprocess.run([EXE, '--headless', '--data', DATA, '--reproduzir', ROTEIRO, '--tempo', 'nativo', '--vblanks', '10'],
                     capture_output=True, text=True)

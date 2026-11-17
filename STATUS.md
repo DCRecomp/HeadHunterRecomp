@@ -1,6 +1,6 @@
 # STATUS — Head Hunter Recompiled
 
-Atualizado em 2026-11-01. Este arquivo é a fonte autoritativa do checkpoint.
+Atualizado em 2026-11-15. Este arquivo é a fonte autoritativa do checkpoint.
 
 ## Estado das etapas
 
@@ -21,8 +21,8 @@ Atualizado em 2026-11-01. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática em curso) |
-| HH16 | PENDENTE | `docs/planos/HH16-PLANO.md` (campanha por gravação única do mantenedor, decidida em 2026-11-14; HH16.0 começa depois da HH15.11b). Preparação de 2026-11-14 em `docs/planos/HH16-PREPARACAO.md` (seção "HH16 — preparação" abaixo): **passagem do disco 1 para o 2 contínua e LOAD de save do disco 2 corrigidos e testados no produto sem janela** (dois P0), créditos (`SCENE84` + `GameEnd`) mapeados, `--gravar`/`--reproduzir` e `ReadRecorder` compilados (unitário aprovado; portão de reprodução pendente), rascunho de `tools/dev/campanha.py` |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática com as 33 elevadas e a sonda dos back-edges feitas; fecha com a regressão integral, que espera a GPU livre: docs/planos/TESTES-FUTUROS.md G1–G3) |
+| HH16 | EM_ANDAMENTO | `docs/planos/HH16-PLANO.md` (campanha por gravação única do mantenedor, decidida em 2026-11-14). HH16.0 (gravação, estado por leitura, reprodução) e HH16.1 (monitor `tools/dev/campanha.py`) implementadas e testadas sem janela; P0 da passagem de disco e do LOAD do disco 2 corrigidos; placar dos portões na seção 9 do plano. **Falta: a sessão piloto do mantenedor (HH16.P, P3) e os testes de GPU**; depois, a gravação (HH16.2) |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
 | HH18 | PENDENTE | — (Builder com Recompiler/Developer antecipado em 2026-10-25; distribuição final pendente) |
@@ -385,10 +385,76 @@ texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiá
   da entrega: pastas vazias (a `saves_inicio` da sessão 1) não eram copiadas e a cópia não reproduzia. Três testes
   novos (a cópia sozinha verificada até os créditos, a cópia alterada consertada pelo `copiar`, a cópia dentro da
   campanha recusada): **15/15**. `docs/CAMPANHA.md` atualizado (fim do disco 1 sem troca, cópia de segurança).
+- **Gravação pronta para a sessão piloto (2026-11-15, só CPU).** Monitor: trava de instância única com identidade de
+  processo (PID + momento de criação), recuperação quando o monitor cai (sessão fechada normalmente vale inteira),
+  recusa do `HH_INPUT_SCRIPT` na campanha real, variáveis `HH_` fora do jogo e das reproduções, linha pela metade
+  tolerada nos três arquivos, `verificar --paralelo`, cobertura (áreas e filmes) por sessão, `jogar --criar` que nunca
+  continua uma campanha de teste, janela simples (`campanha.py janela`), saves em subpastas (`saves/card0/...`), prova do
+  contrato por comportamento ao criar a campanha.
+- **Dois defeitos achados pelo teste novo com o jogo de verdade** (`tests/campanha/test_campanha_real.py`, ctest
+  `hh16_campanha_real`), escondidos pelo programa falso: (1) o jogo grava os saves em `saves/card0/`, e o monitor tratava
+  a pasta como plana (os selos quebravam já na primeira sessão); (2) a reprodução parava no último hash de quadro, e a
+  sessão termina num VBlank qualquer: os estados finais faltavam e **toda sessão real sairia REPROVADA**. Correção no
+  produto: o `--reproduzir` para na leitura seguinte ao comentário `# fim da sessao, ultima leitura N` que o `--gravar`
+  já escrevia, e o executável informa a última leitura no fim (`app/hh_window.cpp`); o `hh16_reproducao` ganhou os casos
+  (parada, estados iguais até ali, sem o comentário vale o `--vblanks`). O `dist/HeadHunter-Preview.hh16-bfe3231` não
+  tem essa parada e é recusado pela prova do contrato: a campanha exige o `dist/` refeito.
+- **Terceiro defeito, achado na revisão dos contratos:** os quadros da janela saem do Vulkan, que não é idêntico bit a
+  bit ao software da reprodução (o HH13 compara por PSNR); toda sessão gravada na janela sairia REPROVADA pelos quadros.
+  Agora os quadros da janela só informam, a primeira reprodução aprovada (estado e saves iguais) fixa a referência em
+  software selada da sessão, e as seguintes têm de bater com ela. Gravar no software foi medido e descartado (53
+  VBlanks/s sem janela, abaixo de 60).
+- Teste com o jogo real: **11/11** (duas sessões REPRODUZIDA com 79 estados, quadros e saves iguais; cobertura com 8
+  áreas e 3 filmes; `reproduzir-em`; entrada trocada acusada na leitura 4560; a cópia reproduz), repetido depois de
+  todas as correções da revisão (inclusive a prova do contrato contra o executável real). `hh16_reproducao` **14/14**.
+  Programa falso: **35/35**. Suíte sem GPU (`ctest -C Release -j2 -LE gpu`, com os dados privados): **93/93**
+  (3 089 s, `tmp/cpu-only/ctest-cpu6.log`). Rótulos do ctest `gpu` e `campanha` (`ctest -LE gpu` é a rodada só na CPU).
+- Revisão Codex (`reviews/codex-hh16_p3.log`), 8 achados, todos aceitos e corrigidos com teste: (alta) a janela entre
+  abrir o jogo e gravar o PID (a recuperação procura processos com o executável fixado da campanha); (alta) sessão com o
+  monitor caído ficava interrompida para sempre mesmo fechada normalmente (o comentário de fim decide); (alta) a prova do
+  contrato só por textos no executável (agora reproduz uma gravação mínima e exige a parada); (média) as reproduções
+  herdavam as variáveis `HH_` do terminal; (média) PID reaproveitado na trava e na recuperação; (média) linha pela metade
+  em `quadros.txt`/`estado.txt`; (média) `SEM_QUADROS` não reprovava (todo veredito fora dos aprovados reprova); (média)
+  `reproduzir-em` sem trava.
+- Revisão dos planos (2026-11-15): o "passo de jogo" dos planos da HH16/HH19/etapas restantes e do `ROADMAP.md` virou a
+  leitura do controle (o HH não tem passo de jogo, HH10.6); situação e placar da HH16 (`HH16-PLANO.md` seção 9); a
+  ordem da HH19 alinhada à revisão de 2026-11-14; HH20 na comparação com o BS; matriz dos testes futuros em
+  `docs/planos/TESTES-FUTUROS.md`.
 - `config/fronteiras.toml`: os 27 rótulos `legado` → `nativo` dos slots (só os rótulos; a geração completa esvaziaria
   listas de subsistemas), `hh07_fechamento` 0 falhas.
-- Pendências: os 4 testes de GPU (a GPU segue ocupada pelo BS); a gravação de verdade na janela (sessão piloto da
-  HH16.P); a passagem real do disco pela campanha, sem o mod de teste.
+- **Gravador com tela (2026-11-15):** `tools/gravador` (alvo `HeadHunter-Gravador`, Win32 nativo, copiado para
+  `dist/HeadHunter-Gravador.exe`). "Iniciar gravação" roda `campanha.py jogar --criar`, que abre o jogo gravando; fechar o
+  jogo termina a sessão e a tela mostra o resultado e o status. "Parar gravação" manda WM_CLOSE às janelas dos processos
+  filhos do monitor (o mesmo caminho do X); a caixa "Campanha de teste" usa `jogar --criar --teste` (novo: a última
+  campanha de teste, ou cria uma; nunca a real); a tela não fecha com a gravação em andamento e não usa job object
+  (fechá-la nunca derruba o jogo). Teste `tests/campanha/test_gravador.py` (ctest `hh16_gravador`, rótulo `campanha`) com
+  o programa falso: **4/4** (cria, grava e continua; teste e real separadas; Parar fecha a janela, gancho `FAKE_JANELA`
+  com tkinter; sem Python avisa e não cria nada). Com o jogo real (campanha de teste em `tmp/gravador-real`): o Parar
+  fechou o jogo depois de 25 s, a gravação terminou com o comentário de fim (leitura 1319), sessão `gravada`, cópia com
+  14 selos conferidos e `verificar` → **TESTE REPRODUZIDO**. `hh16_campanha` 35/35 depois da mudança no `jogar`.
+- **GPU liberada (2026-11-16).** G1: `ctest -L gpu` **4/4** (`hh13_render` 902 s, `hh15_tempo` 89 s;
+  `tmp/gpu/ctest-gpu1.log`). G3 (lição L5): `elevacao` medido sozinho em 175 s (limite 3 600 s), mesmas contagens da
+  conferência (3 387 116 chamadas, 264 312 com a RAM nos back-edges, 0 divergências). Achado da G3: o passo `ctest` da
+  regressão só limpava `HH_DATA_DIR`/`HH_SNAPSHOT_DIR` e rodaria os portões da HH16 (~22 min) dentro do limite de 1 h da
+  suíte; agora limpa também `HH_DATA_DIR2`/`HH_DATA_UNICO`, e a nova etapa `portoes_hh16` (`-L campanha`, 3 600 s por
+  teste, 4 h na etapa, sem SKIP) põe a reprodução e a campanha na regressão integral.
+- G2, primeira rodada: `portoes_hh15` reprovou a RAM do tempo experimental contra `analysis/hh15/ref`. **Erro de
+  configuração meu, não regressão:** essa pasta (28/10) guarda o hash da RAM inteira, anterior à máscara das pilhas; a
+  regressão usa `analysis/hh15/ref_pilhas` (30/10), como a `regressao_11b4`. Provado por quatro medições: o `hh-run` de
+  31/10 (worktree do `be7de69` com o gerado refeito do config daquela data, `tmp/build-be7de69`) dá o mesmo hash de hoje;
+  o despejo de 30/10 (`analysis/hh15e/bis/gerado`) tem o hash mascarado de hoje (`d7756c…`) e o hash inteiro da
+  referência antiga (`df9aef…`); `HH_ELEVACAO=gerado` e o adaptador sem os slots da HH16.P1 também dão `d7756c…`; o
+  gerado de hoje difere do de 31/10 só em `HHG_FN` → `HHG_SLOT` nas chamadas dos dois slots. A docstring do
+  `regressao.py` apontava a pasta antiga; corrigida, e as variáveis da regressão listadas em `TESTES-FUTUROS.md`.
+- G2, segunda rodada: `portoes_hh09` reprovou com 10 falhas; o registro do Windows tem **uma** queda do `hh-run` às
+  22:15 (`abort()`: `0xc0000409` no `ucrtbase`, dados 7 = FAST_FAIL_FATAL_APP_EXIT; iniciado às 22:12:19, uma das 6
+  execuções paralelas do `hh09_tempo`), a única queda de `hh-run`/`HeadHunter` no registro dos últimos 20 dias. Não
+  reproduziu: o teste sozinho, com carga (junto com a HH08) e 6 rodadas seguidas (36 execuções) passaram sem queda.
+  **Em aberto, sem causa conhecida.** Diagnóstico acrescentado (os critérios não mudam): o `hh09_tempo` mostra o código e
+  o fim do stderr de cada execução quando reprova, e a regressão guarda a saída inteira de cada comando em
+  `tmp/regressao/saidas/` (antes só as últimas 12 linhas).
+- Pendências: a gravação de verdade na janela (sessão piloto da HH16.P); a passagem real do disco pela campanha, sem o
+  mod de teste.
 
 ### HH15 (2026-10-28, em andamento; parte 2 desde 2026-10-30)
 

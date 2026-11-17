@@ -23,7 +23,9 @@ Dados privados (sem eles as etapas que dependem deles falham com mensagem clara)
   HH07_BIN         1ST_READ.BIN do disco 1 (fechamento do HH07)
   HH07_SONDA       TSV da sonda do roteiro newgame_area1 (HH_HW_PROBE)
   HH15_PRODUTO_HASHES  hashes do --headless do produto no roteiro newgame_area1_nativo (etapa do Builder)
-  HH15_REF         referencias pre-corte do HH15 (tools/dev/hh15_referencias.py capturar; analysis/hh15/ref)"""
+  HH15_REF         referencias pre-corte do HH15 com a pilha das threads fora do hash (analysis/hh15/ref_pilhas,
+                   recapturada em 2026-10-30; a analysis/hh15/ref de 2026-10-28 guarda o hash da RAM inteira e reprova)
+  HH_DATA_UNICO    instalacao com os dois discos (portoes da HH16: reproducao e campanha)"""
 import hashlib
 import json
 import os
@@ -39,6 +41,8 @@ STATE = os.path.join(ROOT, 'tmp', 'regressao', 'estado.json')
 STATE_ANTIGO = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'HeadHunterRecomp', 'regressao',
                             'estado.json')
 TEMP_DIR = os.path.join(ROOT, 'tmp', 'regressao', 'temp')
+SAIDAS = os.path.join(ROOT, 'tmp', 'regressao', 'saidas', time.strftime('%Y%m%d-%H%M%S'))
+SAIDAS_N = 0
 if not os.path.exists(STATE) and os.path.exists(STATE_ANTIGO):
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     with open(STATE_ANTIGO, 'rb') as _a, open(STATE, 'wb') as _n:
@@ -140,6 +144,14 @@ def sh(cmd, env=None, timeout=3600):
                        capture_output=True, text=True, encoding='utf-8', errors='replace')
     for line in (r.stdout + r.stderr).strip().splitlines()[-12:]:
         print('    ' + line)
+    # a saida inteira de cada comando fica em tmp/regressao/saidas (G2, 2026-11-16: uma falha so com as ultimas 12
+    # linhas nao se diagnostica); um arquivo por comando, numerado na ordem
+    global SAIDAS_N
+    SAIDAS_N += 1
+    os.makedirs(SAIDAS, exist_ok=True)
+    nome = '%03d_%s.log' % (SAIDAS_N, re.sub(r'[^A-Za-z0-9_.-]+', '_', os.path.basename(cmd[0]))[:40])
+    with open(os.path.join(SAIDAS, nome), 'w', encoding='utf-8') as f:
+        f.write('> %s\nrc %d\n%s\n--- stderr ---\n%s' % (' '.join(cmd), r.returncode, r.stdout, r.stderr))
     return r
 
 
@@ -210,7 +222,10 @@ def step_build():
 
 
 def step_ctest():
-    r = sh(['ctest', '--preset', 'vs-release', '--no-tests=error'], env={'HH_SNAPSHOT_DIR': '', 'HH_DATA_DIR': ''})
+    # a suite sem dados privados: os portoes com dados tem etapas proprias, com limites medidos (licao L5: o HH_DATA_UNICO
+    # deixado aqui rodava os portoes da HH16, ~22 min, dentro do limite de 1 h da suite inteira)
+    r = sh(['ctest', '--preset', 'vs-release', '--no-tests=error'],
+           env={'HH_SNAPSHOT_DIR': '', 'HH_DATA_DIR': '', 'HH_DATA_DIR2': '', 'HH_DATA_UNICO': ''})
     if r.returncode != 0 or '100% tests passed' not in r.stdout:
         raise RuntimeError('ctest falhou')
 
@@ -340,6 +355,19 @@ def step_gates_hh15():
         raise RuntimeError('referencias pre-corte do HH15 diferentes (fora da lista fechada)')
 
 
+def step_gates_hh16():
+    # HH16.0/16.1: reproducao (determinismo, parada no fim da gravacao, estado por leitura) e o monitor de campanha com o
+    # jogo de verdade e com o programa falso, inclusive o gravador com tela. Medido em 2026-11-15 (ctest -j2 com carga):
+    # hh16_reproducao 516 s, hh16_campanha_real 794 s; limite de 3600 s por teste e 4 h na etapa.
+    need('HH_DATA_UNICO')
+    r = sh(['ctest', '--preset', 'vs-release', '-L', 'campanha', '--no-tests=error', '--output-on-failure',
+            '--timeout', '3600'], env={'HH_EXIGIR_DADOS': '1'}, timeout=14400)
+    nomes = ['hh16_campanha', 'hh16_reproducao', 'hh16_campanha_real'] + (['hh16_gravador'] if os.name == 'nt' else [])
+    passed = [n for n in nomes if any((' ' + n + ' ') in l and 'Passed' in l for l in r.stdout.splitlines())]
+    if r.returncode != 0 or 'Skipped' in r.stdout or len(passed) != len(nomes):
+        raise RuntimeError('portoes da HH16 falharam, foram ignorados ou nao rodaram')
+
+
 def step_area1():
     if area1_hashes(EXE('app', 'Release', 'hh-run.exe'), need('HH_DATA_DIR')) != reference():
         raise RuntimeError('hashes do roteiro newgame_area1 diferentes da referencia')
@@ -413,6 +441,7 @@ STEPS = [('build', step_build, []), ('ctest', step_ctest, []),
          ('portoes_hh14', step_gates_hh14, ['HH_DATA_DIR', 'HH14_STREAMS', 'HH14_REVERB', 'HH14_STREAMS2', 'HH14_REVERB2',
                                             'HH14_ORACULO']),
          ('portoes_hh15', step_gates_hh15, ['HH_DATA_DIR', 'HH15_REF']),
+         ('portoes_hh16', step_gates_hh16, ['HH_DATA_UNICO']),
          ('roteiro_area1', step_area1, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('elevacao', step_elevacao, ['HH_DATA_DIR', 'HH_AREA1_HASHES']),
          ('builder', step_builder, ['HH_DISC1', 'HH_DISC2', 'HH15_PRODUTO_HASHES'])]

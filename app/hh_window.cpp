@@ -70,6 +70,8 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -426,6 +428,23 @@ int main(int argc, char** argv) {
     std::unique_ptr<ni::InputSystem> input;
     const char*                      script = std::getenv("HH_INPUT_SCRIPT");
     if (!replayPath.empty()) script = replayPath.c_str();  // HH16.0: a reproducao e um roteiro por leitura
+    // HH16.1: a gravacao fechada termina com "# fim da sessao, ultima leitura N"; a reproducao para na leitura seguinte,
+    // no mesmo ponto da gravacao (a sessao acaba num VBlank qualquer, fora da grade dos hashes). Sem o comentario (a
+    // sessao caiu), vale o --vblanks.
+    std::optional<uint64_t> replayEnd;
+    if (!replayPath.empty()) {
+        static const std::string kFim = "# fim da sessao, ultima leitura ";
+        std::istringstream       in(readFile(replayPath.c_str()));
+        for (std::string l; std::getline(in, l);)
+            if (l.rfind(kFim, 0) == 0) {
+                char*          endp = nullptr;
+                const uint64_t n    = std::strtoull(l.c_str() + kFim.size(), &endp, 10);
+                if (endp != l.c_str() + kFim.size()) replayEnd = n;  // "ultima leitura 18446744073709551615" = nenhuma
+            }
+    }
+    std::atomic<bool>     stop{false};
+    std::atomic<bool>     replayDone{false};
+    std::atomic<uint64_t> lastSample{UINT64_MAX};  // ultima leitura do controle (informada no fim, controles nativos)
     struct Recording {  // HH16.0: o arquivo da gravacao, fechado com o comentario de fim
         std::FILE*                                                    f = nullptr;
         std::unique_ptr<hh::transitional::input_bridge::ReadRecorder> rec;
@@ -505,8 +524,12 @@ int main(int argc, char** argv) {
             }
             // o estado e tirado no mesmo ponto na gravacao e na reproducao: uma vez por latch (revisao Codex HH16.P2;
             // a fonte de teste tambem e chamada pela sondagem de presenca, que o observador nao ve)
-            if (stateLog.f)
-                input->set_latch_observer([sl = &stateLog](const ni::SampleContext& ctx) { sl->at(ctx.sample); });
+            input->set_latch_observer(
+                [sl = &stateLog, end = replayEnd, &stop, &replayDone, &lastSample](const ni::SampleContext& ctx) {
+                    lastSample = ctx.sample;
+                    sl->at(ctx.sample);
+                    if (end && ctx.sample > *end && !replayDone.exchange(true)) stop = true;  // fim da gravacao
+                });
         } catch (const std::exception& e) {
             std::printf("PARADA: %s\n", e.what());
             return 1;
@@ -524,7 +547,6 @@ int main(int argc, char** argv) {
     }
 
     Shared            shared;
-    std::atomic<bool> stop{false};
     std::string       presentError;  // falha de apresentacao (thread da janela)
     opt.stop    = &stop;
     opt.onFrame = [&](const hh::HostFrame& f) {
@@ -618,13 +640,20 @@ int main(int argc, char** argv) {
         presentError = "falha ao gravar a entrada em " + recordPath + " (gravacao incompleta)";
     if (!stateLog.close() && presentError.empty()) presentError = "falha ao gravar o estado em " + statePath;
 
+    if (lastSample != UINT64_MAX)
+        std::fprintf(stderr, "[entrada] ultima leitura %llu\n", (unsigned long long)lastSample.load());
     if (!presentError.empty()) {
         std::printf("PARADA: %s\n", presentError.c_str());
         return 1;
     }
     switch (result.end) {
     case hh::HostEnd::Limit: std::printf("ok: limite de VBlanks atingido (%llu)\n", (unsigned long long)result.vblanks); return 0;
-    case hh::HostEnd::Stopped: std::printf("janela fechada no VBlank %llu\n", (unsigned long long)result.vblanks); return 0;
+    case hh::HostEnd::Stopped:
+        if (replayDone)
+            std::printf("fim da gravacao reproduzido: leitura %llu, VBlank %llu\n", (unsigned long long)*replayEnd,
+                        (unsigned long long)result.vblanks);
+        else std::printf("janela fechada no VBlank %llu\n", (unsigned long long)result.vblanks);
+        return 0;
     case hh::HostEnd::GameExit: std::printf("o jogo pediu para sair (codigo %08X)\n", result.exitCode); return 3;
     default: std::printf("PARADA: %s\n", result.error.c_str()); return 1;
     }

@@ -1,8 +1,13 @@
 # HH16 — Campanha completa por gravação única: plano
 
-**Situação (2026-11-14):** planejamento; nada implementado. **Decisão do mantenedor (2026-11-14):** "Vou gravar a campanha
-inteira para testar o jogo completo. Para não precisar zerar mais de uma vez." Com isso, D-P1 = A e D-P2 = sim
-(`docs/planos/PLANO-ETAPAS-RESTANTES.md`, seção 9).
+**Situação (revista em 2026-11-15):** HH16.0 e HH16.1 implementadas e testadas sem janela (commit `bfe3231` e
+seguintes); a HH16.P espera só a sessão piloto do mantenedor e os testes de GPU. Placar por portão na seção 9.
+**Decisão do mantenedor (2026-11-14):** "Vou gravar a campanha inteira para testar o jogo completo. Para não precisar
+zerar mais de uma vez." Com isso, D-P1 = A e D-P2 = sim (`docs/planos/PLANO-ETAPAS-RESTANTES.md`, seção 9).
+
+**Passo = leitura do controle.** O HH não tem passo de jogo como o BS (não há espera própria do VBlank,
+`kVblankWaitPc = 0`, HH09/HH10.6). Neste plano, "passo" é a n-ésima leitura do controle do jogo, o índice dos roteiros e
+da gravação; "passo lógico" de um fim de filme ou fala é a leitura (e o VBlank) em que o jogo o observa.
 
 Modelo: gate de campanha do Blue Stinger (`docs/CAMPANHA.md`, `docs/N9-PLANO.md` 14, `tools/dev/campanha.py`,
 `tools/dev/gravacoes.py`, MIT, somente leitura).
@@ -29,16 +34,16 @@ gravação está errado, não a gravação.
 | Saves nativos com cartão temporário no headless (HH11, HH15.5) | existe |
 | Referências da HH15 (quadros, ordem, relógios, RAM sem pilhas, áudio) | existem para a rota da área 1 |
 | Perfil de funções executadas (`HH_FN_PERFIL`) | existe |
-| Gravação da entrada efetiva durante o jogo | **falta** |
-| Estado lógico por passo e reprodução que o confere | **falta** |
-| Monitor de campanha (sessões, selos, vereditos, recuperação de queda) | **falta** |
-| Passagem do disco 1 ao 2 dentro do jogo, na instalação única (HH08) | troca pela variável coberta por unitário; **passagem real nunca exercitada** |
-| Identificação dos filmes dos créditos | **levantada** (2026-11-14): `SCENE84` seguido de `GameEnd` no script `S92_MOVIE` (`docs/planos/HH16-PREPARACAO.md`) |
-| Carregar um save do disco 2 pelo título | **risco P0** (2026-11-14): o menu de carregar recusa save de outro disco, e no boot o disco atual é 1 (`HH16-PREPARACAO.md` seção 1) |
+| Gravação da entrada efetiva durante o jogo | **feita** (2026-11-14): `HeadHunter --gravar` (`ReadRecorder`, só na janela, flush por linha, nunca sobrescreve) |
+| Estado lógico por leitura e reprodução que o confere | **feito**: `--estado`/`--estado-cada` (FNV-1a de `0x8C147B20`–`0x8C32EF60` a cada K leituras); `--reproduzir`; `tests/diff/hh16_reproducao.py` 10/10 |
+| Monitor de campanha (sessões, selos, vereditos, recuperação de queda) | **feito** (2026-11-15): `tools/dev/campanha.py`; `tests/campanha` com programa falso 24/24 e com o jogo de verdade (`hh16_campanha_real`) |
+| Passagem do disco 1 ao 2 dentro do jogo, na instalação única (HH08) | **corrigida** (2026-11-14): o fim do disco 1 seguia para "INSERT DISC 2"; slot do save `0x8C09C34C` continua no disco 2; provada com a área final posta no lugar da primeira (mod local); **o caminho real só a campanha prova** |
+| Identificação dos filmes dos créditos | **feita**: `SCENE84` (fim natural) seguido de `AHFDATA/GAMEEND.AHF` (comando 229 "GameEnd"), medidos no produto |
+| Carregar um save do disco 2 pelo título | **corrigido** (2026-11-14): slot do getter do disco `0x8C09EC68` no menu de LOAD (`HH16-PREPARACAO.md` 7.1) |
 
 ## 3. Subetapas
 
-### HH16.0 — Gravação, estado por passo e reprodução
+### HH16.0 — Gravação, estado por leitura e reprodução
 
 - **Gravação no produto:** opção explícita de linha de comando (não variável de teste), escrita pelo monitor: grava a
   entrada efetiva por leitura do controle (depois do mapa de teclado e gamepad, dos menus do host e de qualquer recurso
@@ -49,8 +54,8 @@ gravação está errado, não a gravação.
   mutações e sondas continuam recusadas.
 - **Relógio:** a data inicial do RTC de cada sessão é gravada e reaplicada; a data do envelope dos saves fica fora da
   comparação (é a hora real).
-- **Estado por passo, em duas camadas** (seção 4.2): observável (permanente) e RAM do jogo sem as pilhas (enquanto houver
-  RAM guest).
+- **Estado por leitura do controle, em duas camadas** (seção 4.2): observável (permanente) e RAM do jogo sem as pilhas
+  (enquanto houver RAM guest).
 - **Portões:** gravar na janela (Vulkan, XAudio2, gamepad real ou virtual do SDL) e reproduzir headless (software) com
   o estado idêntico em todos os passos; 3/3 reproduções iguais; ruído de ciclos e carga da CPU sem efeito; divergência
   injetada (um botão, um byte de save, um passo) acusada no passo certo; negativos para gravação truncada.
@@ -139,6 +144,12 @@ final (HH18). Exceções só listadas, medidas e aprovadas pelo mantenedor.
   requisito da HH15.F (não é opcional) e tem teste próprio contra a última versão com RAM guest.
 - O programa fixado fica copiado na campanha: qualquer observável novo pode ser gerado depois reproduzindo com ele, sem
   jogar de novo.
+- **Quadros: cada renderizador comparado consigo mesmo (2026-11-15).** A janela grava no Vulkan, e o Vulkan não é
+  idêntico bit a bit ao software (o HH13 os compara por PSNR, `transitional/render_capture.cpp`). Os quadros gravados na
+  janela só informam (`quadro_da_janela_diferente`); a primeira reprodução aprovada (estado por leitura e saves iguais à
+  gravação, fim alcançado) fixa a referência em software da sessão (`quadros_referencia.txt`, selada), e toda verificação e
+  `reproduzir-em` seguintes têm de ser iguais a ela. Gravar no software foi medido e descartado: 53 VBlanks/s sem
+  janela nesta máquina (com a CPU dividida), abaixo dos 60 do jogo.
 
 ## 5. Efeitos nas outras etapas
 
@@ -164,7 +175,8 @@ antes.
 ## 7. Dados privados
 
 A campanha contém saves, o executável derivado do disco e dados do jogo: nunca versionada nem publicada. Fica numa pasta
-ignorada do workspace (`campanhas/`, a acrescentar ao `.gitignore` e às verificações de `git check-ignore` da regressão), mais a cópia de segurança do P5.
+ignorada do workspace (`campanhas/`, no `.gitignore` desde 2026-11-14), mais a cópia de segurança do P5
+(`campanhas/_copias` ou a pasta escolhida, de preferência em outro disco).
 Nenhum script do projeto apaga ou reescreve uma campanha; limpeza só manual, pelo mantenedor.
 
 ## 8. Recomendações ao mantenedor para a gravação (versão final no guia da HH16.P)
@@ -174,3 +186,49 @@ Nenhum script do projeto apaga ou reescreve uma campanha; limpeza só manual, pe
 - Usar F5 nos momentos marcantes (chefes, áreas novas): ajudam a localizar defeitos e a cobertura.
 - Explorar como num jogo normal: menus, opções, armas e áreas opcionais aumentam a cobertura que a elevação usa.
 - Pular filmes com START é permitido; deixar o filme dos créditos terminar.
+
+## 9. Placar dos portões (2026-11-15)
+
+### HH16.0
+
+| Portão | Situação | Evidência |
+|---|---|---|
+| Gravar na janela e reproduzir sem janela com o estado idêntico | **pendente** (sessão piloto, P3) | o `--gravar` exige a janela |
+| 3/3 reproduções iguais | aprovado | `hh16_reproducao`: duas reproduções e o mesmo roteiro por `HH_INPUT_SCRIPT`, quadros e estados idênticos |
+| Ruído de ciclos e carga da CPU sem efeito | parcial | `hh16_campanha_real` reproduz duas sessões ao mesmo tempo (`--paralelo 2`); a medida com a máquina carregada é a P4a |
+| Divergência injetada (botão) acusada na leitura certa | aprovado | analógico trocado na leitura 4500: primeiro estado diferente na 4560 (`hh16_reproducao` e `hh16_campanha_real`) |
+| Divergência injetada (byte de save, leitura a menos) | parcial | save de início trocado acusado pela cadeia (programa falso); com o jogo real, pendente |
+| Gravação truncada | aprovado | linha pela metade na queda: a reprodução usa a gravação até a última linha inteira (programa falso); o roteiro do produto recusa a linha incompleta |
+| Quadros da janela (Vulkan) × reprodução (software) | aprovado | não são idênticos bit a bit: a janela informa e a referência em software, fixada na primeira reprodução aprovada, vincula (seção 4.2); programa falso com o "Vulkan" diferente e o negativo da referência |
+| Fim da sessão fora da grade dos hashes | aprovado | achado no `hh16_campanha_real` (toda sessão saía REPROVADA): o `--reproduzir` para na leitura seguinte ao comentário de fim; `hh16_reproducao` e o programa falso cobrem |
+
+### HH16.1 (C1–C10 do BS)
+
+| Caso | Programa falso | Jogo de verdade (`hh16_campanha_real`) |
+|---|---|---|
+| Nova campanha, programa fixado, selos | sim | sim |
+| Continuidade com SAVE/LOAD reais | sim | **pendente** (o roteiro do NEW GAME desliga o save; vai na P3) |
+| Repetição (reproduzir duas vezes) | sim | sim (`verificar` e `reproduzir-em`) |
+| Corrupção / arquivo alterado / cadeia quebrada | sim | — (lógica do monitor) |
+| Divergência | sim | sim |
+| Queda do jogo | sim (inclusive a linha pela metade) | — |
+| Queda do monitor | sim (recuperada depois que o jogo fecha) | — |
+| Segunda instância | recusada | — |
+| Créditos | sim (SCENE84 + `GAMEEND.AHF`) | sinais medidos no produto com o mod local (seção 2 do `HH16-PREPARACAO.md`) |
+| `reproduzir-em` outro programa | sim | sim |
+| Roteiro de teste recusado na campanha real | sim; variáveis `HH_` não chegam ao jogo | — |
+| Programa sem o contrato da gravação | recusado na criação | — |
+| Gravador com tela (`HeadHunter-Gravador`, ctest `hh16_gravador`) | sim (iniciar, continuar, teste × real, Parar, sem Python) | sim, na janela: o Parar fechou o jogo, sessão `gravada` e `TESTE REPRODUZIDO` (2026-11-15) |
+
+Ainda fora: checkpoints por tecla (F5 do BS) e a cobertura de funções por sessão (HH16.3, `TESTES-FUTUROS.md` seção 5).
+
+### HH16.P
+
+| # | Situação |
+|---|---|
+| P1 passagem do disco | aprovada no produto pelo mod local da área final; o caminho real é a própria campanha |
+| P2 créditos | aprovada |
+| P3 sessão piloto | **pendente: mantenedor** |
+| P4 longa duração na janela | **pendente: GPU livre** |
+| P5 cópia de segurança | aprovada (`campanhas/_copias` ou `--copia`) |
+| P6 pacote de gravação | aprovado: `dist/HeadHunter-Preview` refeito em 2026-11-15 (`v0.11.0-4-gbfe3231-dirty`) passa na prova do contrato; o `hh16-bfe3231` é recusado. Antes da campanha real, refazer depois do commit, para o programa fixado ter versão limpa |

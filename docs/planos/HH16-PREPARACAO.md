@@ -1,5 +1,9 @@
 # HH16: preparação feita sem carga na máquina (2026-11-14)
 
+> Registro histórico da preparação, na ordem em que foi feita. As seções 3 e 4 descrevem o primeiro rascunho ("não
+> compilado"); depois disso tudo foi compilado e testado. O estado atual dos portões fica em `docs/planos/HH16-PLANO.md`
+> seção 9, e os testes pendentes em `docs/planos/TESTES-FUTUROS.md`.
+
 Trabalho leve feito enquanto a bateria final do N9.8 do Blue Stinger rodava (janelas e medidas de desempenho; o plano
 dela pede nada pesado junto). Só leitura de arquivos, scripts Python pequenos com `seek()/read()` sobre o executável e os
 AHF, e edição de código **sem compilar**. Nada foi compilado, testado em execução ou rodado contra o jogo.
