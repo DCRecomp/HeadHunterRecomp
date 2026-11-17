@@ -225,6 +225,18 @@ de instalar. O contrato fica nesta etapa; a API geral de mods e o editor ficam n
 9. Legendas no gameplay, depois textos, depois dublagem (5.6, frentes 2 a 6).
 10. Fechamento V2: integração, comparação com as referências com o menu fechado, revisão do Codex (regra do `AGENTS.md`).
 
+**RecompLauncher (padrões de `docs/DEVELOPERS.md` do RecompLauncher, conferidos em 2026-11-16; o perfil de instalação já
+existe em `tools/dist/recomplauncher.json`, HH18).** O que depende do jogo e entra junto com este menu:
+- as opções de gráficos num arquivo TOML (o launcher edita TOML linha a linha, preservando comentários), descritas em
+  `config` e `settings` do perfil para aparecerem na página do jogo e no Big Picture; os padrões no primeiro início, nunca
+  num arquivo dentro do pacote (a atualização descompacta por cima);
+- `RECOMPLAUNCHER_MODE=bigpicture`: abrir em tela cheia (o modo de tela desta seção); `desktop`: em janela;
+- `RECOMPLAUNCHER_PAD` (`xbox` ou `playstation`): os glifos dos botões no menu desde o primeiro quadro;
+- o jogo inteiro jogável no controle, inclusive o menu e o "sair" (hoje o ESC fecha o jogo na hora, só no teclado);
+- um `.log` numa pasta `logs` (ou ao lado do executável), que o launcher anexa ao relatório de queda; acrescentar
+  `folders.logs` ao perfil;
+- `portable.txt` ao lado do executável equivalente ao modo portátil de hoje (`instalacao.toml`).
+
 Critério de saída deste item: cada opção oferecida tem efeito comprovado e sobrevive ao reinício; arquivo inválido volta ao
 padrão com aviso; com padrões, roteiros e hashes ficam iguais às referências. Um pacote de exemplo só de legendas e outro
 com dublagem funcionam sem recompilar, e pacote inválido é recusado com o motivo, sem impedir o jogo de abrir.

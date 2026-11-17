@@ -7,6 +7,8 @@
 //              [--name <subpasta>]   (padrao HeadHunter; o jogo instalado nao precisa dos CDIs)
 //              [--projeto <pasta>]   exporta tambem o projeto C++ editavel (project_export.h)
 //              [--portatil | --documentos]  local dos saves gravado em instalacao.toml
+//              [--progresso-launcher]  progresso como "progress <0..1> <passo>" (etapa prepare do RecompLauncher,
+//                                       tools/dist/recomplauncher.json), no lugar de "[progresso] N% <passo>"
 //   hh-builder --de-projeto <pasta> --out <pasta> [--disc <cdi> --disc2 <cdi>]   compila um projeto editado
 //   hh-builder --disc <cdi> --disc2 <cdi> --out <recursos> --projeto <pasta> --somente-exportar
 //              so exporta (sem compilador, compilacao nem instalacao); [--tipo Release|Debug] no build
@@ -85,6 +87,7 @@ int main() {
     defaultKit(req);
     std::filesystem::path moviesOnly;  // --filmes <data>: so converte os filmes de uma pasta data\ ja preparada
     std::filesystem::path audioIn, audioOut;  // --audio-mod <entrada.wav> <saida.ADP> (HH14)
+    bool launcherProgress = false;  // --progresso-launcher: o formato que o RecompLauncher le na etapa prepare
     for (size_t i = 1; i < args.size(); ++i) {
         const std::wstring& a    = args[i];
         const bool          more = i + 1 < args.size();
@@ -92,6 +95,7 @@ int main() {
         else if (a == L"--disc2" && more) req.disc2 = args[++i];
         else if (a == L"--portatil") req.portableSaves = true;
         else if (a == L"--documentos") req.portableSaves = false;
+        else if (a == L"--progresso-launcher") launcherProgress = true;
         else if (a == L"--out" && more) req.outDir = args[++i];
         else if (a == L"--kit" && more) req.kitDir = args[++i];
         else if (a == L"--sdl3" && more) req.sdl3Dir = args[++i];
@@ -114,6 +118,7 @@ int main() {
                          "                [--vcvars <vcvars64.bat> | --vswhere <vswhere.exe>] [--clean] [--name <subpasta>]\n"
                          "                [--ffmpeg <ffmpeg.exe>]  decodificador dos filmes 4X (padrao: ffmpeg no PATH)\n"
                          "                [--projeto <pasta>]      exporta o projeto C++ editavel\n"
+                         "                [--progresso-launcher]   progresso como \"progress <0..1> <passo>\" (RecompLauncher)\n"
                          "                [--portatil | --documentos]  local dos saves (instalacao.toml)\n"
                          "  hh-builder --de-projeto <pasta> --out <pasta> [--disc <cdi> --disc2 <cdi>]   compila o projeto (mods)\n"
                          "                [--verify-vblanks N] [--tipo Release|Debug]\n"
@@ -178,7 +183,13 @@ int main() {
     cb.progress = [&](Step s, double f, const std::string&) {
         const int pct = int(f * 100);
         if (pct != lastPct || s != lastStep) {
-            out("[progresso] " + std::to_string(pct) + "% " + step_name(s) + "\n");
+            if (launcherProgress) {  // docs/DEVELOPERS.md do RecompLauncher: "progress 0.4 Unpacking menu art"
+                char f2[16];
+                std::snprintf(f2, sizeof f2, "%.2f", double(pct) / 100.0);
+                out(std::string("progress ") + f2 + " " + step_name(s) + "\n");
+            } else {
+                out("[progresso] " + std::to_string(pct) + "% " + step_name(s) + "\n");
+            }
             lastPct = pct, lastStep = s;
         }
     };

@@ -3,7 +3,10 @@
 # (linha de comando), runtime do MSVC, licencas, instrucoes e o kit de fontes (kKitEntries de
 # builder/project_export.cpp + SDL3 + toml++) que o Builder compila na maquina do usuario.
 #
-#   powershell -ExecutionPolicy Bypass -File tools/dist/make_builder.ps1 [-Out <pasta>] [-NoBuild] [-IconeLocal]
+#   powershell -ExecutionPolicy Bypass -File tools/dist/make_builder.ps1 [-Out <pasta>] [-NoBuild] [-IconeLocal] [-Zip]
+#
+# -Zip: tambem o pacote da release, HeadHunter-Builder-v<versao>-Windows-x64.zip ao lado da pasta (nome no padrao do
+# RecompLauncher), com o recomplauncher.json no topo.
 #
 # Compila numa pasta propria (build\dist-builder) com HH_BUILDER_DEV_KIT=OFF: os executaveis nao levam caminhos desta
 # maquina. A distribuicao NAO contem nada do jogo (nem codigo gerado, nem executavel do jogo, nem dados do disco); a
@@ -15,7 +18,8 @@
 param(
     [string]$Out = "",
     [switch]$NoBuild,
-    [switch]$IconeLocal
+    [switch]$IconeLocal,
+    [switch]$Zip
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
@@ -103,6 +107,12 @@ Copy-Item -LiteralPath (Join-Path $toml "LICENSE") -Destination "$stage\licencas
 Copy-Item -LiteralPath (Join-Path $repo "third_party\vulkan\LICENSE.md") -Destination "$stage\licencas\Vulkan-Headers-LICENSE.md"
 Copy-Item -LiteralPath (Join-Path $repo "third_party\vulkan\Apache-2.0.txt") -Destination "$stage\licencas\Vulkan-Headers-Apache-2.0.txt"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "LEIA-ME-BUILDER.txt") -Destination "$stage\LEIA-ME.txt"
+# RecompLauncher (docs/DEVELOPERS.md do RecompLauncher): recomplauncher.json no topo, ao lado dos programas. A versao do
+# produto entra em prepare.version: cada Builder novo recompila o jogo (o runtime vai compilado dentro do HeadHunter.exe)
+$perfil = (Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $PSScriptRoot "recomplauncher.json")).Replace("@VERSAO@", $product)
+try { $null = $perfil | ConvertFrom-Json } catch { Fail "recomplauncher.json invalido: $($_.Exception.Message)" }
+if ($perfil -match '@[A-Z]+@') { Fail "recomplauncher.json com marcador nao substituido: $($Matches[0])" }
+[IO.File]::WriteAllText("$stage\recomplauncher.json", $perfil, (New-Object Text.UTF8Encoding $false))
 
 # dependencias dos executaveis
 foreach ($exe in $exes) {
@@ -197,5 +207,15 @@ try {
 }
 foreach ($d in @($backup, $old)) {
     if (Test-Path -LiteralPath $d) { try { Remove-Item -Recurse -Force -LiteralPath $d } catch { Write-Host "aviso: nao foi possivel apagar $d" } }
+}
+if ($Zip) {
+    # nome do pacote no padrao do RecompLauncher: sistema e processador no nome ("MyRecomp-v1.2.0-Windows-x64.zip"); o
+    # conteudo da pasta no topo do zip, com o recomplauncher.json ao lado dos programas
+    if ($IconeLocal) { Fail "-Zip com -IconeLocal: o pacote e para publicar e nao pode levar a arte do jogo" }
+    $zipPath = Join-Path (Split-Path $Out) "HeadHunter-Builder-v$product-Windows-x64.zip"
+    if (Test-Path -LiteralPath $zipPath) { Remove-Item -Force -LiteralPath $zipPath }
+    Compress-Archive -Path (Join-Path $Out "*") -DestinationPath $zipPath -CompressionLevel Optimal
+    $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLower()
+    Write-Host "OK: $zipPath (SHA-256 $sha)"
 }
 Write-Host "OK: $Out ($product, $version)"

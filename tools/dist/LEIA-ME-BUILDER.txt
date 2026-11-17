@@ -16,6 +16,8 @@ HeadHunter-Recompiler.exe   escolha os dois discos e a pasta: extrai e confere o
 HeadHunter-Developer.exe    exporta o projeto C++ editavel (sem compilador), compila um projeto exportado
                             (mods em C++) e inspeciona os recursos dos discos, com o log tecnico.
 hh-builder.exe              a mesma coisa pela linha de comando (hh-builder sem argumentos mostra o uso).
+recomplauncher.json         perfil do RecompLauncher: o launcher pede os dois discos, roda o hh-builder sem janela e
+                            abre o HeadHunter.exe instalado (os saves ficam em Documentos\DC-Recomp\Head Hunter\saves).
 
 A pasta kit contem as fontes do recompilador e do runtime (MIT), do SDL3 (zlib) e do toml++ (MIT) que o
 Builder compila. O jogo gerado contem codigo e dados derivados da sua copia: use-o so no seu computador e

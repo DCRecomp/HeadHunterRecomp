@@ -453,6 +453,24 @@ texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiá
   **Em aberto, sem causa conhecida.** Diagnóstico acrescentado (os critérios não mudam): o `hh09_tempo` mostra o código e
   o fim do stderr de cada execução quando reprova, e a regressão guarda a saída inteira de cada comando em
   `tmp/regressao/saidas/` (antes só as últimas 12 linhas).
+- **G2 aprovada (2026-11-17): regressão integral 16/16** (terceira rodada, `tmp/regressao/g2-hh16c.log`, com a saída
+  de cada comando em `tmp/regressao/saidas/`): build 10 s, ctest 144 s, HH05–HH16 (HH13 2 023 s, HH15 406 s com a
+  `ref_pilhas`, HH16 1 161 s), roteiro da área 1 143 s, elevação 159 s, Builder 542 s. A queda da segunda rodada não
+  voltou (o `hh09_tempo` passou em 191 s).
+- **RecompLauncher (2026-11-16/17).** Padrões conferidos em `docs/DEVELOPERS.md` e `SETUP-INPUTS.md` do
+  `elripalda/RecompLauncher` e no esquema `recomplauncher.com/schema/recomplauncher.json` (a página `recompstore.com/how`
+  é o guia do jogador). Feito: `tools/dist/recomplauncher.json` (os dois CDIs como inputs `disc`; `prepare` = `hh-builder`
+  com `--documentos --progresso-launcher`, 2 h de limite, `done` = o executável e o manifesto dos dados, `version` = a
+  versão do produto; `start` no `HeadHunter/HeadHunter.exe`; `saves`; `exit_codes` 0 e 3 = saída normal), validado sem
+  erros pelo esquema oficial (e o validador reprova três perfis errados de propósito). `hh-builder --progresso-launcher`
+  imprime `progress <0..1> <passo>`. `make_builder.ps1` põe o perfil no topo com a versão e, com `-Zip`, gera
+  `HeadHunter-Builder-v<versão>-Windows-x64.zip`. Teste `hh18_recomplauncher` **8/8** (com o esquema). De ponta a ponta,
+  como a loja faria: o zip descompactado, a etapa `prepare` com os argumentos do perfil, os dois CDIs reais (nomes com
+  espaço) e sem console terminou com código 0 em 430 s, 79 linhas de progresso, os dois arquivos de `done` presentes; o
+  `HeadHunter.exe` instalado abriu da raiz da instalação (`--headless`, 600 VBlanks, código 0) com os saves em Documentos.
+  Não testado: o próprio launcher (Developer tools, "Add a build"). Pendente do mantenedor: inscrição no catálogo (com o
+  requisito de Build Tools), release completa (pré-lançamento vira beta). O que depende do jogo está na seção 5.7 do
+  `HH19-PLANO.md`.
 - Pendências: a gravação de verdade na janela (sessão piloto da HH16.P); a passagem real do disco pela campanha, sem o
   mod de teste.
 

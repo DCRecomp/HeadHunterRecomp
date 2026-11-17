@@ -139,6 +139,16 @@ O `docs/planos/HH19-PLANO.md` continua valendo; acrescentar ao iniciar (sem ante
 - **HH18**: Recompiler/Developer finais nas duas plataformas; inventário de licenças no modelo `N9-L-LICENCAS.md` (FFmpeg
   externo, codecs, fontes, SDL3, Vulkan, compilador portátil); SBOM; varredura do histórico e dos pacotes (L17); teste em
   Windows limpo e Linux limpo; aceite do mantenedor.
+- **RecompLauncher / RecompStore** (padrões conferidos em 2026-11-16, `docs/DEVELOPERS.md` e `SETUP-INPUTS.md` do
+  RecompLauncher): feito o perfil `tools/dist/recomplauncher.json` (os dois CDIs como inputs `disc`, o `hh-builder` como
+  etapa `prepare` com `--progresso-launcher`, `start` no `HeadHunter.exe` instalado, `saves`, `exit_codes`), copiado
+  para o topo do Builder pelo `make_builder.ps1`, e o pacote `HeadHunter-Builder-v<versão>-Windows-x64.zip` (`-Zip`);
+  teste `hh18_recomplauncher`. Falta, do lado da publicação (decisões do mantenedor): inscrever o jogo no catálogo
+  (Submit a Game, com o repositório) e pedir lá o requisito `needs: build_tools` (o Builder compila com o Visual Studio;
+  o perfil não tem esse campo); publicar uma release completa (pré-lançamento vira beta no launcher); conferir no
+  Developer tools do launcher ("Add a build") com os discos de verdade. No Linux (HH20): `.tar.gz` ou AppImage com o
+  perfil dentro. O que depende do jogo (tela cheia no Big Picture, glifos, configurações, log) está na seção 5.7 do
+  `HH19-PLANO.md`.
 
 ## 8. Ordem proposta
 

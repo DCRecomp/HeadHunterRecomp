@@ -1,0 +1,39 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Head Hunter Recompiled",
+  "repo": "DCRecomp/HeadHunterRecomp",
+  "inputs": [
+    {
+      "id": "disc1",
+      "label": "Your Head Hunter Disc 1 (.cdi), MK-5104150 V1.006",
+      "role": "disc",
+      "formats": [{ "type": "file", "extensions": ["cdi"] }]
+    },
+    {
+      "id": "disc2",
+      "label": "Your Head Hunter Disc 2 (.cdi), MK-5104150 V1.006",
+      "role": "disc",
+      "formats": [{ "type": "file", "extensions": ["cdi"] }]
+    }
+  ],
+  "prepare": {
+    "program": ["hh-builder.exe"],
+    "args": ["--disc", "{input:disc1}", "--disc2", "{input:disc2}", "--out", "{install}", "--name", "HeadHunter",
+             "--documentos", "--progresso-launcher"],
+    "label": "Recompiling Head Hunter from your discs (needs Visual Studio Build Tools with C++)",
+    "timeout": 7200,
+    "done": ["{install}/HeadHunter/HeadHunter.exe", "{install}/HeadHunter/data/arquivos.manifest"],
+    "version": "@VERSAO@"
+  },
+  "start": {
+    "program": ["HeadHunter/HeadHunter.exe"]
+  },
+  "saves": ["{documents}/DC-Recomp/Head Hunter/saves"],
+  "exit_codes": {
+    "0": "ok",
+    "3": "ok",
+    "1": "Head Hunter stopped with an error. If its data was damaged or removed, use Set Up Again to rebuild it from your discs.",
+    "2": "Head Hunter was started with options it doesn't accept."
+  }
+}

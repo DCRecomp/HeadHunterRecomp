@@ -27,7 +27,7 @@ Rótulos do ctest (desde 2026-11-15): `gpu` = `hh13_render_tests`, `hh13_capture
 | # | Teste | Por quê | Fecha |
 |---|---|---|---|
 | G1 | `ctest -L gpu` (os 4) | **aprovado em 2026-11-16: 4/4** (`hh13_render` 902 s, `hh15_tempo` 89 s; `tmp/gpu/ctest-gpu1.log`) | HH15.11b, HH16.0 |
-| G2 | `tools/dev/regressao.py` inteira | em andamento (2026-11-16): a 1ª rodada reprovou só pela referência errada da HH15 (`ref` em vez de `ref_pilhas`, erro de configuração); a 2ª, por uma queda única e não reproduzida do `hh-run` no `hh09_tempo` (STATUS); a 3ª roda com a saída inteira de cada comando em `tmp/regressao/saidas/` | HH15.11b |
+| G2 | `tools/dev/regressao.py` inteira | **aprovada em 2026-11-17: 16/16 etapas** (3ª rodada, `tmp/regressao/g2-hh16c.log`; `portoes_hh13` 2 023 s, `portoes_hh16` 1 161 s, `builder` 542 s). A 1ª rodada reprovou só pela referência errada da HH15 (`ref` em vez de `ref_pilhas`); a 2ª, por uma queda única e não reproduzida do `hh-run` no `hh09_tempo` (STATUS) | HH15.11b |
 | G3 | conferir duração medida × limite de cada passo da regressão (lição L5) | **feito em 2026-11-16:** `elevacao` 175 s (limite 3 600 s); achado: o passo `ctest` rodaria os portões da HH16 (~22 min) dentro do limite de 1 h da suíte se o `HH_DATA_UNICO` estivesse definido. Agora a suíte roda sem os dados e há a etapa `portoes_hh16` (3 600 s por teste, 4 h na etapa) | antes da G2 |
 
 ## 3. HH16.P: prontidão da gravação (portões em `docs/planos/HH16-PLANO.md` seção 9)
@@ -84,3 +84,9 @@ muda hash nenhum.
 
 Instalação limpa em Windows (e Linux); campanha reproduzida pelo pacote final; varredura do histórico e dos pacotes;
 inventário de licenças.
+
+RecompLauncher: `hh18_recomplauncher` (o perfil `tools/dist/recomplauncher.json` contra o `hh-builder` e o jogo; com
+`HH_RECOMPLAUNCHER_SCHEMA` apontando o esquema baixado de recomplauncher.com, valida também por ele) roda hoje. **Falta:**
+instalar o pacote `-Windows-x64.zip` pelo próprio launcher, primeiro no Developer tools ("Add a build") e depois pela
+página do jogo, com os dois CDIs: a etapa de preparação até o fim, Play, os saves copiados depois da sessão e uma
+atualização que recompila (`prepare.version`) sem perder os saves.

@@ -296,6 +296,11 @@ if(TARGET hh-builder)
   add_test(NAME hh08_builder_sem_marcador
     COMMAND ${CMAKE_COMMAND} -DBUILDER=$<TARGET_FILE:hh-builder> -DWORK=${CMAKE_CURRENT_BINARY_DIR}/hh08_builder_sem_marcador
             -P ${CMAKE_CURRENT_SOURCE_DIR}/hh08/check_builder_unmarked.cmake)
+  # HH18: perfil do RecompLauncher (tools/dist/recomplauncher.json) contra o hh-builder e o jogo; sem dados do jogo.
+  # HH_RECOMPLAUNCHER_SCHEMA (o esquema de recomplauncher.com) acrescenta a validacao pelo esquema oficial.
+  add_test(NAME hh18_recomplauncher
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_CURRENT_SOURCE_DIR}/dist/test_recomplauncher.py ${PROJECT_SOURCE_DIR}
+            $<TARGET_FILE:hh-builder>)
 endif()
 # HH18: troca da instalacao a partir do Builder antigo (marca .hh-builder e data\ nao passam como do usuario).
 if(TARGET hh_builder_core)
