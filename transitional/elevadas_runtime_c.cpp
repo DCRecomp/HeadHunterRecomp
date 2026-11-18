@@ -288,6 +288,205 @@ void resto_sem_sinal(Sh4Context* c) {
 void copiar_palavras_par(Sh4Context* c) { copiar_palavras(c, true, 0x8C123E14u); }
 void copiar_palavras_impar(Sh4Context* c) { copiar_palavras(c, false, 0x8C123E20u); }
 
+// ---- HH15.11c: copias de string, o envoltorio do strcmp e a copia por palavras de tamanho qualquer ----
+
+// 8C1247C0: envoltorio do strcmp (salva o PR e chama 8C124068 pelo pool em 8C1247D0)
+constexpr Premissa kStrcmpEnvoltorio[] = {{0x8C1247D0u, 0x8C124068u}};
+void strcmp_envoltorio(Sh4Context* c) {
+    const uint32_t pr0 = c->pr, sp0 = c->r[15];
+    cobrar(c, 4);
+    c->r[15] = sp0 - 4;  // o PR salvo
+    c->r[3]  = 0x8C124068u;
+    chamar(c, 0x8C124068u, &strcmp_, 0x8C1247C8u);
+    cobrar(c, 3);
+    c->r[15] = sp0, c->pr = pr0;
+}
+
+// A parte comum de 8C123F78 e 8C123F7C a partir de 8C123F80 (o trecho linear ate 8C123F84 ja cobrado): copia a string
+// de r1 para r0 (os dois alinhados) palavra a palavra, quatro por volta, ate uma palavra com zero (cmp/str com r6 = 0);
+// as palavras se alternam entre r4 (indice par) e r5 (impar), cada uma lida antes de gravar a anterior; depois byte a
+// byte nessa palavra ate o zero (o quarto byte sem teste). r3-r6 voltam da pilha (r3/r4 empilhados por quem entrou);
+// r15 fica sp0 - 16 durante o corpo.
+void strcpy_alinhada_corpo(Sh4Context* c, uint32_t sp0, uint32_t r3, uint32_t r4, uint32_t r5, uint32_t r6) {
+    const uint32_t d = c->r[0], s = c->r[1];
+    c->r[15]         = sp0 - 16;
+    c->r[3] = d, c->r[6] = 0;
+    uint32_t w = ler32(c, s);
+    c->r[4]    = w;
+    uint32_t j = 0;  // a palavra com o zero
+    cobrar(c, 2);
+    if (!tem_zero(w)) {
+        for (j = 1;; ++j) {
+            cobrar(c, 4);
+            const uint32_t prox = ler32(c, s + 4 * j);
+            c->r[(j & 1) ? 5 : 4] = prox;
+            escrever32(c, d + 4 * (j - 1), w);
+            w = prox;
+            if (j % 4) {
+                if (tem_zero(w)) {
+                    cobrar(c, j % 4 == 3 ? 1 : 2);  // o add do r0 (bra com o add no slot, ou so o add)
+                    break;
+                }
+                continue;
+            }
+            // o back-edge: r0 = o destino da palavra j, r1 depois dela, T = 0 (a palavra j - 1 sem zero)
+            c->r[0] = d + 4 * j, c->r[1] = s + 4 * (j + 1), c->t = 0;
+            volta(c, 0x8C123F86u);
+            cobrar(c, 2);
+            if (tem_zero(w)) break;
+        }
+    }
+    const uint32_t bd = d + 4 * j, bs = s + 4 * j;
+    c->r[6]           = bd;
+    uint32_t lidos = 0;
+    bool     t     = false;
+    for (uint32_t k = 0; k < 4; ++k) {
+        cobrar(c, k == 0 ? 6 : k == 3 ? 2 : 4);
+        const uint8_t b = ler8(c, bs + k);
+        ++lidos;
+        escrever8(c, bd + k, b);
+        c->r[0] = sext8(b);
+        if (k == 3) break;  // o quarto byte sem teste: T fica o do terceiro (0)
+        t = !b;
+        if (t) break;
+    }
+    cobrar(c, 6);
+    c->r[0] = d, c->r[1] = bs + lidos, c->t = t;
+    c->r[3] = r3, c->r[4] = r4, c->r[5] = r5, c->r[6] = r6, c->r[15] = sp0;
+}
+
+// 8C123F78 (auxiliar do compilador): strcpy com r0 = destino e r1 = origem alinhados; devolve o destino em r0
+void strcpy_alinhada(Sh4Context* c) {
+    cobrar(c, 7);
+    strcpy_alinhada_corpo(c, c->r[15], c->r[3], c->r[4], c->r[5], c->r[6]);
+}
+
+// 8C124018 (auxiliar do compilador): strcpy com r0 = destino e r1 = origem. Os dois alinhados: salto de cauda para
+// 8C123F7C (o meio de 8C123F78, depois de empilhar r3 e r4; pool em 8C124064). Senao byte a byte, quatro por volta.
+// r3 e r4 voltam da pilha; devolve o destino em r0 e r1 depois do zero.
+constexpr Premissa kStrcpyAuxiliar[] = {{0x8C124064u, 0x8C123F7Cu}};
+void strcpy_auxiliar(Sh4Context* c) {
+    const uint32_t d = c->r[0], s = c->r[1], r3 = c->r[3], r4 = c->r[4], sp0 = c->r[15];
+    cobrar(c, 9);
+    if (!((d | s) & 3)) {
+        cobrar(c, 3 + 5);  // mov.l/jmp/nop e o trecho linear de 8C123F7C
+        strcpy_alinhada_corpo(c, sp0, r3, r4, c->r[5], c->r[6]);
+        return;
+    }
+    c->r[15] = sp0 - 8;
+    c->r[3] = d, c->r[4] = d;
+    cobrar(c, 3);
+    uint32_t i = 0;  // bytes lidos
+    uint8_t  b = ler8(c, s);
+    for (uint32_t g = 0;; ++g) {
+        const uint32_t base = d + 4 * g;
+        bool           fim  = false;
+        for (uint32_t k = 0; k < 4 && !fim; ++k) {
+            if (k) b = ler8(c, s + 4 * g + k);
+            cobrar(c, k ? 4 : 3);
+            escrever8(c, base + k, b);
+            if (!b) fim = true, i = 4 * g + k + 1;
+        }
+        if (fim) break;
+        cobrar(c, 3);
+        b = ler8(c, s + 4 * g + 4);
+        // o back-edge: r0 = o byte lido, r1 depois dele, r3 = o destino do grupo seguinte, T = 0
+        c->r[0] = sext8(b), c->r[1] = s + 4 * g + 5, c->r[3] = base + 4, c->t = 0;
+        volta(c, 0x8C124030u);
+    }
+    cobrar(c, 4);
+    c->r[0] = d, c->r[1] = s + i, c->t = 1;
+    c->r[3] = r3, c->r[4] = r4, c->r[15] = sp0;
+}
+
+// 8C1247D4 strcpy(r4, r5): o auxiliar 8C124018 (pool em 8C1247E4) com r0 = r4 e r1 = r5
+constexpr Premissa kStrcpy[] = {{0x8C1247E4u, 0x8C124018u}};
+void strcpy_(Sh4Context* c) {
+    const uint32_t pr0 = c->pr, sp0 = c->r[15];
+    cobrar(c, 5);
+    c->r[15] = sp0 - 4;  // o PR salvo
+    c->r[3] = 0x8C124018u, c->r[1] = c->r[5], c->r[0] = c->r[4];
+    chamar(c, 0x8C124018u, &strcpy_auxiliar, 0x8C1247DEu);
+    cobrar(c, 3);
+    c->r[15] = sp0, c->pr = pr0;
+}
+
+// 8C124784 strcat(r4, r5): acha o zero de r4 (r6) e copia r5 (r7) ate o zero inclusive; devolve r4. r2 = o byte.
+void strcat_(Sh4Context* c) {
+    const uint32_t d = c->r[4], s = c->r[5];
+    cobrar(c, 3);
+    c->r[7]    = s;
+    uint32_t p = d;
+    for (;;) {
+        cobrar(c, 3);
+        const uint8_t b = ler8(c, p);
+        c->r[2]         = sext8(b);
+        if (!b) break;
+        c->r[6] = p, c->t = 0;  // no back-edge: r6 ainda no byte lido
+        volta(c, 0x8C12478Au);
+        cobrar(c, 1);
+        ++p;
+    }
+    for (uint32_t i = 0;; ++i) {
+        cobrar(c, 6);
+        const uint8_t b = ler8(c, s + i);
+        escrever8(c, p + i, b);
+        c->r[2] = b, c->r[6] = p + i + 1, c->r[7] = s + i + 1, c->t = !b;  // extu.b; o add do slot
+        if (!b) break;
+        volta(c, 0x8C124792u);
+    }
+    cobrar(c, 2);
+    c->r[0] = d;
+}
+
+// 8C123EB8 (auxiliar do compilador): copia r0 bytes de r2 para r1 por palavras; r3 preservado (pilha). Ate 64 bytes
+// (cmp/hs sem sinal): pela tabela de saltos (pool em 8C123EC8, tabela em 8C123F14, entrada r0/4 -> rotulo que copia
+// as palavras de r0 - 4 ate 0, da mais alta para a mais baixa), r0 = a ultima palavra copiada (ou 0) e T = 1. Acima:
+// laco de duas palavras por volta, sempre lendo uma palavra antes de testar o fim (a ultima lida fica em r0 sem ser
+// gravada); r2 volta da pilha, r1 avanca 8 por volta completa, T = 0.
+constexpr Premissa kTabela64[] = {
+    {0x8C123EC8u, 0x8C123F14u}, {0x8C123F14u, 0x8C123F0Eu}, {0x8C123F18u, 0x8C123F0Au}, {0x8C123F1Cu, 0x8C123F06u},
+    {0x8C123F20u, 0x8C123F02u}, {0x8C123F24u, 0x8C123EFEu}, {0x8C123F28u, 0x8C123EFAu}, {0x8C123F2Cu, 0x8C123EF6u},
+    {0x8C123F30u, 0x8C123EF2u}, {0x8C123F34u, 0x8C123EEEu}, {0x8C123F38u, 0x8C123EEAu}, {0x8C123F3Cu, 0x8C123EE6u},
+    {0x8C123F40u, 0x8C123EE2u}, {0x8C123F44u, 0x8C123EDEu}, {0x8C123F48u, 0x8C123EDAu}, {0x8C123F4Cu, 0x8C123ED6u},
+    {0x8C123F50u, 0x8C123ED2u}, {0x8C123F54u, 0x8C123ECEu},
+};
+void copiar_palavras_n(Sh4Context* c) {
+    const uint32_t n = c->r[0], d = c->r[1], s = c->r[2], r3 = c->r[3], sp0 = c->r[15];
+    cobrar(c, 4);
+    if (n <= 64) {
+        if (n & 3) sh4_fatal(c, "elevacao: copia por palavras fora do contrato (tamanho nao multiplo de 4)", 0x8C123EB8u, n);
+        cobrar(c, 4 + 2 * (n / 4) + 2);
+        uint32_t r0 = n;
+        for (uint32_t o = n; o >= 4; o -= 4) {
+            r0 = ler32(c, s + o - 4);
+            escrever32(c, d + o - 4, r0);
+        }
+        c->r[0] = r0, c->r[3] = r3, c->t = 1;
+        return;
+    }
+    c->r[15] = sp0 - 8;  // r3 e r2 empilhados
+    cobrar(c, 3);
+    const uint32_t fim = s + n;
+    uint32_t       p = s, q = d, w = 0;
+    for (;;) {
+        cobrar(c, 3);
+        w = ler32(c, p), p += 4;
+        if (!(fim >= p)) break;
+        cobrar(c, 4);
+        escrever32(c, q, w);
+        w = ler32(c, p), p += 4;
+        if (!(fim >= p)) break;
+        cobrar(c, 3);
+        escrever32(c, q + 4, w);
+        q += 8;
+        c->r[0] = w, c->r[1] = q, c->r[2] = p, c->r[3] = fim, c->t = 1;  // no back-edge
+        volta(c, 0x8C123F5Eu);
+    }
+    cobrar(c, 3);
+    c->r[0] = w, c->r[1] = q, c->r[2] = s, c->r[3] = r3, c->r[15] = sp0, c->t = 0;
+}
+
 constexpr Elevada kLista[] = {
     {0x8C1247E8u, "strlen", &strlen_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::Completo},
@@ -299,6 +498,13 @@ constexpr Elevada kLista[] = {
     {0x8C123BECu, "dividir_sem_sinal", &dividir_sem_sinal, Retorno::R0, kErroUdiv, Contrato::Auxiliar},
     {0x8C123C94u, "resto", &resto, Retorno::R0, kErroSmod, Contrato::Auxiliar},
     {0x8C123D5Cu, "resto_sem_sinal", &resto_sem_sinal, Retorno::R0, kErroUmod, Contrato::Auxiliar},
+    // HH15.11c
+    {0x8C1247C0u, "strcmp_envoltorio", &strcmp_envoltorio, Retorno::R0, kStrcmpEnvoltorio, Contrato::Completo},
+    {0x8C123F78u, "strcpy_alinhada", &strcpy_alinhada, Retorno::R0, {}, Contrato::Completo},
+    {0x8C124018u, "strcpy_auxiliar", &strcpy_auxiliar, Retorno::R0, kStrcpyAuxiliar, Contrato::Completo},
+    {0x8C1247D4u, "strcpy", &strcpy_, Retorno::R0, kStrcpy, Contrato::Completo},
+    {0x8C124784u, "strcat", &strcat_, Retorno::R0, {}, Contrato::Completo},
+    {0x8C123EB8u, "copiar_palavras_n", &copiar_palavras_n, Retorno::R0, kTabela64, Contrato::Completo},
 };
 
 } // namespace

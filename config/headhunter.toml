@@ -184,6 +184,11 @@ slots = [
   0x8C123FE0,  # copiar_bytes (auxiliar do compilador)
   0x8C123E14, 0x8C123E20,  # copiar_palavras_par / _impar (auxiliares do compilador, tabela de saltos)
   0x8C123B38, 0x8C123BEC, 0x8C123C94, 0x8C123D5C,  # dividir, dividir_sem_sinal, resto, resto_sem_sinal
+  # HH15.11c: copias de string, envoltorio do strcmp e copia por palavras (transitional/elevadas_runtime_c.cpp)
+  0x8C1247C0,  # strcmp_envoltorio
+  0x8C123F78, 0x8C124018, 0x8C1247D4,  # strcpy_alinhada, strcpy_auxiliar (auxiliares do compilador), strcpy
+  0x8C124784,  # strcat
+  0x8C123EB8,  # copiar_palavras_n (auxiliar do compilador, tabela de saltos ate 64 bytes)
   # HH15.11b: biblioteca matematica do SDK (transitional/elevadas_libm.cpp)
   0x8C1263C0,  # resto_com_quociente
   0x8C128990, 0x8C1289B0,  # cos_nucleo, sen_nucleo

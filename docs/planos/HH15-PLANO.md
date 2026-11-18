@@ -854,3 +854,30 @@ chamadas, 3 387 116 conferidas (10 758 completas), 84 075 com atendimento, **264
 back-edges** (103 acima do orçamento), 0 divergências; os 94 quadros iguais a `snapshots/hh06/area1_hashes.txt`. Na
 segunda revisão Codex (`reviews/codex-hh16_p2.log`) a conferência passou a ser por byte (escritas sobrepostas de
 tamanhos diferentes davam divergência falsa); o orçamento é de 2^18 bytes × back-edges por chamada.
+
+#### HH15.11c (2026-11-18): cópias de string, envoltório do `strcmp` e cópia por palavras
+
+Seis funções do runtime C em `transitional/elevadas_runtime_c.cpp`, identificadas pelo gerado (`generated/disc1`,
+`f_<endereço>`) e conferidas contra ele em cada chamada da rota:
+- `8C1247C0`: envoltório do `strcmp` (salva o PR e chama `8C124068` pelo pool em `8C1247D0`).
+- `8C1247D4` `strcpy(r4, r5)`: chama o auxiliar `8C124018` (pool em `8C1247E4`) com r0 = destino e r1 = origem.
+- `8C124018` (auxiliar do compilador): desalinhados, byte a byte, quatro por volta; alinhados, salto de cauda para
+  `8C123F7C` (pool em `8C124064`), o meio de `8C123F78` depois de empilhar r3 e r4. A única entrada em `8C123F7C` é esse
+  salto (`callgraph.tsv`, tipo `tail`), então ela não ganha slot: a elevada do auxiliar faz o corpo dela.
+- `8C123F78` (auxiliar do compilador): `strcpy` alinhada, palavra a palavra (cmp/str com zero), as palavras alternando
+  entre r4 e r5, e o fim byte a byte (o quarto byte sem teste: T fica o do terceiro).
+- `8C124784` `strcat(r4, r5)`.
+- `8C123EB8` (auxiliar do compilador): cópia de r0 bytes por palavras; até 64 pela tabela de saltos (pool em `8C123EC8`,
+  17 entradas em `8C123F14`, premissas), acima por um laço de duas palavras que lê uma palavra além do fim sem gravá-la.
+  Tamanho até 64 não múltiplo de 4 é erro explícito (a gerada faria `mov.l` desalinhado).
+
+Regeneração (`hh-recomp` nos dois discos): só as 522 chamadas por disco passaram de `HHG_FN` a `HHG_SLOT` e as 6
+entradas da tabela de slots (`tmp/hh15_11c/difgen.py` contra a cópia anterior). Conferência na rota da área 1: 39
+elevadas, 3 538 352 chamadas, 3 432 616 conferidas (12 127 completas), 105 736 com atendimento (retorno diferente 0),
+**291 395 com a RAM conferida nos back-edges** (103 acima do orçamento), 0 divergências; as seis novas com 105 a 18 296
+conferidas cada; os 94 quadros iguais a `snapshots/hh06/area1_hashes.txt`. Produto (`HeadHunter.exe --headless`,
+`newgame_area1_nativo`): 94 hashes iguais. Negativos por mutação manual (desfeitos, rebuild limpo): T final da cópia
+alinhada trocado reprova no VBlank 16 (`strcpy_auxiliar ... T/FPUL do contrato completo`); r3 no back-edge do laço
+grande da cópia por palavras reprova (`copiar_palavras_n ... r3 (back-edge 0)`). Revisão Codex
+(`reviews/codex-hh15_11c.log`): sem achados (conferiu também as 21 palavras de pool e tabela no `1ST_READ.BIN` e os
+caminhos fora da rota: zero em cada posição da palavra, n = 0, n > 64 com resto).
