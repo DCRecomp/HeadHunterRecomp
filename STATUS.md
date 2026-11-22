@@ -296,6 +296,24 @@ branch vazia renomeada para `main`. ctest 6/6 em Debug e Release.
 - O mantenedor confirmou a migração para a organização `DCRecomp`; o `origin` aponta para lá. Release `v0.11.0` publicada
   como pré-lançamento, com o zip acima; o download público confere com o SHA-256.
 
+### Segunda publicação, v0.12.0 (2026-11-22, pedido do mantenedor)
+
+- README reescrito para quem vai testar (requisitos, passo a passo, controles, saves, o que testar, problemas
+  conhecidos, como relatar, resumo em inglês) e com o selo "Get it on RecompLauncher", exatamente como o
+  `recomplauncher-agent.md` pede, apontando para `recomplauncher.com/game/headhunterrecomp` (id achado no
+  `pc-catalog-web.json` pelo `repo` `DCRecomp/HeadHunterRecomp`). Nenhuma issue nem PR aberta no repositório.
+- Auditoria dos 81 blobs novos desde a `v0.11.0`: sem binários, blocos de hex nem segredos; janelas de 24 bytes do
+  `1ST_READ.BIN`/`IP.BIN` só em textos curtos já citados como evidência (4 mensagens de diagnóstico e
+  `acDigiGetCurrentReadPosition` no config, "can't send driver command" no STATUS), a mesma categoria aceita na v0.11.0.
+- Pacote `HeadHunter-Builder-v0.12.0-Windows-x64.zip` montado por `tools/dist/make_builder.ps1 -Zip` numa worktree
+  limpa (`tmp/wt-v0.12.0`, commit `83781a9`; a tag ficou no commit seguinte, que só muda README e STATUS, fora do kit),
+  com a conferência de conteúdo contra o executável do jogo. SHA-256
+  `4d9e9d289d8cc6c870fb4004fa22cf21466d3b5ae717382467172ab038d3acf9`. De ponta a ponta: o zip descompactado, o
+  `hh-builder` do pacote com os dois CDIs reais terminou com código 0 em 440 s; o jogo instalado tem os 53 filmes e o
+  `--headless` do roteiro `newgame_area1_nativo` deu os 94 hashes de `snapshots/hh15/produto_hashes.txt`.
+- `recomplauncher.json` do pacote e do repositório validados sem erros pelo esquema oficial baixado hoje.
+- Não verificado: o próprio RecompLauncher (Developer tools, "Add a build") e uma máquina diferente desta.
+
 ### Ícones dos executáveis (2026-11-01, pedido do mantenedor)
 
 Padrão do Blue Stinger (MIT), ampliado a todos os executáveis por `cmake/HHIcone.cmake`:

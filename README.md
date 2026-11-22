@@ -1,5 +1,7 @@
 # Head Hunter Recompiled
 
+<a href="https://recomplauncher.com/game/headhunterrecomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 Head Hunter (Sega Dreamcast) rodando **nativo no Windows**, sem emulador.
 
 O código do jogo é convertido do processador do Dreamcast (SH-4) para C++ e compilado no seu computador a partir dos
@@ -43,8 +45,9 @@ Depois disso o jogo **não precisa mais dos discos**. Os dois discos ficam na me
 jogo segue para o disco 2 sem pedir troca.
 
 > Prefere linha de comando? `hh-builder.exe` faz a mesma coisa (rode sem argumentos para ver o uso).
-> Usa o [RecompLauncher](https://recomplauncher.com)? A partir da versão seguinte à v0.11.0, o zip traz o
-> `recomplauncher.json`.
+> Usa o [RecompLauncher](https://recomplauncher.com)? Instale pela
+> [página do jogo](https://recomplauncher.com/game/headhunterrecomp): o launcher pede os dois discos e faz tudo isso
+> sozinho (a partir da v0.12.0, o zip traz o `recomplauncher.json`).
 
 ### 4. Jogue
 
@@ -83,8 +86,8 @@ O que mais ajuda agora:
 
 ### Problemas conhecidos
 
-- **v0.11.0:** foi lançada antes da correção do fim do disco 1 e do LOAD de save do disco 2. Nela o jogo pode ficar
-  parado na tela "INSERT DISC 2". A correção já está no código e entra na próxima versão.
+- **v0.11.0:** o jogo pode ficar parado na tela "INSERT DISC 2" no fim do disco 1, e o LOAD de um save do disco 2 não
+  funciona. **Corrigido na v0.12.0**: use a versão mais recente.
 - Ainda não há menu de configurações (gráficos, idioma). Os controles se ajustam só pelo `controles.toml`.
 - A tela de carregamento antes da cena de abertura não aparece (a carga é instantânea).
 - Só Windows por enquanto.
