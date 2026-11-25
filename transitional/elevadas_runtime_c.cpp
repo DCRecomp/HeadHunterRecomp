@@ -295,7 +295,8 @@ constexpr Premissa kStrcmpEnvoltorio[] = {{0x8C1247D0u, 0x8C124068u}};
 void strcmp_envoltorio(Sh4Context* c) {
     const uint32_t pr0 = c->pr, sp0 = c->r[15];
     cobrar(c, 4);
-    c->r[15] = sp0 - 4;  // o PR salvo
+    escrever32(c, sp0 - 4, pr0);  // sts.l pr,@-r15 (o valor fica na pilha: o jogo copia lixo de pilha para fora dela)
+    c->r[15] = sp0 - 4;
     c->r[3]  = 0x8C124068u;
     chamar(c, 0x8C124068u, &strcmp_, 0x8C1247C8u);
     cobrar(c, 3);
@@ -309,6 +310,7 @@ void strcmp_envoltorio(Sh4Context* c) {
 // r15 fica sp0 - 16 durante o corpo.
 void strcpy_alinhada_corpo(Sh4Context* c, uint32_t sp0, uint32_t r3, uint32_t r4, uint32_t r5, uint32_t r6) {
     const uint32_t d = c->r[0], s = c->r[1];
+    escrever32(c, sp0 - 12, r5), escrever32(c, sp0 - 16, r6);  // mov.l r5/r6,@-r15
     c->r[15]         = sp0 - 16;
     c->r[3] = d, c->r[6] = 0;
     uint32_t w = ler32(c, s);
@@ -358,6 +360,7 @@ void strcpy_alinhada_corpo(Sh4Context* c, uint32_t sp0, uint32_t r3, uint32_t r4
 // 8C123F78 (auxiliar do compilador): strcpy com r0 = destino e r1 = origem alinhados; devolve o destino em r0
 void strcpy_alinhada(Sh4Context* c) {
     cobrar(c, 7);
+    escrever32(c, c->r[15] - 4, c->r[3]), escrever32(c, c->r[15] - 8, c->r[4]);  // mov.l r3/r4,@-r15
     strcpy_alinhada_corpo(c, c->r[15], c->r[3], c->r[4], c->r[5], c->r[6]);
 }
 
@@ -367,6 +370,7 @@ void strcpy_alinhada(Sh4Context* c) {
 constexpr Premissa kStrcpyAuxiliar[] = {{0x8C124064u, 0x8C123F7Cu}};
 void strcpy_auxiliar(Sh4Context* c) {
     const uint32_t d = c->r[0], s = c->r[1], r3 = c->r[3], r4 = c->r[4], sp0 = c->r[15];
+    escrever32(c, sp0 - 4, r3), escrever32(c, sp0 - 8, r4);  // mov.l r3/r4,@-r15
     cobrar(c, 9);
     if (!((d | s) & 3)) {
         cobrar(c, 3 + 5);  // mov.l/jmp/nop e o trecho linear de 8C123F7C
@@ -404,7 +408,8 @@ constexpr Premissa kStrcpy[] = {{0x8C1247E4u, 0x8C124018u}};
 void strcpy_(Sh4Context* c) {
     const uint32_t pr0 = c->pr, sp0 = c->r[15];
     cobrar(c, 5);
-    c->r[15] = sp0 - 4;  // o PR salvo
+    escrever32(c, sp0 - 4, pr0);  // sts.l pr,@-r15
+    c->r[15] = sp0 - 4;
     c->r[3] = 0x8C124018u, c->r[1] = c->r[5], c->r[0] = c->r[4];
     chamar(c, 0x8C124018u, &strcpy_auxiliar, 0x8C1247DEu);
     cobrar(c, 3);
@@ -453,6 +458,7 @@ constexpr Premissa kTabela64[] = {
 };
 void copiar_palavras_n(Sh4Context* c) {
     const uint32_t n = c->r[0], d = c->r[1], s = c->r[2], r3 = c->r[3], sp0 = c->r[15];
+    escrever32(c, sp0 - 4, r3);  // mov.l r3,@-r15
     cobrar(c, 4);
     if (n <= 64) {
         if (n & 3) sh4_fatal(c, "elevacao: copia por palavras fora do contrato (tamanho nao multiplo de 4)", 0x8C123EB8u, n);
@@ -465,7 +471,8 @@ void copiar_palavras_n(Sh4Context* c) {
         c->r[0] = r0, c->r[3] = r3, c->t = 1;
         return;
     }
-    c->r[15] = sp0 - 8;  // r3 e r2 empilhados
+    escrever32(c, sp0 - 8, s);  // mov.l r2,@-r15
+    c->r[15] = sp0 - 8;
     cobrar(c, 3);
     const uint32_t fim = s + n;
     uint32_t       p = s, q = d, w = 0;

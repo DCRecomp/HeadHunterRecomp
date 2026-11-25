@@ -881,3 +881,16 @@ alinhada trocado reprova no VBlank 16 (`strcpy_auxiliar ... T/FPUL do contrato c
 grande da cópia por palavras reprova (`copiar_palavras_n ... r3 (back-edge 0)`). Revisão Codex
 (`reviews/codex-hh15_11c.log`): sem achados (conferiu também as 21 palavras de pool e tabela no `1ST_READ.BIN` e os
 caminhos fora da rota: zero em cada posição da palavra, n = 0, n > 64 com resto).
+
+Achado da regressão integral (2026-11-24, GPU livre): `ctest -L gpu` 4/4, mas a etapa `portoes_hh15` reprovou a RAM do
+caso `experimental` no VBlank 1000 (`d7756c…` na referência, `126ce5…`); quadros, ordem, relógio, áudio e resumo
+iguais. Bisseção com `HH_ELEVACAO_SO`: as geradas e as 33 elevadas anteriores passam; das seis novas, só o auxiliar
+`8C124018` (e o `strcpy`, que o chama) muda o hash. A diferença, pelos despejos `HH_RAM_DUMP` das duas versões com as
+mesmas pilhas registradas, são 8 registros fora das pilhas (a partir de `8C32D758`, passo 0x124), 16 bytes cada: o jogo
+copia para eles um trecho não inicializado da própria pilha, que guarda o que a gerada empilhou no auxiliar (r6, r5, r4 e
+r3 = `0x8C124018`). A elevada só movia o r15. Correção: as seis elevadas gravam na pilha o que a gerada empilha (o PR nos
+envoltórios, r3–r6 nas cópias de string, r3 e r2 na cópia por palavras), na mesma ordem. Depois: as três referências da
+HH15 iguais (o negativo é a própria reprovação de antes), a conferência na rota com 0 divergências e 94 quadros iguais
+(RAM nos back-edges 304 784, as escritas dos empilhamentos incluídas). Lição: lixo de pilha só é inofensivo enquanto
+nenhum código o copia para fora dela; empilhamentos de registradores são exatos e baratos de reproduzir, então as
+elevadas novas passam a gravá-los (as anteriores, que passam nas referências, ficam como estão).

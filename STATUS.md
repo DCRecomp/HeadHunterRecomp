@@ -667,7 +667,13 @@ texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiá
   chamadas conferidas, 291 395 com a RAM nos back-edges, 0 divergências, 94 quadros iguais; produto 94 hashes iguais;
   dois negativos por mutação reprovam pelo motivo certo. Suíte sem GPU (`ctest -C Release -j2 -LE gpu`, dados privados):
   **95/95** (2 887 s, `tmp/hh15_11c/ctest-cpu.log`). Revisão Codex (`reviews/codex-hh15_11c.log`): sem achados.
-  Pendente: `ctest -L gpu` e a regressão integral quando a GPU estiver livre.
+  GPU livre em 2026-11-24: `ctest -L gpu` **4/4**; a regressão integral reprovou a RAM do tempo experimental na
+  `portoes_hh15` (lixo de pilha empilhado pela gerada no auxiliar do `strcpy` e copiado pelo jogo para fora da pilha;
+  `docs/planos/HH15-PLANO.md`, HH15.11c). Corrigido (as elevadas gravam os empilhamentos); referências da HH15 e
+  conferência na rota iguais. Regressão integral com a correção (2026-11-25, `tmp/v3-11c/regressao2.log`) **aprovada,
+  rc=0**: build e ctest, portões HH05 (8 s), HH07 (286 s), HH08 (341 s), HH09 (281 s), HH10 (709 s), HH11 (533 s),
+  HH12 (188 s, rodada anterior com a mesma chave), HH13 (1 938 s), HH14 (267 s), HH15 (233 s), HH16 (1 124 s), roteiro
+  da área 1 (135 s), elevação (164 s) e Builder (154 s).
 
 ### HH14 (2026-10-27, concluída)
 
