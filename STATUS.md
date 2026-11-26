@@ -21,7 +21,7 @@ Atualizado em 2026-11-26. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática com as 33 elevadas e a sonda dos back-edges feitas, HH15.11c cópias de string e por palavras (39 elevadas, 2026-11-18, regressão integral aprovada em 2026-11-25), HH15.11d `memcmp` e `strncpy` (41 elevadas, 2026-11-25), HH15.11e delegação fora do contrato e `memmove` (42 elevadas, 2026-11-26)) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática com as 33 elevadas e a sonda dos back-edges feitas, HH15.11c cópias de string e por palavras (39 elevadas, 2026-11-18, regressão integral aprovada em 2026-11-25), HH15.11d `memcmp` e `strncpy` (41 elevadas, 2026-11-25), HH15.11e delegação fora do contrato e `memmove` (42 elevadas, 2026-11-26; regressão integral da HH15.11d/e aprovada), HH15.11f `strtol`, `atoi` e o limite de 512 caracteres (45 elevadas, 2026-11-26)) |
 | HH16 | EM_ANDAMENTO | `docs/planos/HH16-PLANO.md` (campanha por gravação única do mantenedor, decidida em 2026-11-14). HH16.0 (gravação, estado por leitura, reprodução) e HH16.1 (monitor `tools/dev/campanha.py`) implementadas e testadas sem janela; P0 da passagem de disco e do LOAD do disco 2 corrigidos; placar dos portões na seção 9 do plano. **Falta: a sessão piloto do mantenedor (HH16.P, P3) e os testes de GPU**; depois, a gravação (HH16.2) |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -691,6 +691,13 @@ texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiá
   (1 104 s), roteiro da área 1 (134 s), elevação (162 s) e Builder (155 s). Revisão Codex (`reviews/codex-hh15_11e.log`):
   2 achados aceitos e corrigidos com teste (o `memmove` relê r11–r13 da pilha, como a gerada; `na_ram` não aceita mais
   um intervalo que dá a volta nos 32 bits); depois, conferência na rota, 94 quadros e referências da HH15 iguais.
+- HH15.11f (2026-11-26): `strtol` (8C1248E0), `atoi` (8C12435C) e o limite de 512 caracteres (8C126A74) elevados
+  (`docs/planos/HH15-PLANO.md`, HH15.11f). `generated/` regenerado nos dois discos (só as 23 chamadas e o salto de
+  cauda). A elevada da divisão sem sinal passa a deixar M/Q/T como o laço da gerada (o contrato completo do `strtol`
+  acusou o Q). Conferência na rota: 45 elevadas, 3 445 756 conferidas, 0 divergências (`limite_texto` 2 424, `strtol` e
+  `atoi` 779 cada), 94 quadros; produto 94 hashes; referências da HH15 iguais; dois negativos por mutação. Revisão Codex:
+  1 achado aceito e corrigido com teste (T = 1 no divisor zero); revisão da correção: só o empilhamento de r2 da divisão,
+  anterior ao lote, registrado. Falta a regressão integral (V3).
 
 ### HH14 (2026-10-27, concluída)
 

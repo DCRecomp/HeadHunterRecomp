@@ -970,3 +970,50 @@ Ficaram para o lote seguinte, com o motivo:
     rota com os mesmos números (3 442 083 conferidas, 9 delegadas, 0 divergências), 94 quadros iguais e as três
     referências da HH15 iguais.
 - Fora deste lote: `8C1244A8` (sem chamada na rota) e o `strtol` (`8C1248E0`, `8C12435C`).
+
+#### HH15.11f (2026-11-26): `strtol`, `atoi` e o limite de 512 caracteres
+
+Três funções do runtime C em `transitional/elevadas_runtime_c.cpp`, transcritas bloco a bloco das geradas
+(`generated/disc1/funcs_008.cpp`) e conferidas contra elas em cada chamada da rota:
+- `8C126A74` `limite_texto` (do SDK): se `*r4 != 0` e `r4 - r5 >= 512`, grava `0x450` no errno (`8C30FA50`) e devolve 1;
+  senão 0. O `strtol` a chama pelo ponteiro em r11 (pool em `8C124ACC`) a cada caractere consumido; a chamada passa pelo
+  `sh4_dispatch` e chega à elevada pelo slot. Premissas: `8C126A90` (nop + o 0x0200 do `mov.w`), `8C126A94`, `8C126A98`.
+- `8C1248E0` `strtol(s, endptr, base)`: espaços (bit 0x40 da tabela de tipos em `8C145118`), sinal, prefixo `0`/`0x` e a
+  base deduzida, base fora de 2..36 com `0x4B0` no errno, zeros à esquerda, dígitos até o maior da base, estouro pela
+  divisão sem sinal `8C123BEC` (`0x44C` no errno, LONG_MAX/LONG_MIN), sufixos `u`/`l`/`ul`/`lu`, `*endptr` e o limite de
+  512 (estouro devolve 0 sem `*endptr`). r8–r14, PR e MACL empilhados (gravados) e relidos; quadro de 16 bytes. 9
+  premissas de pool.
+- `8C12435C` `atoi(s)`: `strtol(s, NULL, 10)` por salto de cauda (pool em `8C124364`).
+
+Regeneração (`hh-recomp` nos dois discos): só as 23 chamadas por disco (`HH_CALL`) e o salto de cauda do `atoi`
+passaram de `HHG_FN` a `HHG_SLOT`, e as 3 entradas da tabela de slots (`tmp/hh15_11c/difgen.py` contra a cópia anterior).
+
+Achado da conferência: a primeira versão parou no segundo `strtol` com o SR diferente só no bit Q (gerada `60000100`,
+elevada `60000000`). O Q vem da divisão sem sinal que o `strtol` chama: a elevada dela (HH15.11a, contrato auxiliar, sem
+M/Q/T) não mexia no SR, e o contrato completo do `strtol` confere o SR inteiro. Correção na elevada da divisão: deixa o
+estado do laço da gerada (`div0u`, 32 × `rotcl`/`div1`, `rotcl`), M = 0, T = 0 e Q = 1 − bit 0 do quociente (com M = 0
+cada `div1` dá T = !Q, e o último `rotcl` põe esse T no bit 0), conferido em 200 081 casos por uma simulação do `DIV1`
+do runtime (`runtime/cpu/sh4_ops.h`). O contrato da divisão continua o auxiliar.
+
+Conferência na rota da área 1 (`HH_ELEVACAO=conferir`): 45 elevadas, 3 553 591 chamadas, 3 445 756 conferidas (13 465
+completas), 107 826 com atendimento (retorno diferente 0), RAM nos back-edges 312 470 (138 acima do orçamento), 9
+delegadas, **0 divergências**; `limite_texto` 2 424 conferidas de 3 008 (239 completas), `strtol` 779 de 972 (207),
+`atoi` 779 de 972 (207: na rota todo `strtol` vem do `atoi`); os 94 quadros iguais a `snapshots/hh06/area1_hashes.txt`.
+Produto (`HeadHunter.exe --headless`, `newgame_area1_nativo`): 94 hashes iguais. Referências da HH15 (estável,
+experimental e experimental com saves): as três iguais. Unitário `hh15_elevacao_tests` ok.
+
+Negativos por mutação manual (desfeitos, arquivo restaurado com o mesmo hash, rebuild): T final do `limite_texto`
+invertido reprova (`limite_texto ... T/FPUL do contrato completo`, gerada 0, elevada 1); r5 trocado no back-edge do laço
+de dígitos do `strtol` (`8C124A3E`) reprova (`strtol ... r5 (back-edge 0)`, gerada 84, elevada 85).
+
+Revisão Codex (`reviews/codex-hh15_11f.log`): 1 achado, aceito e corrigido com teste. MÉDIA: no divisor zero a gerada
+da divisão sem sinal sai com T = 1 (o `tst r0,r0` da entrada; o caminho `8C123C7E` não mexe no T) e a elevada mantinha o
+T de entrada. Corrigido. Teste novo `hh15_elevacao_divisao_sem_sinal_sr` (Q, M e T no caminho normal com quociente par e
+ímpar; T = 1, M/Q intactos e o errno no divisor zero); sem a correção do T e sem a de M/Q ele reprova (cada uma desfeita
+à parte). Depois: unitário, conferência (mesmos números), 94 quadros, produto e as três referências iguais. Revisão da
+correção (`reviews/codex-hh15_11f_fix.log`): correção e teste certos; 1 achado BAIXA não corrigido aqui: a elevada da
+divisão (HH15.11a) não grava o r2 que a gerada empilha em `[sp - 4]`. É anterior a este lote e, pela regra da HH15.11c
+(as elevadas anteriores que passam nas referências ficam como estão), fica registrado.
+
+Falta: a regressão integral (V3) deste lote. Fora dele: `8C1244A8` (a consulta da tabela de tipos de caractere) só é
+chamada na rota `newgame_area1_nativo` (969 vezes, no VBlank 3835), não na `newgame_area1` da conferência.

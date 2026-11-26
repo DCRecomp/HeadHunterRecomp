@@ -193,6 +193,8 @@ slots = [
   0x8C124508, 0x8C124870,  # memcmp, strncpy
   # HH15.11e: memmove (fora do contrato, ponteiro fora da RAM principal: a gerada)
   0x8C12453C,  # memmove
+  # HH15.11f: strtol, atoi e o limite de 512 caracteres que o strtol chama pelo ponteiro em r11
+  0x8C126A74, 0x8C1248E0, 0x8C12435C,  # limite_texto, strtol, atoi
   # HH15.11b: biblioteca matematica do SDK (transitional/elevadas_libm.cpp)
   0x8C1263C0,  # resto_com_quociente
   0x8C128990, 0x8C1289B0,  # cos_nucleo, sen_nucleo

@@ -245,10 +245,16 @@ void dividir_sem_sinal(Sh4Context* c) {
         cobrar(c, 6);
         escrever32(c, kErrno, kEdiv);
         c->r[0] = 0, c->r[1] = kEdiv;
+        c->t = 1;  // o tst r0,r0 da entrada (revisao Codex HH15.11f); M/Q intactos
         return;
     }
     cobrar(c, 70);
     c->r[0] = c->r[1] = a / b;
+    // HH15.11f: o estado do SR que o laco (div0u, 32 x rotcl/div1, rotcl) deixa: M = 0, T = 0 e Q = 1 - bit 0 do
+    // quociente (com M = 0 cada div1 da T = !Q, e o ultimo rotcl poe esse T no bit 0; conferido em 200 081 casos com o
+    // DIV1 do runtime). O contrato desta elevada nao confere M/Q/T, mas o do strtol, que a chama, confere o SR inteiro.
+    c->sr = (c->sr & ~(kSrM | kSrQ)) | ((c->r[0] & 1) ? 0u : kSrQ);
+    c->t  = 0;
 }
 
 // 8C123C94: resto com sinal (o do dividendo); r1 = o quociente bruto (complemento de um) sem o ultimo passo; a correcao
@@ -702,6 +708,406 @@ void memmove_(Sh4Context* c) {
     fim();
 }
 
+// ---- HH15.11f: strtol, atoi e o limite de 512 caracteres ----
+// Transcricao bloco a bloco de generated/disc1/funcs_008.cpp (f_8C126A74, f_8C1248E0, f_8C12435C): cada cobrar() e o
+// HH_CYCLES do bloco, cada volta() o HH_POLL, cada chamar() o HH_CALL (o jsr @r11 da gerada passa pelo sh4_dispatch, que
+// chega a elevada pelo slot). Os rotulos L_xxxx sao os da gerada (8C12xxxx).
+
+// 8C126A74 (do SDK): r4 = a posicao atual, r5 = o inicio da string. Se *r4 != 0 e r4 - r5 >= 0x200 (512), grava 0x450
+// no errno (8C30FA50) e devolve 1; senao 0. O strtol a chama pelo ponteiro em r11 a cada caractere consumido.
+// Premissas: o dword em 8C126A90 (nop + 0x0200 do mov.w), 8C126A94 (0x0450) e o endereco do errno.
+constexpr Premissa kLimiteTexto[] = {{0x8C126A90u, 0x02000009u}, {0x8C126A94u, 0x00000450u}, {0x8C126A98u, 0x8C30FA50u}};
+void limite_texto(Sh4Context* c) {
+    cobrar(c, 3);
+    const uint8_t b = ler8(c, c->r[4]);
+    c->r[3]         = sext8(b);
+    c->t            = b == 0;
+    if (!c->t) {
+        cobrar(c, 4);
+        c->r[3] = 0x200;
+        c->r[4] -= c->r[5];
+        c->t = int32_t(c->r[4]) >= 0x200;
+        if (c->t) {
+            cobrar(c, 5);
+            c->r[2] = 0x8C30FA50u, c->r[1] = 0x450;
+            escrever32(c, 0x8C30FA50u, 0x450);
+            c->r[0] = 1;
+            return;
+        }
+    }
+    cobrar(c, 3);
+    c->r[0] = 0;
+}
+
+// 8C1248E0 strtol(r4 = s, r5 = endptr, r6 = base): espacos (bit 0x40 da tabela de tipos em 8C145118), sinal, prefixo
+// 0/0x (base 0 deduzida: 8, 10 ou 16; base 16 aceita 0x), base fora de 2..36 grava 0x4B0 no errno, zeros a esquerda,
+// digitos ate o maior da base (bits 7 da tabela; letras pelo bit 1 + 0x20), estouro pela divisao sem sinal 8C123BEC
+// ((LONG_MAX + neg - digito) / base) com 0x44C no errno e LONG_MAX/LONG_MIN, sufixos u/l/ul/lu, *endptr e o limite de
+// 512 caracteres por 8C126A74 (estouro devolve 0 sem *endptr). Quadro: r14..r8, pr e macl empilhados e 16 bytes
+// (+0 = o resultado ou a marca de estouro, +4 = negativo, +8 = o maior digito, +12 = endptr).
+constexpr uint32_t kErrnoStrtol = 0x8C30FA50u, kTiposCaractere = 0x8C145118u;
+constexpr Premissa kStrtol[] = {
+    {0x8C124ACCu, 0x8C126A74u}, {0x8C124AD0u, kTiposCaractere}, {0x8C124AD4u, 0x7FFFFFFFu}, {0x8C124AD8u, 0x8C123BECu},
+    {0x8C124B90u, 0x044C6EF6u}, {0x8C124B94u, 0x000004B0u},    {0x8C124B98u, kErrnoStrtol}, {0x8C124B9Cu, 0x7FFFFFFFu},
+    {0x8C124BA0u, 0x80000000u},
+};
+void strtol_(Sh4Context* c) {
+    auto& r = c->r;
+    // r4 = r14 no delay slot do jsr @r11; depois o tst r0,r0 (HH_CYCLES 2). true: passou do limite (r0 != 0)
+    auto limite = [&](uint32_t retorno) {
+        r[4] = r[14];
+        chamar(c, 0x8C126A74u, &limite_texto, retorno);
+        cobrar(c, 2);
+        c->t = r[0] == 0;
+        return !c->t;
+    };
+    auto tipo = [&](uint32_t ch) { return uint32_t(ler8(c, (ch & 0xFFu) + r[13])); };  // mov.b @(r0,r13) + extu.b
+    cobrar(c, 22);
+    uint32_t sp = r[15];
+    for (int k = 14; k >= 8; --k) sp -= 4, escrever32(c, sp, r[k]);
+    sp -= 4, escrever32(c, sp, c->pr);
+    sp -= 4, escrever32(c, sp, c->macl);
+    r[15] = sp - 16;
+    r[3] = 0, r[11] = 0x8C126A74u, r[2] = 0, r[14] = r[4], r[13] = kTiposCaractere, r[9] = r[14];
+    escrever32(c, r[15] + 12, r[5]);
+    r[10] = r[6];
+    escrever32(c, r[15], 0);
+    escrever32(c, r[15] + 4, 0);
+    r[12] = 0x40;
+    goto L_491C;
+L_490C:
+    cobrar(c, 4);
+    r[5] = r[9], r[14] += 1;
+    if (limite(0x8C124914u)) {
+        cobrar(c, 2);
+        goto L_4B66;
+    }
+L_491C:
+    cobrar(c, 6);
+    r[0] = sext8(ler8(c, r[14])) & 0xFFu;
+    r[3] = tipo(r[0]);
+    c->t = (r[3] & r[12]) == 0;
+    if (!c->t) {
+        volta(c, 0x8C12490Cu);
+        goto L_490C;
+    }
+    cobrar(c, 5);
+    r[0]  = sext8(ler8(c, r[14]));
+    r[12] = 1;
+    c->t  = r[0] == 0x2Bu;  // '+'
+    r[4]  = r[0];
+    if (c->t) goto L_4938;
+    cobrar(c, 3);
+    r[0] = r[4];
+    c->t = r[0] == 0x2Du;  // '-'
+    if (!c->t) goto L_4950;
+L_4938:
+    cobrar(c, 4);
+    r[0] = sext8(ler8(c, r[14]));
+    c->t = r[0] == 0x2Du;
+    {
+        const bool menos = c->t;
+        r[14] += 1;
+        if (menos) cobrar(c, 1), escrever32(c, r[15] + 4, r[12]);
+    }
+    cobrar(c, 3);
+    r[5] = r[9];
+    if (limite(0x8C124948u)) {
+        cobrar(c, 2);
+        goto L_4B66;
+    }
+L_4950:
+    cobrar(c, 2);
+    c->t = r[10] == 0;
+    if (!c->t) goto L_499E;
+    cobrar(c, 3);
+    r[0] = sext8(ler8(c, r[14]));
+    c->t = r[0] == 0x30u;  // '0'
+    if (!c->t) {
+        cobrar(c, 2);
+        r[10] = 10;
+        goto L_49D4;
+    }
+    cobrar(c, 4);
+    r[5] = r[9], r[14] += 1;
+    if (limite(0x8C124962u)) {
+        cobrar(c, 2);
+        goto L_4B66;
+    }
+    cobrar(c, 6);
+    r[4] = sext8(ler8(c, r[14]));
+    r[0] = tipo(r[4]);
+    c->t = (r[0] & r[12]) == 0;
+    if (c->t) cobrar(c, 1), r[0] = r[4];
+    else cobrar(c, 3), r[0] = r[4] + 0x20u;
+    cobrar(c, 2);
+    c->t = r[0] == 0x78u;  // 'x'
+    if (!c->t) {
+        cobrar(c, 2);
+        r[10] = 8;
+        goto L_49D4;
+    }
+    cobrar(c, 4);
+    r[5] = r[9], r[14] += 1;
+    if (limite(0x8C12498Au)) {
+        cobrar(c, 2);
+        goto L_4B66;
+    }
+    cobrar(c, 2);
+    r[10] = 16;
+    goto L_49D4;
+L_499E:
+    cobrar(c, 3);
+    r[0] = r[10];
+    c->t = r[0] == 0x10u;
+    if (!c->t) goto L_49D4;
+    cobrar(c, 3);
+    r[0] = sext8(ler8(c, r[14]));
+    c->t = r[0] == 0x30u;
+    if (!c->t) goto L_49D4;
+    cobrar(c, 7);
+    r[14] += 1;
+    r[4] = sext8(ler8(c, r[14]));
+    r[0] = tipo(r[4]);
+    c->t = (r[0] & r[12]) == 0;
+    if (c->t) cobrar(c, 1), r[0] = r[4];
+    else cobrar(c, 3), r[0] = r[4] + 0x20u;
+    cobrar(c, 3);
+    c->t = r[0] == 0x78u;
+    {
+        const bool x = c->t;
+        r[5]         = r[9];
+        if (x) cobrar(c, 1), r[14] += 1;
+    }
+    cobrar(c, 2);
+    if (limite(0x8C1249CCu)) {
+        cobrar(c, 2);
+        goto L_4B66;
+    }
+L_49D4:
+    cobrar(c, 3);
+    r[3] = 2;
+    c->t = int32_t(r[10]) >= 2;
+    if (!c->t) {
+        cobrar(c, 2);
+        goto L_4B6A;
+    }
+    cobrar(c, 3);
+    r[1] = 36;
+    c->t = int32_t(r[10]) > 36;
+    if (c->t) {
+        cobrar(c, 2);
+        goto L_4B6A;
+    }
+    cobrar(c, 3);
+    r[3] = 10;
+    c->t = int32_t(r[10]) > 10;
+    if (c->t) cobrar(c, 3), r[0] = r[10] + 0x56u;
+    else cobrar(c, 2), r[0] = r[10] + 0x2Fu;
+    cobrar(c, 8);
+    escrever8(c, r[15] + 8, uint8_t(r[0]));
+    r[3] = 7;
+    r[4] = sext8(ler8(c, r[14]));
+    r[0] = r[4] & 0xFFu;
+    r[5] = tipo(r[0]);
+    c->t = (r[5] & r[3]) == 0;
+    if (c->t) goto L_4AF2;
+    cobrar(c, 3);
+    r[2] = 1;
+    c->t = (r[5] & r[2]) == 0;
+    if (c->t) cobrar(c, 1), r[1] = r[4];
+    else cobrar(c, 3), r[1] = r[4] + 0x20u;
+    cobrar(c, 3);
+    r[0] = sext8(ler8(c, r[15] + 8));
+    c->t = int32_t(r[1]) > int32_t(r[0]);
+    if (c->t) goto L_4AF2;
+    cobrar(c, 2);
+    goto L_4A30;
+L_4A20:
+    cobrar(c, 4);
+    r[5] = r[9], r[14] += 1;
+    if (limite(0x8C124A28u)) {
+        cobrar(c, 2);
+        goto L_4B66;
+    }
+L_4A30:
+    cobrar(c, 3);
+    r[0] = sext8(ler8(c, r[14]));
+    c->t = r[0] == 0x30u;
+    if (c->t) {
+        volta(c, 0x8C124A20u);
+        goto L_4A20;
+    }
+    cobrar(c, 4);
+    r[2] = 0;
+    escrever32(c, r[15], 0);
+    r[8] = 0;
+    goto L_4A96;
+L_4A3E:
+    cobrar(c, 3);
+    r[2] = ler32(c, r[15]);
+    c->t = r[2] == 0;
+    if (!c->t) goto L_4A8A;
+    cobrar(c, 6);
+    r[0] = sext8(ler8(c, r[14])) & 0xFFu;
+    r[0] = tipo(r[0]);
+    c->t = (r[0] & 4u) == 0;
+    if (!c->t) {
+        cobrar(c, 3);
+        r[4] = sext8(ler8(c, r[14])) + uint32_t(-48);
+    } else {
+        cobrar(c, 6);
+        r[5] = sext8(ler8(c, r[14]));
+        r[0] = r[5] & 0xFFu;
+        r[4] = tipo(r[0]);
+        c->t = (r[4] & r[12]) == 0;
+        if (c->t) cobrar(c, 1), r[4] = r[5];
+        else cobrar(c, 3), r[4] = r[5] + 0x20u;
+        cobrar(c, 1);
+        r[4] += uint32_t(-87);
+    }
+    cobrar(c, 7);
+    r[1] = ler32(c, r[15] + 4);
+    r[3] = 0x7FFFFFFFu;
+    r[2] = 0x8C123BECu;
+    r[1] -= r[4];
+    r[1] += r[3];
+    r[0] = r[10];
+    chamar(c, 0x8C123BECu, &dividir_sem_sinal, 0x8C124A7Au);
+    cobrar(c, 2);
+    c->t = r[8] > r[0];
+    if (c->t) {
+        cobrar(c, 2);
+        escrever32(c, r[15], r[12]);
+        goto L_4A8A;
+    }
+    cobrar(c, 4);
+    c->macl = r[8] * r[10];
+    r[1]    = c->macl;
+    r[8]    = r[1] + r[4];
+L_4A8A:
+    cobrar(c, 4);
+    r[5] = r[9], r[14] += 1;
+    if (limite(0x8C124A92u)) goto L_4B66;  // bf direto, sem o bra
+L_4A96:
+    cobrar(c, 7);
+    r[4] = sext8(ler8(c, r[14]));
+    r[3] = 7;
+    r[0] = r[4] & 0xFFu;
+    r[5] = tipo(r[0]);
+    c->t = (r[5] & r[3]) == 0;
+    if (c->t) goto L_4AB8;
+    cobrar(c, 3);
+    r[2] = 1;
+    c->t = (r[5] & r[2]) == 0;
+    if (c->t) cobrar(c, 1), r[1] = r[4];
+    else cobrar(c, 3), r[1] = r[4] + 0x20u;
+    cobrar(c, 3);
+    r[0] = sext8(ler8(c, r[15] + 8));
+    c->t = int32_t(r[1]) > int32_t(r[0]);
+    if (!c->t) {
+        volta(c, 0x8C124A3Eu);
+        goto L_4A3E;
+    }
+L_4AB8:
+    cobrar(c, 3);
+    r[2] = ler32(c, r[15]);
+    c->t = r[2] == 0;
+    if (!c->t) goto L_4ADC;
+    cobrar(c, 3);
+    r[3] = ler32(c, r[15] + 4);
+    c->t = r[3] == 0;
+    if (!c->t) cobrar(c, 1), r[8] = 0u - r[8];
+    cobrar(c, 2);
+    escrever32(c, r[15], r[8]);
+    goto L_4AF2;
+L_4ADC:
+    cobrar(c, 6);
+    r[3] = kErrnoStrtol, r[2] = 0x44C;
+    escrever32(c, r[3], r[2]);
+    r[1] = ler32(c, r[15] + 4);
+    c->t = r[1] == 0;
+    if (c->t) {
+        cobrar(c, 3);
+        r[1] = 0x7FFFFFFFu;
+        escrever32(c, r[15], r[1]);
+    } else {
+        cobrar(c, 2);
+        r[2] = 0x80000000u;
+        escrever32(c, r[15], r[2]);
+    }
+L_4AF2:
+    // sufixos: u, ul, l, lu (o bit 0x01 da tabela e maiuscula: + 0x20)
+    {
+        auto letra = [&](bool avancar) {  // le r[14] (depois do avanco) em r5 e devolve a minuscula em r0
+            if (avancar) r[14] += 1;
+            r[5] = sext8(ler8(c, r[14]));
+            r[0] = r[5] & 0xFFu;
+            r[0] = uint32_t(ler8(c, r[0] + r[4]));
+            c->t = (r[0] & r[12]) == 0;
+            if (c->t) cobrar(c, 1), r[0] = r[5];
+            else cobrar(c, 3), r[0] = r[5] + 0x20u;
+            cobrar(c, 2);
+        };
+        cobrar(c, 7);
+        r[4] = r[13];
+        letra(false);
+        c->t = r[0] == 0x75u;  // 'u'
+        if (c->t) {
+            cobrar(c, 7);
+            letra(true);
+            c->t = r[0] == 0x6Cu;  // 'l'
+            if (c->t) cobrar(c, 1), r[14] += 1;
+        }
+        cobrar(c, 6);
+        letra(false);
+        c->t = r[0] == 0x6Cu;
+        if (c->t) {
+            cobrar(c, 7);
+            letra(true);
+            c->t = r[0] == 0x75u;
+            if (c->t) cobrar(c, 1), r[14] += 1;
+        }
+    }
+    cobrar(c, 3);
+    r[5] = r[9];
+    if (!limite(0x8C124B62u)) goto L_4B70;
+L_4B66:
+    cobrar(c, 2);
+    r[0] = 0;
+    goto L_4B7C;
+L_4B6A:
+    cobrar(c, 3);
+    r[3] = kErrnoStrtol, r[2] = 0x4B0;
+    escrever32(c, r[3], r[2]);
+L_4B70:
+    cobrar(c, 3);
+    r[1] = ler32(c, r[15] + 12);
+    c->t = r[1] == 0;
+    if (!c->t) {
+        cobrar(c, 2);
+        r[1] = ler32(c, r[15] + 12);
+        escrever32(c, r[1], r[14]);
+    }
+    cobrar(c, 1);
+    r[0] = ler32(c, r[15]);
+L_4B7C:
+    cobrar(c, 11);
+    sp      = r[15] + 16;
+    c->macl = ler32(c, sp), sp += 4;
+    c->pr   = ler32(c, sp), sp += 4;
+    for (int k = 8; k <= 14; ++k) r[k] = ler32(c, sp), sp += 4;
+    r[15] = sp;
+}
+
+// 8C12435C atoi(r4): strtol(r4, NULL, 10) por salto de cauda (pool em 8C124364); r3 = o endereco do strtol
+constexpr Premissa kAtoi[] = {{0x8C124364u, 0x8C1248E0u}};
+void atoi_(Sh4Context* c) {
+    cobrar(c, 4);
+    c->r[3] = 0x8C1248E0u, c->r[6] = 10, c->r[5] = 0;
+    strtol_(c);
+}
+
 constexpr Elevada kLista[] = {
     {0x8C1247E8u, "strlen", &strlen_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::Completo},
@@ -725,6 +1131,10 @@ constexpr Elevada kLista[] = {
     {0x8C124870u, "strncpy", &strncpy_, Retorno::R0, {}, Contrato::Completo},
     // HH15.11e
     {0x8C12453Cu, "memmove", &memmove_, Retorno::R0, {}, Contrato::Completo},
+    // HH15.11f
+    {0x8C126A74u, "limite_texto", &limite_texto, Retorno::R0, kLimiteTexto, Contrato::Completo},
+    {0x8C1248E0u, "strtol", &strtol_, Retorno::R0, kStrtol, Contrato::Completo},
+    {0x8C12435Cu, "atoi", &atoi_, Retorno::R0, kAtoi, Contrato::Completo},
 };
 
 } // namespace

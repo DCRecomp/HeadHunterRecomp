@@ -266,6 +266,45 @@ HH_TEST(hh15_elevacao_delegacao_fora_do_contrato) {
     hh::mods::reset();
 }
 
+// HH15.11f: a divisao sem sinal (8C123BEC) deixa o SR como o laco da gerada (div0u, 32 x rotcl/div1, rotcl): M = 0,
+// T = 0 e Q = 1 - bit 0 do quociente (o strtol, de contrato completo, a chama); com divisor zero, T = 1 (o tst r0,r0 da
+// entrada; revisao Codex HH15.11f) e M/Q intactos
+namespace {
+constexpr uint32_t kDividirSemSinal = 0x8C123BECu;
+hh::Sh4Func        g_slotDividirSemSinal = &outra;
+void slots_dividir_sem_sinal() {
+    static std::vector<hh::Sh4Func>    fns(ev::lista().size(), &outra);
+    static std::vector<hh::mods::Slot> s;
+    s.clear();
+    s.push_back({kDividirSemSinal, &g_slotDividirSemSinal, &outra});
+    for (size_t i = 0; i < ev::lista().size(); ++i)
+        if (ev::lista()[i].endereco != kDividirSemSinal) s.push_back({ev::lista()[i].endereco, &fns[i], &outra});
+    hh::mods::set_slots(s.data(), s.size());
+}
+} // namespace
+
+HH_TEST(hh15_elevacao_divisao_sem_sinal_sr) {
+    hh::mods::reset();
+    slots_dividir_sem_sinal();
+    ev::install(ev::Modo::Ativo);
+    HH_CHECK(g_slotDividirSemSinal != &outra);
+    Maquina        m;
+    constexpr uint32_t kMQ = hh::kSrM | hh::kSrQ;
+    auto dividir = [&](uint32_t a, uint32_t b, uint32_t t, uint32_t mq) {
+        m.c.r[1] = a, m.c.r[0] = b, m.c.t = t, m.c.sr = (m.c.sr & ~kMQ) | mq;
+        g_slotDividirSemSinal(&m.c);
+    };
+    dividir(100, 7, 1, kMQ);  // q = 14, par: Q = 1
+    HH_CHECK(m.c.r[0] == 14 && m.c.r[1] == 14 && m.c.t == 0 && (m.c.sr & kMQ) == hh::kSrQ);
+    dividir(99, 9, 1, kMQ);  // q = 11, impar: Q = 0
+    HH_CHECK(m.c.r[0] == 11 && m.c.t == 0 && (m.c.sr & kMQ) == 0);
+    hh::sh4_write32(&m.c, 0x8C30FA50u, 0);
+    dividir(5, 0, 0, kMQ);  // divisor zero
+    HH_CHECK(m.c.r[0] == 0 && m.c.t == 1 && (m.c.sr & kMQ) == kMQ && hh::sh4_read32(&m.c, 0x8C30FA50u) == 0x44Eu);
+    ev::install(ev::Modo::Gerado);
+    hh::mods::reset();
+}
+
 HH_TEST(hh15_elevacao_conferir_acusa_cada_divergencia) {
     hh::mods::reset();
     slots(true);
