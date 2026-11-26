@@ -1017,3 +1017,27 @@ divisão (HH15.11a) não grava o r2 que a gerada empilha em `[sp - 4]`. É anter
 
 Falta: a regressão integral (V3) deste lote. Fora dele: `8C1244A8` (a consulta da tabela de tipos de caractere) só é
 chamada na rota `newgame_area1_nativo` (969 vezes, no VBlank 3835), não na `newgame_area1` da conferência.
+
+#### HH15.11g (2026-11-26): `log10f` e os auxiliares da saída formatada
+
+- `8C1264B4` `log10_interno`: `log_interno(x)` vezes a palavra apontada pelo pool (`8C145230` = 0,4342945 = 1/ln 10),
+  com o PR empilhado (gravado) e lido de volta. `8C1244B8` `log10f`: o mesmo código byte a byte dos envoltórios com
+  `errno` (`8C1243B8`), pelo modelo `elevada_envoltorio`. O modelo (`com_errno`) passou a gravar na pilha o PR e o
+  `fmov.s fr0,@r15`, como a gerada (lição da HH15.11c); vale para todos os envoltórios.
+- Auxiliares da saída formatada (o descritor: +0 o tipo, 1 = string; +4 o ponteiro; +8 a contagem; +12 a função de
+  saída de um byte): `8C125FEA` grava o zero final no descritor de string; `8C125FFA` devolve 0 no de string ou o bit
+  0x40 do byte em ponteiro + 16; `8C125F92` escreve n bytes, no de string por `memmove` (pool em `8C126010`) avançando
+  ponteiro e contagem; nos outros tipos a gerada chama a função do descritor por ponteiro, byte a byte, e a elevada
+  delega (HH15.11e). Nomes descritivos pelo comportamento.
+- Regeneração: 18 chamadas por disco passaram ao slot (as dos auxiliares são indiretas, pelo `sh4_dispatch`, que chega
+  à elevada pelo override).
+- Conferência na rota da área 1: 50 elevadas, 3 568 101 chamadas, 3 460 040 conferidas (14 681 completas), 108 052 com
+  atendimento (retorno diferente 0), RAM nos back-edges 329 396, 9 delegadas (todas do `memmove`; o `saida_escrever` não
+  delegou nenhuma vez), 0 divergências; as novas com 1 348 a 5 660 conferidas; os 94 quadros iguais. Produto: 94 hashes.
+  Referências da HH15: as três iguais. Negativos por mutação (desfeitos, hash do arquivo conferido, rebuild limpo): o
+  zero final trocado por 1 reprova (`saida_terminar ... escrita da elevada`); sem o `fmov fr0,fr3` reprova
+  (`log10_interno ... fr0`). Revisão Codex (`reviews/codex-hh15_11g.log`): sem achados.
+- Ficam para lotes próprios: o alocador (`8C123780`, `8C12384C`, `8C1236FC`) e `8C125518`, que mudam a máscara de
+  interrupção no SR (o `ldc sr` da gerada pode atender uma interrupção pendente); `8C12376C`/`8C123838`, saltos por
+  tabela de ponteiros; `8C1254B8`/`8C1254C8`, que chamam funções do SDK ainda geradas; `8C124658` (envoltório do
+  `8C1265D8`, ainda não identificado).

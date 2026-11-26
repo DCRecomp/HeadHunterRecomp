@@ -1108,6 +1108,69 @@ void atoi_(Sh4Context* c) {
     strtol_(c);
 }
 
+// ---- HH15.11g: auxiliares da saida formatada (o descritor em r4/r6: +0 = o tipo, 1 = string; +4 = o ponteiro; +8 = a
+// contagem; +12 = a funcao de saida de um byte, para os outros tipos) ----
+
+// 8C125FEA: no descritor de string (tipo 1), grava o zero final em *ponteiro; nos outros, nada
+void saida_terminar(Sh4Context* c) {
+    cobrar(c, 3);
+    c->r[0] = ler32(c, c->r[4]);
+    c->t    = c->r[0] == 1;
+    if (c->t) {
+        cobrar(c, 3);
+        c->r[2] = ler32(c, c->r[4] + 4), c->r[3] = 0;
+        escrever8(c, c->r[2], 0);
+    }
+    cobrar(c, 2);
+}
+
+// 8C125FFA: 0 no descritor de string; nos outros, o bit 0x40 do byte em ponteiro + 16 (r1 = 16)
+void saida_erro(Sh4Context* c) {
+    cobrar(c, 3);
+    c->r[0] = ler32(c, c->r[4]);
+    c->t    = c->r[0] == 1;
+    if (c->t) {
+        cobrar(c, 2);
+        c->r[0] = 0;
+        return;
+    }
+    cobrar(c, 6);
+    c->r[0] = ler32(c, c->r[4] + 4), c->r[1] = 16;
+    c->r[0] = sext8(ler8(c, c->r[0] + c->r[1])) & 0x40u;
+}
+
+// 8C125F92 (r4 = origem, r5 = n, r6 = o descritor): no descritor de string, memmove(ponteiro, origem, n) (pool em
+// 8C126010) e avanca o ponteiro e a contagem em n. Nos outros tipos a gerada chama a funcao de saida do descritor byte a
+// byte por um ponteiro qualquer: fora do contrato, delegado a gerada (HH15.11e). r11-r14 e o PR empilhados (gravados).
+constexpr Premissa kSaidaEscrever[] = {{0x8C126010u, 0x8C12453Cu}};
+void saida_escrever(Sh4Context* c) {
+    if (ler32(c, c->r[6]) != 1) return delegar(c, 0x8C125F92u);
+    const uint32_t sp0 = c->r[15], pr0 = c->pr;
+    cobrar(c, 11);
+    escrever32(c, sp0 - 4, c->r[14]);
+    c->r[14] = c->r[6];
+    escrever32(c, sp0 - 8, c->r[13]), escrever32(c, sp0 - 12, c->r[12]), escrever32(c, sp0 - 16, c->r[11]);
+    c->r[11] = c->r[4];
+    escrever32(c, sp0 - 20, pr0);
+    c->r[15] = sp0 - 20;
+    c->r[0]  = ler32(c, c->r[14]);
+    c->t     = c->r[0] == 1;
+    c->r[13] = c->r[5];
+    cobrar(c, 5);
+    c->r[2] = 0x8C12453Cu, c->r[5] = c->r[11], c->r[6] = c->r[13];
+    c->r[4] = ler32(c, c->r[14] + 4);
+    chamar(c, 0x8C12453Cu, &memmove_, 0x8C125FB2u);
+    cobrar(c, 7);
+    c->r[3] = ler32(c, c->r[14] + 4) + c->r[13];
+    escrever32(c, c->r[14] + 4, c->r[3]);
+    c->r[2] = ler32(c, c->r[14] + 8) + c->r[13];
+    escrever32(c, c->r[14] + 8, c->r[2]);
+    cobrar(c, 6);
+    c->pr    = ler32(c, sp0 - 20);
+    c->r[11] = ler32(c, sp0 - 16), c->r[12] = ler32(c, sp0 - 12), c->r[13] = ler32(c, sp0 - 8);
+    c->r[14] = ler32(c, sp0 - 4);
+    c->r[15] = sp0;
+}
 constexpr Elevada kLista[] = {
     {0x8C1247E8u, "strlen", &strlen_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::Completo},
@@ -1131,6 +1194,10 @@ constexpr Elevada kLista[] = {
     {0x8C124870u, "strncpy", &strncpy_, Retorno::R0, {}, Contrato::Completo},
     // HH15.11e
     {0x8C12453Cu, "memmove", &memmove_, Retorno::R0, {}, Contrato::Completo},
+    // HH15.11g
+    {0x8C125FEAu, "saida_terminar", &saida_terminar, Retorno::Nenhum, {}, Contrato::Completo},
+    {0x8C125FFAu, "saida_erro", &saida_erro, Retorno::R0, {}, Contrato::Completo},
+    {0x8C125F92u, "saida_escrever", &saida_escrever, Retorno::Nenhum, kSaidaEscrever, Contrato::Completo},
     // HH15.11f
     {0x8C126A74u, "limite_texto", &limite_texto, Retorno::R0, kLimiteTexto, Contrato::Completo},
     {0x8C1248E0u, "strtol", &strtol_, Retorno::R0, kStrtol, Contrato::Completo},

@@ -628,14 +628,36 @@ void log_interno(Sh4Context* c) {
     c->r[15] = sp0;
 }
 
+// 8C1264B4: log10f interno: log_interno(x) vezes 1/ln 10 (a palavra apontada pelo pool, 8C145230 = 0,4342945); o PR
+// empilhado e lido de volta, como na gerada (HH15.11g)
+constexpr Premissa kLog10[] = {{0x8C1264C8u, 0x8C128C0Cu}, {0x8C1264CCu, 0x8C145230u}};
+void log10_interno(Sh4Context* c) {
+    const uint32_t sp0 = c->r[15];
+    cobrar(c, 4);
+    escrever32(c, sp0 - 4, c->pr);  // sts.l pr,@-r15
+    c->r[15] = sp0 - 4;
+    c->r[3]  = 0x8C128C0Cu;
+    chamar(c, 0x8C128C0Cu, &log_interno, 0x8C1264BCu);
+    cobrar(c, 6);
+    c->r[3]  = 0x8C145230u;
+    c->pr    = ler32(c, sp0 - 4);
+    c->r[15] = sp0;
+    c->fr[3] = c->fr[0];
+    fr(c, 0, ler_f(c, 0x8C145230u));
+    fr(c, 0, fr(c, 0) * fr(c, 3));  // fmul fr3,fr0 no delay slot do rts
+}
+
 // Os envoltorios publicos (cosf 8C1243B8, sinf 8C1246F8): a funcao interna e o errno (resultado NaN: 0x44D; infinito:
-// 0x44C) na variavel de erro do SDK
+// 0x44C) na variavel de erro do SDK. HH15.11g: o PR e o resultado gravados na pilha como na gerada (sts.l pr e fmov.s
+// fr0,@r15; o jogo pode copiar lixo de pilha para fora dela, HH15.11c)
 void com_errno(Sh4Context* c, uint32_t endereco, Sh4Func interna, uint32_t retorno) {
     const uint32_t pr0 = c->pr, sp0 = c->r[15];
-    c->r[15]           = sp0 - 8;  // o PR salvo e o quadro de 4 bytes
+    escrever32(c, sp0 - 4, pr0);
+    c->r[15] = sp0 - 8;  // o PR salvo e o quadro de 4 bytes
     cobrar(c, 5);
     chamar(c, endereco, interna, retorno);
     const uint32_t rb = c->fr[0];
+    escrever32(c, sp0 - 8, rb);
     cobrar(c, 7);
     // r2 = expoente do resultado, r3 = o quadro, r4 = a mascara do expoente; no erro, o errno e a mantissa
     c->r[2] = rb & 0x7F800000u, c->r[3] = c->r[15], c->r[4] = 0x7F800000u, c->t = c->r[2] == 0x7F800000u;
@@ -689,6 +711,9 @@ constexpr Elevada kLista[] = {
     elevada_envoltorio<0x8C1242B0u, 0x8C126308u, &atan2_interno>("atan2f"),
     elevada_envoltorio<0x8C124120u, 0x8C126014u, &acos_interno>("acosf_1"),
     elevada_envoltorio<0x8C124170u, 0x8C126014u, &acos_interno>("acosf_2"),
+    // HH15.11g
+    {0x8C1264B4u, "log10_interno", &log10_interno, Retorno::Fr0, kLog10, Contrato::Completo},
+    elevada_envoltorio<0x8C1244B8u, 0x8C1264B4u, &log10_interno>("log10f"),
     // 8C124260 (o segundo envoltorio do atan2, mesmo codigo) fica gerado: a rota da area 1 nao o chama
     // 8C1246A8 (o segundo envoltorio do seno, mesmo codigo) fica gerado: a rota da area 1 nao o chama (sem conferencia)
 };

@@ -195,6 +195,9 @@ slots = [
   0x8C12453C,  # memmove
   # HH15.11f: strtol, atoi e o limite de 512 caracteres que o strtol chama pelo ponteiro em r11
   0x8C126A74, 0x8C1248E0, 0x8C12435C,  # limite_texto, strtol, atoi
+  # HH15.11g: auxiliares da saida formatada; log10f e o interno (transitional/elevadas_runtime_c.cpp e elevadas_libm.cpp)
+  0x8C125FEA, 0x8C125FFA, 0x8C125F92,  # saida_terminar, saida_erro, saida_escrever
+  0x8C1264B4, 0x8C1244B8,  # log10_interno, log10f
   # HH15.11b: biblioteca matematica do SDK (transitional/elevadas_libm.cpp)
   0x8C1263C0,  # resto_com_quociente
   0x8C128990, 0x8C1289B0,  # cos_nucleo, sen_nucleo
