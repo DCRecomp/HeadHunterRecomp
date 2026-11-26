@@ -65,6 +65,7 @@ struct Stats {
     uint64_t atendidasComRetornoDiferente = 0;  // diagnostico: dessas, o retorno da elevada (ensaio) difere do da gerada
     uint64_t ramNasVoltas    = 0;  // conferidas com back-edges: a RAM escrita conferida em cada um
     uint64_t semRamNasVoltas = 0;  // acima do orcamento (palavras x back-edges): sem a RAM nos back-edges
+    uint64_t delegadas       = 0;  // HH15.11e: fora do contrato da elevada, so a gerada rodou (sem conferencia)
 };
 const Stats& stats();                // total
 const Stats& stats(size_t indice);   // por elevada (indice de lista())
@@ -85,9 +86,16 @@ void chamar(Sh4Context* c, uint32_t endereco, Sh4Func f, uint32_t retorno);
 uint32_t ler32(Sh4Context* c, uint32_t a);
 uint8_t  ler8(Sh4Context* c, uint32_t a);
 void     escrever8(Sh4Context* c, uint32_t a, uint8_t v);
+uint16_t ler16(Sh4Context* c, uint32_t a);
+void     escrever16(Sh4Context* c, uint32_t a, uint16_t v);
 float    ler_f(Sh4Context* c, uint32_t a);
 void     escrever32(Sh4Context* c, uint32_t a, uint32_t v);
 void     escrever_f(Sh4Context* c, uint32_t a, float v);
+// HH15.11e: um caso fora do contrato da elevada (por exemplo um ponteiro fora da RAM principal, que a gerada atende pelo
+// caminho de hardware) volta para a gerada `endereco`. A elevada decide na entrada, so pelos argumentos, e retorna logo
+// depois: no modo ativo a gerada roda no lugar dela; no ensaio da conferencia a chamada e marcada, so a gerada roda (de
+// verdade) e e contada como delegada. Delegar depois de um efeito (escrita, ciclo ou back-edge) e erro explicito.
+void delegar(Sh4Context* c, uint32_t endereco);
 // Contrato de FPU das elevadas em precisao simples: FPSCR.PR = 0 e SZ = 0.
 void exigir_fpu_simples(Sh4Context* c, uint32_t funcao);
 

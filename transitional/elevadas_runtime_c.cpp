@@ -6,6 +6,8 @@
 // cada escrita na ordem da gerada.
 #include "elevacao.h"
 
+#include "cpu/sh4_mem.h"
+
 namespace hh::transitional::elevacao {
 namespace {
 
@@ -572,6 +574,131 @@ void strncpy_(Sh4Context* c) {
     c->r[0] = d, c->r[5] = i, c->r[7] = d + i, c->t = 1;
 }
 
+// ---- HH15.11e: memmove (fora do contrato: a gerada) ----
+
+uint32_t sext16(uint16_t h) { return uint32_t(int32_t(int16_t(h))); }
+
+// 8C12453C memmove(r4, r5, r6): devolve r4; r11-r13 empilhados (gravados) e restaurados. r7 = r4 | r5 | r6 escolhe a
+// largura (palavra longa com os tres multiplos de 4, palavra com os tres pares, senao byte). Destino abaixo da origem:
+// para a frente; acima: para tras, a partir do fim. Cada unidade lida e gravada antes da seguinte (sobreposicao como a
+// gerada). Nos lacos r6 conta as unidades restantes; r11 = n >> 1 e r12 = n >> 2 (as contagens), r13 = origem + n
+// (para tras); T = 1 no fim do laco.
+// HH15.11e: com um dos dois intervalos fora da RAM principal (a rota chama memmove(0, ...): a gerada grava na area 0
+// pelo caminho de hardware), a chamada volta para a gerada, antes de qualquer efeito.
+bool na_ram(uint32_t a, uint32_t n) {
+    return sh4_is_ram(a) && sh4_is_ram(a + n - 1) && ((a + n - 1) & kRamMask) == (a & kRamMask) + n - 1;
+}
+
+void memmove_(Sh4Context* c) {
+    const uint32_t d = c->r[4], s = c->r[5], n = c->r[6], sp0 = c->r[15];
+    if (n && d != s && !(na_ram(d, n) && na_ram(s, n))) return delegar(c, 0x8C12453Cu);
+    const uint32_t r11 = c->r[11], r12 = c->r[12], r13 = c->r[13];
+    cobrar(c, 5);
+    escrever32(c, sp0 - 4, r13), escrever32(c, sp0 - 8, r12), escrever32(c, sp0 - 12, r11);  // mov.l r13/r12/r11,@-r15
+    c->r[15] = sp0 - 12;
+    auto fim = [&] {
+        cobrar(c, 5);
+        c->r[0] = d, c->r[11] = r11, c->r[12] = r12, c->r[13] = r13, c->r[15] = sp0;
+    };
+    if (d == s) {
+        c->t = 1;
+        fim();
+        return;
+    }
+    cobrar(c, 3);
+    c->r[2] = 0;
+    if (n == 0) {
+        c->t = 0;
+        fim();
+        return;
+    }
+    cobrar(c, 9);
+    const uint32_t ou = d | s | n;
+    c->r[7] = ou, c->r[11] = n >> 1, c->r[12] = n >> 2;
+    if (d < s) {  // para a frente
+        cobrar(c, 3);
+        c->r[3] = 1;
+        if (ou & 1) {  // bytes: r0 = a origem, r7 = o destino
+            cobrar(c, 2);
+            for (uint32_t k = 1;; ++k) {
+                cobrar(c, 6);
+                const uint8_t b = ler8(c, s + k - 1);
+                escrever8(c, d + k - 1, b);
+                c->r[0] = s + k, c->r[3] = sext8(b), c->r[6] = n - k, c->r[7] = d + k;
+                if (k == n) break;
+                c->t = 0;
+                volta(c, 0x8C124596u);
+            }
+        } else {
+            cobrar(c, 3);
+            c->r[1] = 3;
+            const uint32_t u = (ou & 3) ? 2 : 4, m = n / u;  // r5 = a origem, r7 = o destino
+            cobrar(c, 2);
+            for (uint32_t k = 1;; ++k) {
+                cobrar(c, 6);
+                const uint32_t o = u * (k - 1);
+                if (u == 2) {
+                    const uint16_t h = ler16(c, s + o);
+                    escrever16(c, d + o, h);
+                    c->r[3] = sext16(h);
+                } else {
+                    const uint32_t w = ler32(c, s + o);
+                    escrever32(c, d + o, w);
+                    c->r[3] = w;
+                }
+                c->r[5] = s + u * k, c->r[6] = m - k, c->r[7] = d + u * k;
+                if (k == m) break;
+                c->t = 0;
+                volta(c, u == 2 ? 0x8C124582u : 0x8C12456Eu);
+            }
+        }
+        cobrar(c, 2);  // bra para o epilogo
+    } else {  // para tras: r0 = destino + n, r13 = origem + n
+        cobrar(c, 7);
+        c->r[2] = 1, c->r[0] = d + n, c->r[13] = s + n;
+        if (ou & 1) {  // bytes: r7 = a origem, r5 = o destino; o laco cai direto no epilogo
+            cobrar(c, 2);
+            for (uint32_t k = 1;; ++k) {
+                cobrar(c, 5);
+                const uint8_t b = ler8(c, s + n - k);
+                escrever8(c, d + n - k, b);
+                c->r[3] = sext8(b), c->r[5] = d + n - k, c->r[6] = n - k, c->r[7] = s + n - k;
+                if (k == n) break;
+                c->t = 0;
+                volta(c, 0x8C1245E6u);
+            }
+        } else {
+            cobrar(c, 3);
+            c->r[1] = 3;
+            cobrar(c, 3);
+            if (ou & 3) {  // palavras: r5 = a origem, r7 = o destino
+                for (uint32_t k = 1, m = n / 2;; ++k) {
+                    cobrar(c, 5);
+                    const uint16_t h = ler16(c, s + n - 2 * k);
+                    escrever16(c, d + n - 2 * k, h);
+                    c->r[3] = sext16(h), c->r[5] = s + n - 2 * k, c->r[6] = m - k, c->r[7] = d + n - 2 * k;
+                    if (k == m) break;
+                    c->t = 0;
+                    volta(c, 0x8C1245D4u);
+                }
+            } else {  // palavras longas: r7 = a origem, r5 = o destino
+                for (uint32_t k = 1, m = n / 4;; ++k) {
+                    cobrar(c, 5);
+                    const uint32_t w = ler32(c, s + n - 4 * k);
+                    escrever32(c, d + n - 4 * k, w);
+                    c->r[3] = w, c->r[5] = d + n - 4 * k, c->r[6] = m - k, c->r[7] = s + n - 4 * k;
+                    if (k == m) break;
+                    c->t = 0;
+                    volta(c, 0x8C1245C0u);
+                }
+            }
+            cobrar(c, 2);  // bra para o epilogo
+        }
+    }
+    c->t = 1;
+    fim();
+}
+
 constexpr Elevada kLista[] = {
     {0x8C1247E8u, "strlen", &strlen_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::Completo},
@@ -593,6 +720,8 @@ constexpr Elevada kLista[] = {
     // HH15.11d
     {0x8C124508u, "memcmp", &memcmp_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124870u, "strncpy", &strncpy_, Retorno::R0, {}, Contrato::Completo},
+    // HH15.11e
+    {0x8C12453Cu, "memmove", &memmove_, Retorno::R0, {}, Contrato::Completo},
 };
 
 } // namespace

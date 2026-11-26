@@ -191,6 +191,8 @@ slots = [
   0x8C123EB8,  # copiar_palavras_n (auxiliar do compilador, tabela de saltos ate 64 bytes)
   # HH15.11d: memcmp e strncpy (transitional/elevadas_runtime_c.cpp)
   0x8C124508, 0x8C124870,  # memcmp, strncpy
+  # HH15.11e: memmove (fora do contrato, ponteiro fora da RAM principal: a gerada)
+  0x8C12453C,  # memmove
   # HH15.11b: biblioteca matematica do SDK (transitional/elevadas_libm.cpp)
   0x8C1263C0,  # resto_com_quociente
   0x8C128990, 0x8C1289B0,  # cos_nucleo, sen_nucleo

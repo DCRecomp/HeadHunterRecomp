@@ -930,3 +930,30 @@ Ficaram para o lote seguinte, com o motivo:
   rota da área 1, então não há conferência; a regressão exige conferência de toda elevada.
 - `8C1248E0` `strtol` e o envoltório de base 10 `8C12435C`: função grande, com chamadas por ponteiro (r11 = `8C126A74`,
   pool em `8C124ACC`) e a mesma tabela de tipos; lote próprio.
+
+#### HH15.11e (2026-11-26): delegação para a gerada fora do contrato e o `memmove`
+
+- **Delegação** (`transitional/elevacao.h/.cpp`, `delegar`): uma elevada pode devolver à gerada um caso fora do
+  contrato dela, decidido na entrada e só pelos argumentos. No modo ativo a gerada roda no lugar dela; na conferência a
+  chamada é marcada no ensaio, só a gerada roda (de verdade) e a chamada é contada como `delegadas` (no resumo, por
+  elevada e no total), sem conferência. Delegar depois de qualquer efeito (escrita no diário, ciclo ou back-edge) é erro
+  explícito. A delegação é transitória: na HH15.F a gerada sai, e cada caso delegado precisa de um tratamento nativo
+  (aqui, a escrita na área 0, que a gerada faz pelo caminho de hardware) ou da prova de que não acontece.
+- `8C12453C` `memmove(r4, r5, n)`: largura pela união `r4 | r5 | n` (palavra longa, palavra ou byte), para a frente
+  quando o destino está abaixo da origem e para trás no caso contrário, r11–r13 empilhados (gravados) e restaurados.
+  Delega quando n > 0, destino ≠ origem e um dos dois intervalos não está inteiro na RAM principal (`na_ram`: as duas
+  pontas na RAM e sem atravessar um espelho nem dar a volta nos 32 bits; a mesma checagem dos acessos das elevadas).
+  A rota da área 1 chama `memmove(0, 8C83BEE0, 0x10C0)` pelo ponteiro em r12 de `8C128198` (retorno `8C12819C`).
+- Regeneração: só as 79 chamadas por disco ao `memmove` passaram ao slot (75 `HH_CALL`, 2 `HH_CALL_REENTRANT`, 2 saltos
+  de cauda) e a entrada da tabela de slots.
+- Conferência na rota da área 1: 42 elevadas, 3 548 639 chamadas, 3 442 083 conferidas (12 812 completas), 106 547 com
+  atendimento (retorno diferente 0), RAM nos back-edges 310 912 (138 acima do orçamento), **9 delegadas**, 0
+  divergências; `memmove` 3 843 conferidas (218 completas) e 9 delegadas; os 94 quadros iguais. Produto: 94 hashes
+  iguais. Referências da HH15: as três iguais.
+- Unitário `hh15_elevacao_delegacao_fora_do_contrato` (dentro da RAM a elevada copia; destino 0 ou origem fora da RAM: a
+  gerada, sem efeito da elevada; n = 0 fica na elevada; na conferência, a delegada roda a gerada uma vez e é contada).
+  Antes da delegação, o `memmove` parava com "escrita fora da RAM principal". Negativos por mutação manual (desfeitos,
+  rebuild limpo): um ciclo cobrado antes de delegar reprova no VBlank 308 com "delegacao a gerada depois de um efeito";
+  r6 errado no laço de bytes reprova com "r6 do contrato completo".
+- Revisão Codex: indisponível (limite de uso da conta até 3h31 de 2026-11-26); fica para a próxima rodada.
+- Fora deste lote: `8C1244A8` (sem chamada na rota) e o `strtol` (`8C1248E0`, `8C12435C`).

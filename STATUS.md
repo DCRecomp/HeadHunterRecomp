@@ -1,6 +1,6 @@
 # STATUS — Head Hunter Recompiled
 
-Atualizado em 2026-11-18. Este arquivo é a fonte autoritativa do checkpoint.
+Atualizado em 2026-11-26. Este arquivo é a fonte autoritativa do checkpoint.
 
 ## Estado das etapas
 
@@ -21,7 +21,7 @@ Atualizado em 2026-11-18. Este arquivo é a fonte autoritativa do checkpoint.
 | HH12 | CONCLUIDA | `docs/relatorios/HH12-RELATORIO.md` (filmes nativos: 53 MP4 do Builder, open/play/close do objeto do filme 4X sem o decodificador nem a AICA, skip, áudio, legendas do jogo, mods; FFmpeg mantido por decisão do mantenedor) |
 | HH13 | CONCLUIDA | `docs/relatorios/HH13-RELATORIO.md` (Vulkan sobre a IR do TA; provedor nativo da camada Kamui sem TA, registradores de render do PVR nem VRAM guest; hashes iguais ao legado e ao HH06) |
 | HH14 | CONCLUIDA | `docs/relatorios/HH14-RELATORIO.md` (áudio nativo: driver AUDIO64.DRV reconstruído sem ARM7, motor de 64 canais, reverb do jogo, mods/dublagem; nenhum acesso à AICA no nativo além do RTC; sombra do driver igual à do Flycast) |
-| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática com as 33 elevadas e a sonda dos back-edges feitas, HH15.11c cópias de string e por palavras (39 elevadas, 2026-11-18, regressão integral aprovada em 2026-11-25), HH15.11d `memcmp` e `strncpy` (41 elevadas, 2026-11-25)) |
+| HH15 | EM_ANDAMENTO | `docs/planos/HH15-PLANO.md` (parte 1, HH15.0–HH15.8, concluída: tempo lógico, toda a simulação de hardware e os provedores legados fora do produto, V3 14/14, `docs/relatorios/HH15-RELATORIO.md`; D-HH15-1 decidida B em 2026-10-30: parte 2 em curso, remoção do substrato AOT com a elevação para `native/game`: HH15.9 inventário, HH15.10 infraestrutura e HH15.11a runtime C concluídos, HH15.11b biblioteca matemática com as 33 elevadas e a sonda dos back-edges feitas, HH15.11c cópias de string e por palavras (39 elevadas, 2026-11-18, regressão integral aprovada em 2026-11-25), HH15.11d `memcmp` e `strncpy` (41 elevadas, 2026-11-25), HH15.11e delegação fora do contrato e `memmove` (42 elevadas, 2026-11-26)) |
 | HH16 | EM_ANDAMENTO | `docs/planos/HH16-PLANO.md` (campanha por gravação única do mantenedor, decidida em 2026-11-14). HH16.0 (gravação, estado por leitura, reprodução) e HH16.1 (monitor `tools/dev/campanha.py`) implementadas e testadas sem janela; P0 da passagem de disco e do LOAD do disco 2 corrigidos; placar dos portões na seção 9 do plano. **Falta: a sessão piloto do mantenedor (HH16.P, P3) e os testes de GPU**; depois, a gravação (HH16.2) |
 | HH19 | PENDENTE | `docs/planos/HH19-PLANO.md` (remasterização, equivalente ao N9 do BS; incluída pelo mantenedor em 2026-10-28; depois do HH16 e antes do HH17; só começa com autorização do mantenedor) |
 | HH17 | PENDENTE | — |
@@ -682,6 +682,11 @@ texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiá
   de caractere (8C1244A8) não é chamada na rota; o `strtol` fica para lote próprio. `ctest -LE gpu` **95/95** (2 836 s),
   `ctest -L gpu` **4/4**. Revisão Codex (`reviews/codex-hh15_11d.log`): 1 achado aceito e corrigido (o `strncpy` relê o
   byte depois do back-edge, como a gerada); revisão da correção sem achados. Falta a regressão integral (V3).
+- HH15.11e (2026-11-26): delegação para a gerada nos casos fora do contrato e o `memmove` (8C12453C), que delega quando
+  um ponteiro está fora da RAM principal (`docs/planos/HH15-PLANO.md`, HH15.11e). Conferência na rota: 42 elevadas,
+  3 442 083 conferidas, 9 delegadas, 0 divergências, 94 quadros; produto 94 hashes; referências da HH15 iguais;
+  unitário novo e dois negativos. Codex indisponível (limite de uso). Regressão integral da HH15.11d e da HH15.11e em
+  curso.
 
 ### HH14 (2026-10-27, concluída)
 

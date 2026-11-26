@@ -194,6 +194,63 @@ HH_TEST(hh15_elevacao_slot_e_modo_ativo) {
     hh::mods::reset();
 }
 
+// HH15.11e: o memmove com um ponteiro fora da RAM principal volta para a gerada (o caso da rota: destino 0, a area 0
+// pelo caminho de hardware); dentro da RAM a elevada copia. Antes da delegacao, a elevada parava com "escrita fora da RAM".
+namespace {
+constexpr uint32_t kMemmove = 0x8C12453Cu;
+int                g_geradaMemmove = 0;
+void gerada_memmove(hh::Sh4Context* c) { ++g_geradaMemmove, c->r[0] = c->r[4]; }
+hh::Sh4Func g_slotMemmove = &gerada_memmove;
+void slots_memmove() {
+    static std::vector<hh::Sh4Func>    fns(ev::lista().size(), &outra);
+    static std::vector<hh::mods::Slot> s;
+    s.clear();
+    s.push_back({kMemmove, &g_slotMemmove, &gerada_memmove});
+    for (size_t i = 0; i < ev::lista().size(); ++i)
+        if (ev::lista()[i].endereco != kMemmove) s.push_back({ev::lista()[i].endereco, &fns[i], &outra});
+    hh::mods::set_slots(s.data(), s.size());
+}
+size_t indice(uint32_t endereco) {
+    for (size_t i = 0; i < ev::lista().size(); ++i)
+        if (ev::lista()[i].endereco == endereco) return i;
+    return SIZE_MAX;
+}
+} // namespace
+
+HH_TEST(hh15_elevacao_delegacao_fora_do_contrato) {
+    hh::mods::reset();
+    slots_memmove();
+    ev::install(ev::Modo::Ativo);
+    HH_CHECK(g_slotMemmove != &gerada_memmove);
+    Maquina m;
+    const uint32_t src = 0x8C300000u, dst = 0x8C310000u;
+    for (uint32_t k = 0; k < 16; ++k) hh::sh4_write8(&m.c, src + k, uint8_t(0xA0 + k));
+    auto chamar = [&](uint32_t d, uint32_t s, uint32_t n) {
+        m.c.r[4] = d, m.c.r[5] = s, m.c.r[6] = n;
+        g_slotMemmove(&m.c);
+    };
+    g_geradaMemmove = 0;
+    chamar(dst, src, 16);  // dentro da RAM: a elevada
+    HH_CHECK(g_geradaMemmove == 0 && hh::sh4_read8(&m.c, dst + 15) == 0xAF && m.c.r[0] == dst);
+    const uint64_t ciclos = m.c.cycles;
+    chamar(0, src, 16);  // destino na area 0: a gerada, sem nenhum efeito da elevada
+    HH_CHECK(g_geradaMemmove == 1 && m.c.r[0] == 0 && m.c.cycles == ciclos);
+    chamar(dst, 0x00001000u, 16);  // origem fora da RAM
+    HH_CHECK(g_geradaMemmove == 2);
+    chamar(dst, src, 0);  // n = 0 nao toca memoria: a elevada
+    HH_CHECK(g_geradaMemmove == 2);
+    // conferir: a chamada delegada roda so a gerada, uma vez, e e contada a parte (sem conferencia)
+    ev::install(ev::Modo::Conferir);
+    const size_t i = indice(kMemmove);
+    HH_CHECK(i != SIZE_MAX);
+    chamar(0, src, 16);
+    HH_CHECK(g_geradaMemmove == 3 && ev::stats(i).delegadas == 1 && ev::stats(i).conferidas == 0 &&
+             ev::stats().delegadas == 1 && !ev::em_ensaio());
+    HH_CHECK(ev::summary().find("delegadas 1") != std::string::npos);
+    ev::install(ev::Modo::Gerado);
+    hh::mods::reset();
+}
+
 HH_TEST(hh15_elevacao_conferir_acusa_cada_divergencia) {
     hh::mods::reset();
     slots(true);

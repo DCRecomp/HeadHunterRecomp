@@ -28,8 +28,10 @@ Stats              g_stats;
 std::vector<Stats> g_por;  // por elevada
 
 // ensaio da conferencia: back-edges so contados, escritas no diario
-bool g_ensaio      = false;
-bool g_atendimento = false;  // o ensaio teria atendido
+bool     g_ensaio      = false;
+bool     g_atendimento = false;  // o ensaio teria atendido
+bool     g_delegou     = false;  // HH15.11e: a elevada delegou a chamada a gerada (fora do contrato)
+uint64_t g_ensaioCiclos = 0, g_ensaioPolls = 0;  // o custo na entrada do ensaio (delegar so antes de qualquer efeito)
 struct Escrita {
     uint32_t off;
     uint32_t n;
@@ -125,14 +127,17 @@ class Ensaio {
 public:
     Ensaio(Sh4Context* c) : c_(c), c0_(*c) {
         g_diario.clear();
-        g_ensaio      = true;
-        g_atendimento = false;
+        g_ensaio       = true;
+        g_atendimento  = false;
+        g_delegou      = false;
+        g_ensaioCiclos = c->cycles, g_ensaioPolls = c->polls;
     }
     ~Ensaio() {
         for (auto it = g_diario.rbegin(); it != g_diario.rend(); ++it) std::memcpy(c_->ram + it->off, it->antes, it->n);
         g_diario.clear();
-        *c_      = c0_;
-        g_ensaio = false;
+        *c_       = c0_;
+        g_ensaio  = false;
+        g_delegou = false;
     }
 
 private:
@@ -203,11 +208,13 @@ void conferir(size_t i, Sh4Context* c) {
     std::vector<std::pair<uint32_t, uint32_t>> palavras;
     std::vector<std::vector<uint8_t>>          ramVoltas;
     bool                                       ramNasVoltas = false;
+    bool                                       delegou      = false;
     {
         Ensaio guarda(c);
         g_voltasElevada.clear();
         g_voltasDiario.clear();
         e.funcao(c);
+        delegou = g_delegou;
         voltasElevada.swap(g_voltasElevada);
         ce        = *c;
         atenderia = g_atendimento;
@@ -245,6 +252,12 @@ void conferir(size_t i, Sh4Context* c) {
         }
     }
 
+    // HH15.11e: fora do contrato da elevada (ela delegou na entrada, sem efeito): so a gerada, de verdade, contada a parte
+    if (delegou) {
+        ++g_stats.delegadas, ++s.delegadas;
+        mods::original(e.endereco)(c);
+        return;
+    }
     // a gerada, de verdade (a trajetoria de referencia), com a sonda dos back-edges
     Sonda      sonda;
     if (ramNasVoltas) sonda.palavras = &palavras;
@@ -447,16 +460,18 @@ std::string summary() {
     char b[320];
     std::snprintf(b, sizeof b,
                   "[elevacao] %s: %zu funcoes; chamadas %llu, conferidas %llu (completas %llu), com atendimento %llu (retorno "
-                  "diferente %llu); RAM nos back-edges %llu (acima do orcamento %llu)\n",
+                  "diferente %llu); RAM nos back-edges %llu (acima do orcamento %llu); delegadas %llu\n",
                   nome_modo(g_modo), lista().size(), (unsigned long long)g_stats.chamadas,
                   (unsigned long long)g_stats.conferidas, (unsigned long long)g_stats.completas,
                   (unsigned long long)g_stats.comAtendimento, (unsigned long long)g_stats.atendidasComRetornoDiferente,
-                  (unsigned long long)g_stats.ramNasVoltas, (unsigned long long)g_stats.semRamNasVoltas);
+                  (unsigned long long)g_stats.ramNasVoltas, (unsigned long long)g_stats.semRamNasVoltas,
+                  (unsigned long long)g_stats.delegadas);
     std::string out = b;
     for (size_t i = 0; i < lista().size() && i < g_por.size(); ++i) {
-        std::snprintf(b, sizeof b, "[elevacao]   %08X %s: chamadas %llu, conferidas %llu (completas %llu)\n",
+        std::snprintf(b, sizeof b, "[elevacao]   %08X %s: chamadas %llu, conferidas %llu (completas %llu)%s\n",
                       lista()[i].endereco, lista()[i].nome, (unsigned long long)g_por[i].chamadas,
-                      (unsigned long long)g_por[i].conferidas, (unsigned long long)g_por[i].completas);
+                      (unsigned long long)g_por[i].conferidas, (unsigned long long)g_por[i].completas,
+                      g_por[i].delegadas ? (", delegadas " + std::to_string(g_por[i].delegadas)).c_str() : "");
         out += b;
     }
     return out;
@@ -508,6 +523,26 @@ uint8_t ler8(Sh4Context* c, uint32_t a) {
 }
 
 void escrever8(Sh4Context* c, uint32_t a, uint8_t v) { escrever(c, a, &v, 1); }
+
+uint16_t ler16(Sh4Context* c, uint32_t a) {
+    uint16_t v;
+    std::memcpy(&v, c->ram + offsetRam(c, a, 2, "elevacao: leitura fora da RAM principal ou desalinhada"), 2);
+    return v;
+}
+
+void escrever16(Sh4Context* c, uint32_t a, uint16_t v) { escrever(c, a, &v, 2); }
+
+void delegar(Sh4Context* c, uint32_t endereco) {
+    if (g_ensaio) {
+        if (!g_diario.empty() || c->cycles != g_ensaioCiclos || c->polls != g_ensaioPolls)
+            sh4_fatal(c, "elevacao: delegacao a gerada depois de um efeito da elevada", endereco, uint32_t(g_diario.size()));
+        g_delegou = true;
+        return;
+    }
+    const Sh4Func g = mods::original(endereco);
+    if (!g) sh4_fatal(c, "elevacao: delegacao para endereco sem funcao gerada", endereco, 0);
+    g(c);
+}
 
 float ler_f(Sh4Context* c, uint32_t a) {
     const uint32_t u = ler32(c, a);
