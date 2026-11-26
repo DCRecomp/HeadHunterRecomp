@@ -239,12 +239,27 @@ HH_TEST(hh15_elevacao_delegacao_fora_do_contrato) {
     HH_CHECK(g_geradaMemmove == 2);
     chamar(dst, src, 0);  // n = 0 nao toca memoria: a elevada
     HH_CHECK(g_geradaMemmove == 2);
+    // revisao Codex HH15.11e: um intervalo cujo fim da a volta nos 32 bits e cai na RAM (0x8CFFFFFF + 0xFF000001 =
+    // 0x8C000000; a origem num espelho) sai da RAM no meio: a gerada
+    const uint64_t antesVolta = m.c.cycles;
+    chamar(0x8CFFFFFFu, 0x8DFFFFFFu, 0xFF000002u);
+    HH_CHECK(g_geradaMemmove == 3 && m.c.cycles == antesVolta);
+    // revisao Codex HH15.11e: destino sobre os empilhamentos de r11-r13: voltam os valores copiados, como na gerada
+    {
+        const uint32_t sp = m.c.r[15];
+        hh::sh4_write32(&m.c, src, 0x11111111u), hh::sh4_write32(&m.c, src + 4, 0x22222222u);
+        hh::sh4_write32(&m.c, src + 8, 0x33333333u);
+        m.c.r[11] = 0xB11u, m.c.r[12] = 0xB12u, m.c.r[13] = 0xB13u;
+        chamar(sp - 12, src, 12);
+        HH_CHECK(g_geradaMemmove == 3 && m.c.r[15] == sp && m.c.r[0] == sp - 12);
+        HH_CHECK(m.c.r[11] == 0x11111111u && m.c.r[12] == 0x22222222u && m.c.r[13] == 0x33333333u);
+    }
     // conferir: a chamada delegada roda so a gerada, uma vez, e e contada a parte (sem conferencia)
     ev::install(ev::Modo::Conferir);
     const size_t i = indice(kMemmove);
     HH_CHECK(i != SIZE_MAX);
     chamar(0, src, 16);
-    HH_CHECK(g_geradaMemmove == 3 && ev::stats(i).delegadas == 1 && ev::stats(i).conferidas == 0 &&
+    HH_CHECK(g_geradaMemmove == 4 && ev::stats(i).delegadas == 1 && ev::stats(i).conferidas == 0 &&
              ev::stats().delegadas == 1 && !ev::em_ensaio());
     HH_CHECK(ev::summary().find("delegadas 1") != std::string::npos);
     ev::install(ev::Modo::Gerado);

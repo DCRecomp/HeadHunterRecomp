@@ -585,9 +585,9 @@ uint32_t sext16(uint16_t h) { return uint32_t(int32_t(int16_t(h))); }
 // (para tras); T = 1 no fim do laco.
 // HH15.11e: com um dos dois intervalos fora da RAM principal (a rota chama memmove(0, ...): a gerada grava na area 0
 // pelo caminho de hardware), a chamada volta para a gerada, antes de qualquer efeito.
-bool na_ram(uint32_t a, uint32_t n) {
-    return sh4_is_ram(a) && sh4_is_ram(a + n - 1) && ((a + n - 1) & kRamMask) == (a & kRamMask) + n - 1;
-}
+// n > 0. O intervalo inteiro no bloco de 16 MB de `a`, sem passar do fim dele: nem espelho nem volta nos 32 bits (revisao
+// Codex HH15.11e: a forma anterior aceitava a = 0x8CFFFFFF, n = 0xFF000002, cujo fim da a volta e cai na RAM).
+bool na_ram(uint32_t a, uint32_t n) { return sh4_is_ram(a) && n - 1 <= kRamMask - (a & kRamMask); }
 
 void memmove_(Sh4Context* c) {
     const uint32_t d = c->r[4], s = c->r[5], n = c->r[6], sp0 = c->r[15];
@@ -596,9 +596,12 @@ void memmove_(Sh4Context* c) {
     cobrar(c, 5);
     escrever32(c, sp0 - 4, r13), escrever32(c, sp0 - 8, r12), escrever32(c, sp0 - 12, r11);  // mov.l r13/r12/r11,@-r15
     c->r[15] = sp0 - 12;
+    // mov.l @r15+,r11 / mov r4,r0 / mov.l @r15+,r12 / mov.l @r15+,r13: relidos da pilha, como a gerada (revisao Codex
+    // HH15.11e: um destino sobre os empilhamentos muda o que volta)
     auto fim = [&] {
         cobrar(c, 5);
-        c->r[0] = d, c->r[11] = r11, c->r[12] = r12, c->r[13] = r13, c->r[15] = sp0;
+        c->r[11] = ler32(c, sp0 - 12), c->r[0] = d, c->r[12] = ler32(c, sp0 - 8), c->r[13] = ler32(c, sp0 - 4);
+        c->r[15] = sp0;
     };
     if (d == s) {
         c->t = 1;

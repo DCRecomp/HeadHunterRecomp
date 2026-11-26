@@ -955,5 +955,18 @@ Ficaram para o lote seguinte, com o motivo:
   Antes da delegação, o `memmove` parava com "escrita fora da RAM principal". Negativos por mutação manual (desfeitos,
   rebuild limpo): um ciclo cobrado antes de delegar reprova no VBlank 308 com "delegacao a gerada depois de um efeito";
   r6 errado no laço de bytes reprova com "r6 do contrato completo".
-- Revisão Codex: indisponível (limite de uso da conta até 3h31 de 2026-11-26); fica para a próxima rodada.
+- Regressão integral da HH15.11d e da HH15.11e (2026-11-26, `tmp/v3-11e/regressao.log`): **aprovada, rc=0**, todas
+  as etapas `[ok]` (HH13 2 020 s, HH16 1 104 s; detalhe no `STATUS.md`).
+- Revisão Codex (`reviews/codex-hh15_11e.log`, 2026-11-26): 2 achados, os dois aceitos e corrigidos, com teste.
+  - ALTA: o epílogo da gerada relê r11–r13 da pilha (`mov.l @r15+` em `8C1245F0`–`8C1245F6`) e a elevada os restaurava
+    das cópias locais; um destino sobre os empilhamentos devolveria outros valores. Corrigido: a elevada relê a pilha.
+  - MÉDIA: `na_ram` aceitava um intervalo que dá a volta nos 32 bits e termina na RAM (`a = 0x8CFFFFFF`,
+    `n = 0xFF000002`: o fim calculado é `0x8C000000`); a elevada sairia da RAM no meio, e a gerada iria ao caminho de
+    hardware. Corrigido: o intervalo inteiro no bloco de 16 MB de `a` (`n - 1 <= 0xFFFFFF - (a & 0xFFFFFF)`).
+  - Teste: dois casos novos em `hh15_elevacao_delegacao_fora_do_contrato` (o intervalo com volta delega sem custo; o
+    destino sobre os empilhamentos devolve em r11–r13 o que foi copiado). Negativos (cada correção desfeita, só o teste
+    recompilado): sem a primeira, reprova em `r11 ... r13`; sem a segunda, para com "leitura fora da RAM principal".
+    A rota não tem nenhum dos dois casos. Depois das correções (`tmp/hh15_11e/verif.sh 2`): unitário ok, conferência na
+    rota com os mesmos números (3 442 083 conferidas, 9 delegadas, 0 divergências), 94 quadros iguais e as três
+    referências da HH15 iguais.
 - Fora deste lote: `8C1244A8` (sem chamada na rota) e o `strtol` (`8C1248E0`, `8C12435C`).

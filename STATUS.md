@@ -685,8 +685,12 @@ texturas `TITLE_*` usam o pixel PVR código 5, ainda sem decodificação confiá
 - HH15.11e (2026-11-26): delegação para a gerada nos casos fora do contrato e o `memmove` (8C12453C), que delega quando
   um ponteiro está fora da RAM principal (`docs/planos/HH15-PLANO.md`, HH15.11e). Conferência na rota: 42 elevadas,
   3 442 083 conferidas, 9 delegadas, 0 divergências, 94 quadros; produto 94 hashes; referências da HH15 iguais;
-  unitário novo e dois negativos. Codex indisponível (limite de uso). Regressão integral da HH15.11d e da HH15.11e em
-  curso.
+  unitário novo e dois negativos. Regressão integral da HH15.11d e da HH15.11e (2026-11-26, `tmp/v3-11e/regressao.log`)
+  **aprovada, rc=0**: build (9 s), ctest (145 s), portões HH05 (7 s), HH07 (284 s), HH08 (321 s), HH09 (200 s), HH10
+  (503 s), HH11 (421 s), HH12 (93 s), HH13 (2 020 s), HH14 (256 s), HH15 (230 s, as três referências iguais), HH16
+  (1 104 s), roteiro da área 1 (134 s), elevação (162 s) e Builder (155 s). Revisão Codex (`reviews/codex-hh15_11e.log`):
+  2 achados aceitos e corrigidos com teste (o `memmove` relê r11–r13 da pilha, como a gerada; `na_ram` não aceita mais
+  um intervalo que dá a volta nos 32 bits); depois, conferência na rota, 94 quadros e referências da HH15 iguais.
 
 ### HH14 (2026-10-27, concluída)
 
