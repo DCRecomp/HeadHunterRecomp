@@ -236,6 +236,13 @@ existe em `tools/dist/recomplauncher.json`, HH18).** O que depende do jogo e ent
 - um `.log` numa pasta `logs` (ou ao lado do executável), que o launcher anexa ao relatório de queda; acrescentar
   `folders.logs` ao perfil;
 - `portable.txt` ao lado do executável equivalente ao modo portátil de hoje (`instalacao.toml`).
+- (guia do SDK, `recomplauncher.com/sdk-files/guide.md`, conferido em 2026-11-17) `folders` e `actions` do perfil para
+  abrir a pasta de saves e a de logs pela página do jogo, junto com o log acima.
+
+Pendente de decisão do mantenedor (os "Recomp Standards" do mesmo guia): para Dreamcast o padrão aceito é CHD e GDI, e o
+selo "verified" (`dumps`) usa os valores do Redump, que cataloga o jogo em GDI. Hoje a versão suportada é a dos dois CDIs
+(MK-5104150 V1.006); aceitar GDI/CHD muda o escopo de versão suportada e exige provar que os dados extraídos são os
+mesmos, por isso não entra sem decisão.
 
 Critério de saída deste item: cada opção oferecida tem efeito comprovado e sobrevive ao reinício; arquivo inválido volta ao
 padrão com aviso; com padrões, roteiros e hashes ficam iguais às referências. Um pacote de exemplo só de legendas e outro
