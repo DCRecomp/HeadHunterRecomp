@@ -494,6 +494,84 @@ void copiar_palavras_n(Sh4Context* c) {
     c->r[0] = w, c->r[1] = q, c->r[2] = s, c->r[3] = r3, c->r[15] = sp0, c->t = 0;
 }
 
+// ---- HH15.11d: memcmp e strncpy ----
+
+// 8C124508 memcmp(r4, r5, r6): byte a byte (r2 = byte de s2, r3 = byte de s1, com sinal) ate a diferenca ou n; depois
+// rele o ultimo par sem sinal e devolve s1[k] - s2[k]. r5 = os bytes iguais, r4 depois do par, r7 = s2 + k, r3 = s2[k]
+// sem sinal; T = 0 na diferenca, 1 com os n iguais (cmp/hs) ou n = 0 (tst, r0 = 0).
+void memcmp_(Sh4Context* c) {
+    const uint32_t s1 = c->r[4], s2 = c->r[5], n = c->r[6];
+    cobrar(c, 3);
+    c->r[7] = s2;
+    if (n == 0) {
+        cobrar(c, 2);
+        c->r[0] = 0, c->t = 1;
+        return;
+    }
+    cobrar(c, 4);
+    c->r[5] = 0, c->r[2] = 0;
+    uint32_t i = 0;
+    bool     t = false;
+    for (;;) {
+        cobrar(c, 4);
+        const uint8_t b2 = ler8(c, s2 + i), b1 = ler8(c, s1 + i);
+        c->r[2] = sext8(b2), c->r[3] = sext8(b1), c->r[4] = s1 + i + 1, c->r[7] = s2 + i + 1;
+        if (b1 != b2) break;
+        cobrar(c, 3);
+        c->r[5] = ++i;
+        if (i >= n) {
+            t = true;
+            break;
+        }
+        c->t = 0;  // no back-edge: o par i - 1 igual
+        volta(c, 0x8C12451Au);
+    }
+    cobrar(c, 10);
+    const uint32_t k = c->r[4] - 1 - s1;  // o ultimo par comparado
+    c->r[7]          = s2 + k;
+    c->r[3]          = ler8(c, s2 + k);
+    c->r[0]          = uint32_t(ler8(c, s1 + k)) - c->r[3];
+    c->t             = t;
+}
+
+// 8C124870 strncpy(r4, r5, r6): copia ate o zero (exclusive) ou n bytes; o resto ate n com zeros (r1 = 0). Devolve r4;
+// r5 = n (ou os copiados), r7 = r4 + r5, r0 da origem no zero (ou depois do ultimo copiado), r3 = o ultimo byte lido, T = 1.
+void strncpy_(Sh4Context* c) {
+    const uint32_t d = c->r[4], s = c->r[5], n = c->r[6];
+    cobrar(c, 5);
+    c->r[1] = 0, c->r[0] = s;
+    uint32_t i = 0;
+    for (;;) {
+        cobrar(c, 2);
+        if (i >= n) break;  // cmp/hs r6,r5
+        cobrar(c, 3);
+        const uint8_t b = ler8(c, s + i);
+        c->r[3]         = sext8(b);
+        if (!b) {
+            cobrar(c, 2);  // o cmp/hs de novo (falso)
+            for (;;) {
+                cobrar(c, 5);
+                escrever8(c, d + i, 0);
+                ++i;
+                if (i >= n) break;
+                c->r[5] = i, c->r[7] = d + i, c->t = 0;  // no back-edge
+                volta(c, 0x8C124890u);
+            }
+            break;
+        }
+        c->r[0] = s + i, c->r[5] = i, c->r[7] = d + i, c->t = 0;  // no back-edge: o byte lido ainda nao copiado
+        volta(c, 0x8C12487Au);
+        cobrar(c, 4);
+        const uint8_t r = ler8(c, s + i);  // a gerada rele o byte depois do back-edge (revisao Codex HH15.11d)
+        c->r[3]         = sext8(r);
+        escrever8(c, d + i, r);
+        ++i;
+        c->r[0] = s + i;
+    }
+    cobrar(c, 2);
+    c->r[0] = d, c->r[5] = i, c->r[7] = d + i, c->t = 1;
+}
+
 constexpr Elevada kLista[] = {
     {0x8C1247E8u, "strlen", &strlen_, Retorno::R0, {}, Contrato::Completo},
     {0x8C124068u, "strcmp", &strcmp_, Retorno::R0, {}, Contrato::Completo},
@@ -512,6 +590,9 @@ constexpr Elevada kLista[] = {
     {0x8C1247D4u, "strcpy", &strcpy_, Retorno::R0, kStrcpy, Contrato::Completo},
     {0x8C124784u, "strcat", &strcat_, Retorno::R0, {}, Contrato::Completo},
     {0x8C123EB8u, "copiar_palavras_n", &copiar_palavras_n, Retorno::R0, kTabela64, Contrato::Completo},
+    // HH15.11d
+    {0x8C124508u, "memcmp", &memcmp_, Retorno::R0, {}, Contrato::Completo},
+    {0x8C124870u, "strncpy", &strncpy_, Retorno::R0, {}, Contrato::Completo},
 };
 
 } // namespace

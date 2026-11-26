@@ -894,3 +894,39 @@ HH15 iguais (o negativo é a própria reprovação de antes), a conferência na 
 (RAM nos back-edges 304 784, as escritas dos empilhamentos incluídas). Lição: lixo de pilha só é inofensivo enquanto
 nenhum código o copia para fora dela; empilhamentos de registradores são exatos e baratos de reproduzir, então as
 elevadas novas passam a gravá-los (as anteriores, que passam nas referências, ficam como estão).
+
+#### HH15.11d (2026-11-25): `memcmp` e `strncpy`
+
+Duas funções do runtime C em `transitional/elevadas_runtime_c.cpp`, identificadas pelo gerado (`generated/disc1`,
+`f_<endereço>`) e conferidas contra ele em cada chamada da rota:
+- `8C124508` `memcmp(r4, r5, n)`: byte a byte até a diferença ou n; relê o último par sem sinal e devolve a diferença.
+- `8C124870` `strncpy(r4, r5, n)`: copia até o zero (exclusive) ou n bytes e completa com zeros até n.
+
+Regeneração (`hh-recomp` nos dois discos): só as 39 chamadas por disco (15 + 24, 2 delas saltos de cauda) passaram de
+`HHG_FN` a `HHG_SLOT` e as 2 entradas da tabela de slots (`tmp/hh15_11d/difgen.py` contra a cópia anterior).
+Conferência na rota da área 1 (`HH_ELEVACAO=conferir`): 41 elevadas, 3 544 657 chamadas, 3 438 240 conferidas (12 594
+completas), 106 417 com atendimento (retorno diferente 0), **310 088 com a RAM conferida nos back-edges** (103 acima do
+orçamento), 0 divergências; `memcmp` 320 conferidas (253 completas), `strncpy` 5 304 (214); os 94 quadros iguais a
+`snapshots/hh06/area1_hashes.txt`. Produto (`HeadHunter.exe --headless`, `newgame_area1_nativo`): 94 hashes iguais.
+Referências da HH15 (`tools/dev/hh15_referencias.py conferir`, com as exceções de SPC): estável, experimental e
+experimental com saves, 18/18 artefatos iguais. Negativos por mutação manual (desfeitos, rebuild limpo): T final do
+`memcmp` invertido reprova (`memcmp ... T/FPUL do contrato completo`); r5 no back-edge da cópia do `strncpy` reprova
+(`strncpy ... r5 (back-edge 0)`). Suíte sem GPU (`ctest -C Release -j2 -LE gpu`, dados privados): **95/95** (2 836 s,
+`tmp/hh15_11d/ctest-cpu.log`); `ctest -L gpu` **4/4**. Revisão Codex (`reviews/codex-hh15_11d.log`): 1 achado aceito
+(MÉDIA): a gerada relê o byte da origem em `8C12487A`, depois do back-edge, e a elevada gravava o lido antes dele (um
+atendimento que mudasse a origem daria outro byte). Corrigido (a elevada relê); a rota não tem caso que o exercite, então
+não há negativo reprodutível; depois da correção a conferência, os 94 quadros, o produto e as referências (18/18) iguais,
+e a revisão da correção (`reviews/codex-hh15_11d_fix.log`) sem achados.
+
+Ficaram para o lote seguinte, com o motivo:
+- `8C12453C` `memmove` (79 chamadas por disco): escrito e conferido até o VBlank 308, onde a rota chama
+  `memmove(0, 8C83BEE0, 0x10C0)` pelo ponteiro em r12 de `8C128198` (retorno `8C12819C`). A gerada grava esses 4 288
+  bytes na área 0 pelo caminho lento (`sh4_write32_slow`: `hwWrite`, que conta `g_effects.hwWrites`, usado pelo detector
+  de ociosidade da thread 3, e o aviso de não mapeado); a elevada não toca hardware e para com erro explícito. Proposta:
+  as elevadas ganham um caminho "fora do contrato: a gerada" (no modo ativo, `mods::original`; no ensaio da conferência,
+  marcar a chamada como delegada e rodar só a gerada, contada à parte), com teste unitário próprio. O código do
+  `memmove` (com `ler16`/`escrever16`) está guardado em `tmp/hh15_11d/elevadas_runtime_c.cpp.com_memmove`.
+- `8C1244A8` (o bit de valor 4 da tabela de tipos de caractere em `8C145118`, pool em `8C1244B4`): nenhuma chamada na
+  rota da área 1, então não há conferência; a regressão exige conferência de toda elevada.
+- `8C1248E0` `strtol` e o envoltório de base 10 `8C12435C`: função grande, com chamadas por ponteiro (r11 = `8C126A74`,
+  pool em `8C124ACC`) e a mesma tabela de tipos; lote próprio.
